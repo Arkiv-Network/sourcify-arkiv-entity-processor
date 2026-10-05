@@ -34,7 +34,7 @@ and identical to the original `sourcify-arkiv-helper` pipeline (checked in CI on
 
 * Docker with Compose v2.
 * Disk for a full Ethereum run: ~120 GB Parquet input, ~140 GB prepared DuckDB source, ~210 GB
-  bundle, and for publishing another ~210 GB archive. Fast local SSD/NVMe strongly recommended.
+  bundle, and for publishing a ~39 GB archive. Fast local SSD/NVMe strongly recommended.
 * 12 CPUs and 48 GB memory for the container (the defaults); `prepare` peaks at ~36 GB.
 
 ### 2. Put the Parquet files in place
@@ -115,11 +115,16 @@ Set `R2_BUCKET` and `R2_KEY` in `.env` (use a new key per bundle), then:
 docker compose --profile publish run --rm publish
 ```
 
-This packs the verified bundle into `WORK_DIR/archive/seed.tar.zst` (`seed.json` at the archive
-root, deterministic) with a `seed.tar.zst.json` record, uploads it as a multipart object with its
-SHA-256 in the object metadata, and finally downloads it again to check size and SHA-256. An
-existing object is never overwritten: one with the same size and SHA-256 is accepted, a different
-one is refused. Rerunning retries; a finished archive is reused.
+This packs the verified bundle into `WORK_DIR/archive/seed.tar.zst` with a `seed.tar.zst.json`
+record, uploads it as a multipart object with its SHA-256 in the object metadata, and finally
+downloads it again to check size and SHA-256. An existing object is never overwritten: one with
+the same size and SHA-256 is accepted, a different one is refused. Rerunning retries; a finished
+archive is reused.
+
+The archive holds what arkiv-prefill loads, at the archive root: `seed.json`, the entity parts,
+`report.json` and a `SHA256SUMS` of exactly these files (prefill checks it). The audit files
+`payloads.bin` and `metadata.jsonl` stay in the local bundle; `PACK_CONTENTS=full` packs them too
+(~130 GB more for Ethereum).
 
 ### Reference run
 
@@ -130,6 +135,7 @@ Full Ethereum mainnet export of 2026-10, 12 CPUs / 48 GB container, default sett
 | prepare | 5.2 min | 7,823,536 current matches; 147 GB DuckDB file; peak ~36 GB memory |
 | process | 42.8 min | 7,770,258 contracts (~3,000/s), 53,278 skipped; 17,062,922 entities |
 | verify | 2.7 min | 1,707 entity parts, 207 GB bundle (`payloads.bin` 114 GB) |
+| pack | 3.5 min | prefill archive 38.8 GB (re-verifies the 207 GB bundle first; 204 MB memory) |
 
 ## Run without Docker
 
@@ -198,7 +204,7 @@ runs with different `--workers` / `--compression-workers`.
 ```text
 arkiv-entity-processor process [OPTIONS] --output <DIR>
 arkiv-entity-processor verify <BUNDLE_DIR>
-arkiv-entity-processor pack <BUNDLE_DIR> --output <FILE.tar.zst> [--level 3] [--threads N]
+arkiv-entity-processor pack <BUNDLE_DIR> --output <FILE.tar.zst> [--contents prefill|full] [--level 3] [--threads N]
 arkiv-entity-processor upload <FILE.tar.zst> --bucket <B> --key <K> [--credentials-file <FILE>]
 arkiv-entity-processor --help | --version
 ```
@@ -249,25 +255,34 @@ Both print progress as JSON lines on stderr and one JSON result line on stdout.
 
 `pack` runs `verify` first and refuses an unverified bundle, symlinks, special files and files not
 listed in `SHA256SUMS`; every file is hashed again while it is packed, so the archive holds exactly
-what `SHA256SUMS` describes.
+what its `SHA256SUMS` describes.
 
-* Format: PAX tar compressed with zstd (`application/zstd`, content checksum on). Every bundle file
-  sits at the archive root (`seed.json`, `SHA256SUMS`, `entities/NNNNNN.jsonl`, …, no top-level
+* Contents (`--contents`):
+  * `prefill` (default): what arkiv-prefill loads, i.e. `seed.json`, `entities/*.jsonl` and
+    `report.json`, plus a `SHA256SUMS` with the bundle's lines for exactly these files. The audit
+    files `payloads.bin` and `metadata.jsonl` (more than half of a bundle; every payload is also
+    inside the entity parts) stay local. For the full Ethereum bundle: 1,710 files, 74.7 GB, a
+    38.8 GB archive (`full`: 207 GB of files).
+  * `full`: every bundle file with the bundle's own `SHA256SUMS`.
+* Format: PAX tar compressed with zstd (`application/zstd`, content checksum on). Files sit at
+  the archive root (`seed.json`, `SHA256SUMS`, `entities/NNNNNN.jsonl`, …, no top-level
   directory), sorted by path, mode 0644, uid/gid 0, empty owner names, mtime 0. The tar stream is
-  byte-identical to Python's `tarfile` PAX output for the same files (the previous packer).
-* Reproducible: the same bundle and `--level` (default 3, 1–19) give a byte-identical archive for
-  any `--threads` (zstd workers, default: CPUs, at most 8) and platform. Memory stays bounded
-  (files are streamed; ~200 MB with 8 threads).
+  byte-identical to Python's `tarfile` PAX output for the same files (the previous packer). After
+  extracting, `sha256sum -c SHA256SUMS` checks every file.
+* Reproducible: the same bundle, `--contents` and `--level` (default 3, 1–19) give a
+  byte-identical archive for any `--threads` (zstd workers, default: CPUs, at most 8) and
+  platform. Memory stays bounded (files are streamed; ~200 MB with 8 threads).
 * Atomic: written to `<FILE>.partial` (locked against a second `pack`), synced, and only then
   renamed to `<FILE>`. Next to it goes the record `<FILE>.json`, also printed to stdout:
 
   ```json
   {"schema":"arkiv-entity-processor.archive.v1","archive":"sourcify-2026-10-05.tar.zst",
-   "bytes":N,"sha256":"<archive>","sourceSha256":"<SHA-256 of SHA256SUMS>","files":N,
-   "bundleBytes":N,"zstdLevel":3}
+   "bytes":N,"sha256":"<archive>","sourceSha256":"<SHA-256 of the bundle's SHA256SUMS>",
+   "contents":"prefill","files":N,"bundleBytes":N,"zstdLevel":3}
   ```
 * Never overwrites: an existing `<FILE>` is reused (exit 0) if its record matches the bundle
-  (same `sourceSha256`, size and `--level`; `--verify-existing` also re-hashes it), otherwise refused.
+  (same `sourceSha256`, size, `--contents` and `--level`; `--verify-existing` also re-hashes it),
+  otherwise refused.
 
 ### upload
 

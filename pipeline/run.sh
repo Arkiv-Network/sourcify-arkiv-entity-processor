@@ -20,7 +20,7 @@ export CONTRACT_LIMIT=${CONTRACT_LIMIT:-} SKIP_MISSING_REFERENCES=${SKIP_MISSING
 export PROCESS_WORKERS=${PROCESS_WORKERS:-4} COMPRESSION_WORKERS=${COMPRESSION_WORKERS:-4}
 export DESTINATION_CHAIN_ID=${DESTINATION_CHAIN_ID:-7706815} PROGRESS_INTERVAL=${PROGRESS_INTERVAL:-60}
 export ENTITY_OWNER=${ENTITY_OWNER:?Set ENTITY_OWNER to the public owner address of every entity}
-export ZSTD_LEVEL=${ZSTD_LEVEL:-3} PACK_THREADS=${PACK_THREADS:-8}
+export PACK_CONTENTS=${PACK_CONTENTS:-prefill} ZSTD_LEVEL=${ZSTD_LEVEL:-3} PACK_THREADS=${PACK_THREADS:-8}
 export R2_BUCKET=${R2_BUCKET:-} R2_KEY=${R2_KEY:-} R2_CREDENTIALS_FILE=${R2_CREDENTIALS_FILE:-/run/secrets/r2}
 export UPLOAD_CONCURRENCY=${UPLOAD_CONCURRENCY:-8} UPLOAD_PART_SIZE_MIB=${UPLOAD_PART_SIZE_MIB:-64}
 PROCESSOR_BIN=${PROCESSOR_BIN:-arkiv-entity-processor}
@@ -96,6 +96,7 @@ trap on_exit EXIT
 trap 'failure="interrupted by signal"; exit 143' TERM INT
 
 [[ $SKIP_MISSING_REFERENCES =~ ^[01]$ ]] || die "SKIP_MISSING_REFERENCES must be 0 or 1"
+[[ $PACK_CONTENTS =~ ^(prefill|full)$ ]] || die "PACK_CONTENTS must be prefill or full"
 for number in PREPARE_THREADS SOURCE_BATCH_SIZE PROCESS_WORKERS COMPRESSION_WORKERS PROGRESS_INTERVAL DESTINATION_CHAIN_ID \
   ZSTD_LEVEL PACK_THREADS UPLOAD_CONCURRENCY UPLOAD_PART_SIZE_MIB; do
   [[ ${!number} =~ ^[1-9][0-9]*$ ]] || die "$number must be a positive integer"
@@ -198,9 +199,10 @@ phase_pack() {
   state start pack
   [[ -f $BUNDLE/seed.json ]] || die "no completed bundle at $BUNDLE; run the pipeline first"
   mkdir -p "$(dirname "$ARCHIVE")"
+  # prefill: seed.json, entity parts, report.json and their SHA256SUMS (no payloads.bin/metadata.jsonl).
   # Reuses an existing archive whose record matches the bundle; never overwrites a different one.
   start_monitor monitor pack
-  "$PROCESSOR_BIN" pack "$BUNDLE" --output "$ARCHIVE" --level "$ZSTD_LEVEL" --threads "$PACK_THREADS" 2>>"$LOGS/pack.log" | tee -a "$LOGS/pack.log" ||
+  "$PROCESSOR_BIN" pack "$BUNDLE" --output "$ARCHIVE" --contents "$PACK_CONTENTS" --level "$ZSTD_LEVEL" --threads "$PACK_THREADS" 2>>"$LOGS/pack.log" | tee -a "$LOGS/pack.log" ||
     die "packing failed (see $LOGS/pack.log). Move $ARCHIVE aside if it belongs to another bundle."
   stop_monitor
   state end pack completed

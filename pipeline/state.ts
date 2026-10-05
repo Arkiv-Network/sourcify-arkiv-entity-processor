@@ -37,7 +37,7 @@ function config(): Json {
     sourceBatchSize: env.SOURCE_BATCH_SIZE, sourceMemoryLimit: env.SOURCE_MEMORY_LIMIT, contractLimit: env.CONTRACT_LIMIT || null,
     skipMissingReferences: bool(env.SKIP_MISSING_REFERENCES), maxSkipped: env.MAX_SKIPPED, processWorkers: env.PROCESS_WORKERS, compressionWorkers: env.COMPRESSION_WORKERS,
     entityOwner: env.ENTITY_OWNER, destinationChainId: env.DESTINATION_CHAIN_ID, progressInterval: env.PROGRESS_INTERVAL,
-    ...(env.PIPELINE_COMMAND === 'run' ? {} : { zstdLevel: env.ZSTD_LEVEL, r2Bucket: env.R2_BUCKET || null, r2Key: env.R2_KEY || null }),
+    ...(env.PIPELINE_COMMAND === 'run' ? {} : { packContents: env.PACK_CONTENTS, zstdLevel: env.ZSTD_LEVEL, r2Bucket: env.R2_BUCKET || null, r2Key: env.R2_KEY || null }),
   };
 }
 /** Settings that change the published bundle; a completed bundle is only reused under the same ones. */
@@ -81,7 +81,7 @@ function details(phase: string): Json {
   }
   if (phase === 'pack') {
     const archive = read(`${paths.archive}.json`);
-    return archive ? { archiveBytes: archive.bytes, archiveSha256: archive.sha256 } : {};
+    return archive ? { contents: archive.contents ?? 'full', archiveFiles: archive.files, archiveBytes: archive.bytes, archiveSha256: archive.sha256 } : {};
   }
   if (phase === 'upload') {
     const result = read(join(paths.logs, 'upload-result.json'));
@@ -99,7 +99,7 @@ switch (command) {
     state.status = 'running'; delete state.error; delete state.finishedAt;
     // `publish` keeps the processing settings recorded by `run`; it only adds its own.
     const fresh = config();
-    state.workDir = workDir; state.config = args[0] === 'publish' && state.config ? { ...state.config, zstdLevel: fresh.zstdLevel, r2Bucket: fresh.r2Bucket, r2Key: fresh.r2Key } : fresh;
+    state.workDir = workDir; state.config = args[0] === 'publish' && state.config ? { ...state.config, packContents: fresh.packContents, zstdLevel: fresh.zstdLevel, r2Bucket: fresh.r2Bucket, r2Key: fresh.r2Key } : fresh;
     state.build = build(); state.limits = cgroup() && (({ cpuSeconds: _, ...limits }) => limits)(cgroup()!);
     state.invocations.push({ command: args[0], startedAt: iso, status: 'running', scriptsSha256: state.build.scriptsSha256, processorSha256: state.build.processorSha256 });
     save(); emit({ event: 'start', command: args[0], invocation: state.invocations.length, workDir, config: state.config, build: state.build, limits: state.limits });

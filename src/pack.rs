@@ -24,21 +24,28 @@ Pack a verified bundle into one deterministic tar.zst archive, ready for `upload
 
 The bundle is verified first (as `verify` does). Symlinks, special files and files not listed in
 SHA256SUMS are refused, and every file is hashed again while it is packed: the archive holds
-exactly what SHA256SUMS describes.
+exactly what its SHA256SUMS describes.
 
-Archive: PAX tar compressed with zstd (multithreaded, with a content checksum). Every bundle file
-(SHA256SUMS, entities/NNNNNN.jsonl, metadata.jsonl, payloads.bin, report.json, seed.json) sits at
-the archive root, sorted by path, with mode 0644, uid/gid 0, empty owner names and mtime 0, so
-the same bundle and --level always give a byte-identical archive, for any --threads.
+--contents prefill (default) packs what arkiv-prefill loads: seed.json, the entity parts and
+report.json, with a SHA256SUMS listing exactly those files. The audit files payloads.bin and
+metadata.jsonl (more than half of a full bundle) stay in the local bundle only. --contents full
+packs every bundle file with the bundle's own SHA256SUMS.
+
+Archive: PAX tar compressed with zstd (multithreaded, with a content checksum). Files sit at the
+archive root (SHA256SUMS, entities/NNNNNN.jsonl, report.json, seed.json, ...), sorted by path,
+with mode 0644, uid/gid 0, empty owner names and mtime 0, so the same bundle, --contents and
+--level always give a byte-identical archive, for any --threads.
 
 The archive is written to <FILE>.partial, synced and renamed to <FILE> only on success. Next to
 it goes the record <FILE>.json:
   {\"schema\":\"arkiv-entity-processor.archive.v1\",\"archive\":\"<file name>\",\"bytes\":N,
    \"sha256\":\"<archive SHA-256>\",\"sourceSha256\":\"<SHA-256 of the bundle's SHA256SUMS>\",
-   \"files\":N,\"bundleBytes\":N,\"zstdLevel\":N}
+   \"contents\":\"prefill\",\"files\":N,\"bundleBytes\":N,\"zstdLevel\":N}
+(bundleBytes: the packed files' total size.)
 The record is also printed to stdout as one JSON line; progress goes to stderr as JSON lines.
 
-An existing <FILE> is never overwritten. If its record matches (same sourceSha256, size and level;
+An existing <FILE> is never overwritten. If its record matches (same sourceSha256, size, contents
+and level;
 --verify-existing also re-hashes the archive) it is reused and the command succeeds; otherwise
 the command fails.";
 
@@ -46,9 +53,11 @@ pub const EXAMPLES: &str = "\
 Examples:
   arkiv-entity-processor pack bundle --output sourcify-2026-10-05.tar.zst
   arkiv-entity-processor pack bundle -o /data/seed.tar.zst --level 6 --threads 16
+  arkiv-entity-processor pack bundle -o /data/full.tar.zst --contents full   # incl. audit files
 
-  # Inspect: every bundle file at the archive root
-  tar -I zstd -tvf sourcify-2026-10-05.tar.zst";
+  # Inspect: files at the archive root; check them after extracting
+  tar -I zstd -tvf sourcify-2026-10-05.tar.zst
+  mkdir seed && tar -I zstd -xf sourcify-2026-10-05.tar.zst -C seed && (cd seed && sha256sum -c SHA256SUMS)";
 
 pub const SCHEMA: &str = "arkiv-entity-processor.archive.v1";
 /// How often long-running steps print a progress line.
@@ -61,6 +70,26 @@ const ZEROS: [u8; RECORD] = [0; RECORD];
 const CHUNK: usize = 1 << 20;
 const BUFFERS: usize = 8;
 const MIB: f64 = (1 << 20) as f64;
+/// Audit files of a bundle that arkiv-prefill does not read; left out by `--contents prefill`.
+pub const AUDIT_FILES: [&str; 2] = ["metadata.jsonl", "payloads.bin"];
+
+/// Which bundle files go into the archive.
+#[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Contents {
+    /// seed.json, entity parts and report.json, with a SHA256SUMS of exactly these files
+    Prefill,
+    /// every bundle file, with the bundle's own SHA256SUMS
+    Full,
+}
+
+impl Contents {
+    fn name(self) -> &'static str {
+        match self {
+            Contents::Prefill => "prefill",
+            Contents::Full => "full",
+        }
+    }
+}
 
 #[derive(Args, Debug)]
 pub struct PackArgs {
@@ -73,6 +102,9 @@ pub struct PackArgs {
     /// existing <FILE> is reused if its record matches the bundle, else refused.
     #[arg(short, long, value_name = "FILE.tar.zst")]
     pub output: PathBuf,
+    /// Files to pack: `prefill` leaves out the audit files payloads.bin and metadata.jsonl
+    #[arg(long, value_enum, value_name = "WHAT", default_value = "prefill")]
+    pub contents: Contents,
     /// zstd compression level, 1-19
     #[arg(long, value_name = "N", default_value_t = 3)]
     pub level: i32,
@@ -88,11 +120,13 @@ pub struct PackArgs {
     pub verify_existing: bool,
 }
 
-/// One regular bundle file, in archive order.
+/// One archive file, in archive order: a bundle file, or generated content (the SHA256SUMS of a
+/// prefill archive).
 struct Entry {
     path: String,
     size: u64,
     sha256: String,
+    data: Option<Vec<u8>>,
 }
 
 pub fn pack(a: &PackArgs) -> Result<()> {
@@ -145,7 +179,7 @@ fn pack_record(a: &PackArgs) -> Result<Value> {
     );
     let sums = fs::read(a.dir.join("SHA256SUMS")).context("reading SHA256SUMS")?;
     let source_sha256 = hex::encode(Sha256::digest(&sums));
-    let entries = entries(&a.dir, &sums, &source_sha256)?;
+    let entries = select(entries(&a.dir, &sums, &source_sha256)?, &sums, a.contents)?;
     let bundle_bytes: u64 = entries.iter().map(|e| e.size).sum();
 
     // One writer per output: the lock is held until the archive is published.
@@ -182,6 +216,7 @@ fn pack_record(a: &PackArgs) -> Result<Value> {
         "bytes": bytes,
         "sha256": sha256,
         "sourceSha256": source_sha256,
+        "contents": a.contents.name(),
         "files": entries.len(),
         "bundleBytes": bundle_bytes,
         "zstdLevel": a.level,
@@ -262,6 +297,14 @@ fn reuse(a: &PackArgs, name: &str, record_path: &Path) -> Result<Value> {
             record["bytes"]
         )));
     }
+    // Records written before --contents existed describe full archives.
+    let contents = record["contents"].as_str().unwrap_or("full");
+    if contents != a.contents.name() {
+        return Err(refuse(format!(
+            "holds --contents {contents} (requested {})",
+            a.contents.name()
+        )));
+    }
     if record["zstdLevel"].as_i64() != Some(i64::from(a.level)) {
         return Err(refuse(format!(
             "was packed with zstd level {} (requested {})",
@@ -331,6 +374,43 @@ fn entries(dir: &Path, sums: &[u8], source_sha256: &str) -> Result<Vec<Entry>> {
             size: found[&path],
             path,
             sha256,
+            data: None,
+        })
+        .collect())
+}
+
+/// The archive files for `contents`. A prefill archive leaves out [`AUDIT_FILES`] and carries a
+/// generated SHA256SUMS: the bundle's lines for the packed files, in their original order.
+fn select(entries: Vec<Entry>, sums: &[u8], contents: Contents) -> Result<Vec<Entry>> {
+    if contents == Contents::Full {
+        return Ok(entries);
+    }
+    let sums = std::str::from_utf8(sums).context("SHA256SUMS is not UTF-8")?;
+    let mut listing = String::new();
+    for line in sums.lines() {
+        let (_, path) = line
+            .split_once("  ")
+            .context("SHA256SUMS: malformed line")?;
+        if !AUDIT_FILES.contains(&path) {
+            listing.push_str(line);
+            listing.push('\n');
+        }
+    }
+    let listing = listing.into_bytes();
+    Ok(entries
+        .into_iter()
+        .filter(|e| !AUDIT_FILES.contains(&e.path.as_str()))
+        .map(|e| {
+            if e.path == "SHA256SUMS" {
+                Entry {
+                    size: listing.len() as u64,
+                    sha256: hex::encode(Sha256::digest(&listing)),
+                    data: Some(listing.clone()),
+                    path: e.path,
+                }
+            } else {
+                e
+            }
         })
         .collect())
 }
@@ -470,6 +550,14 @@ fn read_entries(
     let mut allocated = 0;
     for entry in entries {
         let result = (|| -> Result<bool> {
+            if let Some(data) = &entry.data {
+                for chunk in data.chunks(CHUNK) {
+                    if chunks.send(Ok(Some(chunk.to_vec()))).is_err() {
+                        return Ok(false);
+                    }
+                }
+                return Ok(chunks.send(Ok(None)).is_ok());
+            }
             let mut file = File::open(dir.join(&entry.path))
                 .with_context(|| format!("opening {}", entry.path))?;
             let meta = file.metadata()?;
@@ -729,6 +817,7 @@ mod tests {
         PackArgs {
             dir: dir.into(),
             output: output.into(),
+            contents: Contents::Full,
             level: 3,
             threads: Some(threads),
             verify_existing: false,
@@ -842,6 +931,61 @@ mod tests {
     }
 
     #[test]
+    fn prefill_archive_leaves_out_audit_files_with_matching_sha256sums() {
+        let dir = bundle("prefill");
+        let out = dir.with_extension("out");
+        let _ = fs::remove_dir_all(&out);
+        fs::create_dir_all(&out).unwrap();
+        let archive = out.join("p.tar.zst");
+        let prefill = PackArgs {
+            contents: Contents::Prefill,
+            ..args(&dir, &archive, 2)
+        };
+        let record = pack_record(&prefill).unwrap();
+        assert_eq!(
+            (record["contents"].as_str(), record["files"].as_u64()),
+            (Some("prefill"), Some(5))
+        );
+        let entries = untar(&zstd::decode_all(&fs::read(&archive).unwrap()[..]).unwrap());
+        let names: Vec<_> = entries.iter().map(|e| e.0.as_str()).collect();
+        assert_eq!(
+            names,
+            [
+                "SHA256SUMS",
+                "entities/000001.jsonl",
+                "entities/000002.jsonl",
+                "report.json",
+                "seed.json"
+            ]
+        );
+        // SHA256SUMS lists exactly the other packed files, with their contents' digests, in the
+        // bundle's order; those files are the bundle's own.
+        let sums = String::from_utf8(entries[0].3.clone()).unwrap();
+        let bundle_sums = fs::read_to_string(dir.join("SHA256SUMS")).unwrap();
+        let expected: Vec<_> = bundle_sums
+            .lines()
+            .filter(|l| !l.ends_with("  payloads.bin") && !l.ends_with("  metadata.jsonl"))
+            .collect();
+        assert_eq!(sums.lines().collect::<Vec<_>>(), expected);
+        for (name, _, _, data) in &entries[1..] {
+            assert_eq!(data, &fs::read(dir.join(name)).unwrap(), "{name}");
+            let line = format!("{}  {name}", hex::encode(Sha256::digest(data)));
+            assert!(sums.lines().any(|l| l == line), "{line}");
+        }
+        let total: u64 = entries.iter().map(|e| e.2).sum();
+        assert_eq!(record["bundleBytes"], total);
+        // The local bundle is untouched; asking for the other contents is refused, not reused.
+        assert!(verify::verify(&dir).is_ok());
+        let error = pack_record(&args(&dir, &archive, 2))
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("holds --contents prefill"), "{error}");
+        assert_eq!(pack_record(&prefill).unwrap(), record);
+        fs::remove_dir_all(&dir).unwrap();
+        fs::remove_dir_all(&out).unwrap();
+    }
+
+    #[test]
     fn pack_refuses_unverified_bundles() {
         let dir = bundle("unverified");
         let out = dir.with_extension("tar.zst");
@@ -859,7 +1003,10 @@ mod tests {
         let Command::Pack(a) = cli.command else {
             panic!("pack expected");
         };
-        assert_eq!((a.level, a.threads, a.verify_existing), (3, None, false));
+        assert_eq!(
+            (a.contents, a.level, a.threads, a.verify_existing),
+            (Contents::Prefill, 3, None, false)
+        );
         assert!(Cli::try_parse_from(["arkiv-entity-processor", "pack", "b"]).is_err());
     }
 }

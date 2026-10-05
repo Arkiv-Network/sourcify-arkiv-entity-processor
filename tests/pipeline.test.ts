@@ -108,6 +108,19 @@ describe('pipeline/run.sh', () => {
     expect(other.stderr).toContain('refusing to reuse');
   }, 60_000);
 
+  test('pack: the prefill archive holds what prefill loads, with a matching SHA256SUMS', () => {
+    const workDir = join(scratch, 'work'), archive = join(scratch, 'prefill.tar.zst'), extracted = join(scratch, 'prefill');
+    expect(run([processor, 'pack', join(workDir, 'bundle'), '--output', archive]).code).toBe(0);
+    expect(JSON.parse(readFileSync(`${archive}.json`, 'utf8'))).toMatchObject({ contents: 'prefill', files: 4 });
+    Bun.spawnSync(['mkdir', '-p', extracted]);
+    expect(run(['tar', '-I', 'zstd', '-xf', archive, '-C', extracted]).code).toBe(0);
+    expect(Bun.spawnSync(['sha256sum', '-c', '--strict', 'SHA256SUMS'], { cwd: extracted }).exitCode).toBe(0);
+    const listed = readFileSync(join(extracted, 'SHA256SUMS'), 'utf8').trim().split('\n').map(line => line.split('  ')[1]).sort();
+    expect(listed).toEqual(['entities/000001.jsonl', 'report.json', 'seed.json']);
+    for (const path of listed.filter(path => path !== 'report.json')) expect(expected.bundleSha256sums[path]).toBeDefined();
+    expect(existsSync(join(extracted, 'payloads.bin')) || existsSync(join(extracted, 'metadata.jsonl'))).toBe(false);
+  }, 30_000);
+
   test('an incomplete bundle is refused, not resumed', () => {
     const workDir = join(scratch, 'work');
     renameSync(join(workDir, 'bundle', 'seed.json'), join(workDir, 'seed.json.moved'));

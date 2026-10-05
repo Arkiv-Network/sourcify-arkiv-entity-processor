@@ -66,6 +66,7 @@ services:
       R2_BUCKET: "${R2_BUCKET:-}"
       R2_KEY: "${R2_KEY:-}"
       R2_CREDENTIALS_FILE: /run/secrets/r2
+      PACK_CONTENTS: "${PACK_CONTENTS:-prefill}"
       ZSTD_LEVEL: "${ZSTD_LEVEL:-3}"
       PACK_THREADS: "${PACK_THREADS:-8}"
       UPLOAD_CONCURRENCY: "${UPLOAD_CONCURRENCY:-8}"
