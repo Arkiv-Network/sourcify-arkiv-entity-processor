@@ -25,15 +25,13 @@ jobs:
       matrix:
         include:
           - target: x86_64-unknown-linux-gnu
-            run: true
           # Fully static; all dependencies are pure Rust, so no musl-gcc is needed.
           - target: x86_64-unknown-linux-musl
-            run: true
-          # Cross-linked with the Ubuntu aarch64 GCC toolchain.
+          # Cross-linked with the Ubuntu aarch64 GCC toolchain; smoke-tested under qemu.
           - target: aarch64-unknown-linux-gnu
-            run: false
-            apt: gcc-aarch64-linux-gnu
+            apt: gcc-aarch64-linux-gnu libc6-dev-arm64-cross qemu-user
             linker: aarch64-linux-gnu-gcc
+            emulator: qemu-aarch64 -L /usr/aarch64-linux-gnu
     steps:
       - uses: actions/checkout@v7
 
@@ -53,7 +51,7 @@ jobs:
           echo "version=$version" >>"$GITHUB_OUTPUT"
           echo "Version: $version"
 
-      - name: Install cross linker
+      - name: Install cross toolchain
         if: matrix.apt
         run: |
           sudo apt-get update
@@ -72,16 +70,15 @@ jobs:
 
       - name: Smoke test
         run: |
-          bin="target/${{ matrix.target }}/release/$BIN"
-          file "$bin"
-          if [[ "${{ matrix.run }}" != true ]]; then exit 0; fi
-          "$bin" --version
+          file "target/${{ matrix.target }}/release/$BIN"
+          bin() { ${{ matrix.emulator }} "target/${{ matrix.target }}/release/$BIN" "$@"; }
+          bin --version
           printf '%s\n' \
             '{"chainId":"1","address":"0x1111111111111111111111111111111111111111","matchId":"1","verifiedAt":"2020-01-01T00:00:00Z","abi":[],"compilation":{"language":"Solidity","compiler":"solc","compilerVersion":"1","compilerSettings":{},"fullyQualifiedName":"A.sol:A"},"sources":{"A.sol":{"content":"contract A {}"}},"creationBytecode":{"onchainBytecode":null,"recompiledBytecode":null},"runtimeBytecode":{"onchainBytecode":"0x6000","recompiledBytecode":"0x6000"}}' \
             '{"type":"source-complete","records":1}' \
-            | "$bin" process --require-source-complete --output "$RUNNER_TEMP/bundle" \
+            | bin process --require-source-complete --output "$RUNNER_TEMP/bundle" \
                 --owner 0x1111111111111111111111111111111111111111
-          "$bin" verify "$RUNNER_TEMP/bundle"
+          bin verify "$RUNNER_TEMP/bundle"
 
       - name: Package
         id: package
