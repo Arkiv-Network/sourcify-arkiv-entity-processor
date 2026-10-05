@@ -30,14 +30,16 @@ LOGS=$WORK_DIR/logs TMP=$WORK_DIR/tmp
 initialized=0 current_phase= failure= monitor_pid=
 
 die() { failure=$*; echo "pipeline: $*" >&2; exit 1; }
-state() { bun "$APP_DIR/pipeline/state.ts" "$@"; }
+# --no-env-file: the settings come from this script, never from a .env file in the working directory.
+state() { bun --no-env-file "$APP_DIR/pipeline/state.ts" "$@"; }
 completed() { [[ -f $1/source-manifest.json ]] && grep -q '"status": "completed"' "$1/source-manifest.json"; }
 # Each process attempt gets fresh logs (progress is parsed from them); earlier ones keep a timestamped copy.
 rotate() {
   if [[ -s $1 ]]; then mv "$1" "${1%.log}.$(date -u +%Y%m%dT%H%M%SZ).log"; fi
   : >"$1"
 }
-start_monitor() { "$@" & monitor_pid=$!; }
+# The monitor must not hold the lock (fd 9): its last `sleep` can outlive this script by a few seconds.
+start_monitor() { "$@" 9>&- & monitor_pid=$!; }
 stop_monitor() {
   if [[ -n $monitor_pid ]]; then kill "$monitor_pid" 2>/dev/null || true; wait "$monitor_pid" 2>/dev/null || true; monitor_pid=; fi
 }
@@ -129,7 +131,7 @@ phase_prepare() {
   if [[ -n $PREPARE_LIMIT ]]; then args+=(--limit "$PREPARE_LIMIT"); else args+=(--all); fi
   echo "{\"pipelineAttempt\":\"$(date -u +%FT%TZ)\"}" >>"$LOGS/prepare.log"
   start_monitor monitor prepare
-  if ! bun "$APP_DIR/source/prepare.ts" "${args[@]}" 2>&1 | tee -a "$LOGS/prepare.log"; then
+  if ! bun --no-env-file "$APP_DIR/source/prepare.ts" "${args[@]}" 2>&1 | tee -a "$LOGS/prepare.log"; then
     die "source preparation failed (see $LOGS/prepare.log). An interrupted preparation resumes on rerun; $SOURCE only accepts its original PREPARE_LIMIT and PARQUET_DIR selection."
   fi
   stop_monitor
@@ -161,7 +163,7 @@ phase_process() {
   rotate "$LOGS/process.log"
   start_monitor monitor process "$total"
   set +e
-  bun "$APP_DIR/source/stream.ts" "${args[@]}" 2>>"$LOGS/source.log" |
+  bun --no-env-file "$APP_DIR/source/stream.ts" "${args[@]}" 2>>"$LOGS/source.log" |
     "$PROCESSOR_BIN" process --workers "$PROCESS_WORKERS" --compression-workers "$COMPRESSION_WORKERS" --input - \
       --output "$BUNDLE" --require-source-complete --owner "$ENTITY_OWNER" --destination-chain-id "$DESTINATION_CHAIN_ID" >>"$LOGS/process.log" 2>&1
   codes=("${PIPESTATUS[@]}")

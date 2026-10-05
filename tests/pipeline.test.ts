@@ -18,8 +18,10 @@ const processor = resolve(process.env.PROCESSOR_BIN ?? join(root, 'target/releas
 let scratch: string;
 
 const sha256 = (data: string | Uint8Array) => createHash('sha256').update(data).digest('hex');
+// Hermetic: no pipeline settings from the caller's environment (Bun also auto-loads a local .env).
+const baseEnv = Object.fromEntries(['PATH', 'HOME', 'TMPDIR', 'LANG'].filter(name => process.env[name]).map(name => [name, process.env[name]!]));
 const run = (args: string[], env: Record<string, string> = {}) => {
-  const result = Bun.spawnSync(args, { cwd: root, env: { ...process.env, ...env } });
+  const result = Bun.spawnSync(args, { cwd: root, env: { ...baseEnv, ...env } });
   return { code: result.exitCode, stdout: result.stdout.toString(), stderr: result.stderr.toString() };
 };
 const bundleSums = (bundle: string) => Object.fromEntries(readFileSync(join(bundle, 'SHA256SUMS'), 'utf8').trim().split('\n')

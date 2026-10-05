@@ -25,8 +25,9 @@ jobs:
       matrix:
         include:
           - target: x86_64-unknown-linux-gnu
-          # Fully static; all dependencies are pure Rust, so no musl-gcc is needed.
+          # Fully static; zstd-sys and ring compile C, which needs musl-gcc (musl-tools).
           - target: x86_64-unknown-linux-musl
+            apt: musl-tools
           # Cross-linked with the Ubuntu aarch64 GCC toolchain; smoke-tested under qemu.
           - target: aarch64-unknown-linux-gnu
             apt: gcc-aarch64-linux-gnu libc6-dev-arm64-cross qemu-user
@@ -56,7 +57,9 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends ${{ matrix.apt }}
-          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=${{ matrix.linker }}" >>"$GITHUB_ENV"
+          if [[ -n "${{ matrix.linker }}" ]]; then
+            echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=${{ matrix.linker }}" >>"$GITHUB_ENV"
+          fi
 
       # Toolchain pinned by rust-toolchain.toml, plus the target's standard library.
       - name: Install Rust toolchain
@@ -79,6 +82,7 @@ jobs:
             | bin process --require-source-complete --output "$RUNNER_TEMP/bundle" \
                 --owner 0x1111111111111111111111111111111111111111
           bin verify "$RUNNER_TEMP/bundle"
+          bin pack "$RUNNER_TEMP/bundle" --output "$RUNNER_TEMP/bundle.tar.zst"
 
       - name: Package
         id: package
