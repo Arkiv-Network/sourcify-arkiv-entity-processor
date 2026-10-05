@@ -14,6 +14,9 @@ use std::{
     time::Instant,
 };
 
+mod pack;
+mod s3;
+mod upload;
 mod verify;
 
 const ABOUT: &str =
@@ -30,7 +33,9 @@ Output: a bundle directory with entities/*.jsonl (import-ready Arkiv prefill ent
 payloads.bin (deduplicated raw payloads), metadata.jsonl, report.json, SHA256SUMS and seed.json.
 seed.json is published last, only after the whole input was processed (fail-closed).
 
-Everything runs offline: no database, RPC, Sourcify API or transactions.";
+`process` and `verify` run offline: no database, RPC, Sourcify API or transactions. `pack` turns a
+bundle into one deterministic .tar.zst archive and `upload` publishes it to S3-compatible storage
+(Cloudflare R2) without ever overwriting an object.";
 
 const PROCESS_LONG_ABOUT: &str = "\
 Transform an NDJSON stream of Sourcify Ethereum contract records into an Arkiv prefill seed bundle.
@@ -94,6 +99,12 @@ enum Command {
     /// Verify a finished bundle: SHA256SUMS, report.json status and seed.json
     #[command(long_about = verify::LONG_ABOUT)]
     Verify(VerifyArgs),
+    /// Pack a verified bundle into a deterministic .tar.zst archive and record
+    #[command(long_about = pack::LONG_ABOUT, after_help = pack::EXAMPLES)]
+    Pack(pack::PackArgs),
+    /// Upload an archive to S3-compatible storage (R2) without overwriting, then verify it
+    #[command(long_about = upload::LONG_ABOUT, after_help = upload::EXAMPLES)]
+    Upload(upload::UploadArgs),
 }
 
 #[derive(Args, Debug)]
@@ -769,6 +780,8 @@ fn main() -> Result<()> {
             println!("OK {}: {summary}", v.dir.display());
             Ok(())
         }
+        Command::Pack(a) => pack::pack(&a),
+        Command::Upload(a) => upload::upload(&a),
     }
 }
 /// `process`: the offline importer. Writes the bundle and publishes seed.json last.

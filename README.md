@@ -10,6 +10,9 @@ payload bytes are stored once by SHA-256, and output is written in input order w
 first. Parsing/transformation and gzip compression run on bounded, ordered worker pools, so the
 published files are byte-identical for any worker count.
 
+`pack` and `upload` then publish a bundle as one deterministic `.tar.zst` object in S3-compatible
+storage (Cloudflare R2), from where arkiv-prefill downloads it.
+
 This is the former `sourcify-offline-importer` (rust-importer in sourcify-arkiv-helper) as a
 standalone tool; its output is byte-identical for the same input and settings.
 
@@ -52,6 +55,8 @@ runs with different `--workers` / `--compression-workers`.
 ```text
 arkiv-entity-processor process [OPTIONS] --output <DIR>
 arkiv-entity-processor verify <BUNDLE_DIR>
+arkiv-entity-processor pack <BUNDLE_DIR> --output <FILE.tar.zst> [--level 3] [--threads N]
+arkiv-entity-processor upload <FILE.tar.zst> --bucket <B> --key <K> [--credentials-file <FILE>]
 arkiv-entity-processor --help | --version
 ```
 
@@ -87,6 +92,80 @@ Migrating from `sourcify-offline-importer`: replace the binary name with
 `arkiv-entity-processor process`; all previous flags, including `--chain-id` and
 `--part-entities`, are still accepted.
 
+## Publishing: `pack` and `upload`
+
+```sh
+arkiv-entity-processor pack bundle --output sourcify-2026-10-05.tar.zst
+arkiv-entity-processor upload sourcify-2026-10-05.tar.zst --bucket arkiv-seeds \
+    --key sourcify/2026-10-05.tar.zst --credentials-file ~/.config/arkiv/r2.env
+```
+
+Both print progress as JSON lines on stderr and one JSON result line on stdout.
+
+### pack
+
+`pack` runs `verify` first and refuses an unverified bundle, symlinks, special files and files not
+listed in `SHA256SUMS`; every file is hashed again while it is packed, so the archive holds exactly
+what `SHA256SUMS` describes.
+
+* Format: PAX tar compressed with zstd (`application/zstd`, content checksum on). Every bundle file
+  sits at the archive root (`seed.json`, `SHA256SUMS`, `entities/NNNNNN.jsonl`, …, no top-level
+  directory), sorted by path, mode 0644, uid/gid 0, empty owner names, mtime 0. The tar stream is
+  byte-identical to Python's `tarfile` PAX output for the same files (the previous packer).
+* Reproducible: the same bundle and `--level` (default 3, 1–19) give a byte-identical archive for
+  any `--threads` (zstd workers, default: CPUs, at most 8) and platform. Memory stays bounded
+  (files are streamed; ~200 MB with 8 threads).
+* Atomic: written to `<FILE>.partial` (locked against a second `pack`), synced, and only then
+  renamed to `<FILE>`. Next to it goes the record `<FILE>.json`, also printed to stdout:
+
+  ```json
+  {"schema":"arkiv-entity-processor.archive.v1","archive":"sourcify-2026-10-05.tar.zst",
+   "bytes":N,"sha256":"<archive>","sourceSha256":"<SHA-256 of SHA256SUMS>","files":N,
+   "bundleBytes":N,"zstdLevel":3}
+  ```
+* Never overwrites: an existing `<FILE>` is reused (exit 0) if its record matches the bundle
+  (same `sourceSha256` and size; `--verify-existing` also re-hashes it), otherwise refused.
+
+### upload
+
+`upload` stores the archive as one object, path-style (`{endpoint}/{bucket}/{key}`), signed with
+AWS Signature V4 over HTTPS (rustls). Guarantees:
+
+* Never overwrites. The key is checked first: an existing object is accepted only if its size and
+  `x-amz-meta-sha256` equal the archive's (`"uploaded":false`, nothing sent); anything else is
+  refused. The multipart upload is completed with `If-None-Match: *`, so an object created by
+  someone else meanwhile is not replaced either.
+* Integrity: the object gets metadata `sha256=<archive SHA-256>`; each part is signed with its
+  real SHA-256 (`x-amz-content-sha256`), so the server rejects corrupted parts. The archive digest
+  comes from the `pack` record when it matches the file's name and size (the file is then re-hashed
+  during the upload and the upload is completed only if it matches), else the file is hashed first
+  (always with `--verify-local`). Finally the object is read back (ranged GETs pinned to its ETag)
+  and its size and SHA-256 compared; a mismatch fails the command (`--no-verify-remote` skips it).
+* Clean failure: any error, or SIGINT/SIGTERM, aborts the multipart upload (a second signal exits
+  at once). Requests are retried up to 5 times with exponential backoff (1–8 s) on network errors,
+  HTTP 5xx, 429 and `RequestTimeout`, never on other 4xx.
+* Parts: `--part-size-mib` (default 64, at least 5), raised to whole MiB so that at most 9,000
+  parts are needed; `--concurrency` (default 8) threads each read their own byte range, so memory
+  is about concurrency × part size.
+
+Result line: `{"uri":"s3://B/K","bytes":N,"sha256":"…","uploaded":true,"verifiedRemote":true}`.
+
+Credentials come from `--credentials-file`, an env-style file (when given, only the file is
+used), or else from the same variables in the environment. Keep the file `chmod 600` (a warning is
+printed otherwise); the key pair never appears in output, errors or command lines.
+
+```sh
+# ~/.config/arkiv/r2.env: KEY=VALUE lines, optional `export `, # comments, optional quotes
+AWS_ACCESS_KEY_ID=<R2 access key id>
+AWS_SECRET_ACCESS_KEY=<R2 secret access key>
+AWS_ENDPOINT_URL_S3=https://<account-id>.r2.cloudflarestorage.com
+# AWS_DEFAULT_REGION=auto   (optional, default auto)
+```
+
+`tests/minio-upload.sh` exercises the whole flow against a throwaway local MinIO container
+(reproducibility, reuse, refusal, abort on failure and SIGINT, `If-None-Match`, retries, secret
+hygiene); it is not run in CI: `cargo build --release --locked && tests/minio-upload.sh`.
+
 ## Build
 
 The toolchain is pinned in `rust-toolchain.toml` (Rust 1.90.0 with rustfmt and clippy).
@@ -97,15 +176,17 @@ cargo test --locked
 cargo fmt --all --check && cargo clippy --locked --all-targets -- -D warnings
 ```
 
-A static binary: `rustup target add x86_64-unknown-linux-musl && cargo build --release --locked
---target x86_64-unknown-linux-musl` (all dependencies are pure Rust).
+zstd (`zstd-sys`) and `ring` compile C, so a C compiler is needed (`gcc`; cross builds use the
+target's GCC). A static binary: `sudo apt-get install musl-tools && rustup target add
+x86_64-unknown-linux-musl && cargo build --release --locked --target x86_64-unknown-linux-musl`.
 
 ## CI and releases
 
 * `.github/workflows/ci.yml` runs fmt, clippy, tests, a release build and a small
   process/verify smoke test on every push and pull request to `main`.
 * `.github/workflows/release.yml` builds `x86_64-unknown-linux-gnu`,
-  `x86_64-unknown-linux-musl` (static) and `aarch64-unknown-linux-gnu`, each packaged as
+  `x86_64-unknown-linux-musl` (static, with `musl-tools`) and `aarch64-unknown-linux-gnu`
+  (smoke-tested with process/verify/pack), each packaged as
   `arkiv-entity-processor-<version>-<target>.tar.gz` (binary + README) with a `.sha256` file.
   * Push a tag `vX.Y.Z` matching the `Cargo.toml` version to publish a GitHub Release with
     these assets (tags containing `-` are marked pre-release).
