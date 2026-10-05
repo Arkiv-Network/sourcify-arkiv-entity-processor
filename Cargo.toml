@@ -1,0 +1,28 @@
+[package]
+name = "arkiv-entity-processor"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.90"
+description = "Offline processor turning Sourcify Ethereum contract records (NDJSON) into a deduplicated Arkiv prefill seed bundle"
+repository = "https://github.com/Arkiv-Network/sorcify-arkiv-entity-processor"
+readme = "README.md"
+publish = false
+
+[[bin]]
+name = "arkiv-entity-processor"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+base64 = "0.22"
+chrono = "0.4"
+clap = { version = "4", features = ["derive"] }
+flate2 = "1"
+hex = "0.4"
+serde_json = { version = "1", features = ["preserve_order"] }
+sha2 = "0.10"
+sha3 = "0.10"
+ryu-js = "1"
+
+[profile.release]
+lto = "thin"

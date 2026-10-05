@@ -1,0 +1,126 @@
+name: Release
+
+# Tag push `v*` (e.g. v0.1.0): build all targets and publish a GitHub Release.
+# Manual run (workflow_dispatch): build all targets and upload them as workflow
+# artifacts only (dry run, no release).
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  BIN: arkiv-entity-processor
+
+jobs:
+  build:
+    name: build ${{ matrix.target }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            run: true
+          # Fully static; all dependencies are pure Rust, so no musl-gcc is needed.
+          - target: x86_64-unknown-linux-musl
+            run: true
+          # Cross-linked with the Ubuntu aarch64 GCC toolchain.
+          - target: aarch64-unknown-linux-gnu
+            run: false
+            apt: gcc-aarch64-linux-gnu
+            linker: aarch64-linux-gnu-gcc
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Determine version
+        id: version
+        run: |
+          crate=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n1)
+          if [[ "$GITHUB_EVENT_NAME" == push && "$GITHUB_REF" == refs/tags/v* ]]; then
+            if [[ "$GITHUB_REF_NAME" != "v$crate" ]]; then
+              echo "::error::tag $GITHUB_REF_NAME does not match Cargo.toml version $crate"
+              exit 1
+            fi
+            version="$GITHUB_REF_NAME"
+          else
+            version="v$crate-dev.${GITHUB_SHA::7}"
+          fi
+          echo "version=$version" >>"$GITHUB_OUTPUT"
+          echo "Version: $version"
+
+      - name: Install cross linker
+        if: matrix.apt
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ${{ matrix.apt }}
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=${{ matrix.linker }}" >>"$GITHUB_ENV"
+
+      # Toolchain pinned by rust-toolchain.toml, plus the target's standard library.
+      - name: Install Rust toolchain
+        run: |
+          rustup toolchain install
+          rustup target add ${{ matrix.target }}
+          rustup show active-toolchain
+
+      - name: Build
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: Smoke test
+        run: |
+          bin="target/${{ matrix.target }}/release/$BIN"
+          file "$bin"
+          if [[ "${{ matrix.run }}" != true ]]; then exit 0; fi
+          "$bin" --version
+          printf '%s\n' \
+            '{"chainId":"1","address":"0x1111111111111111111111111111111111111111","matchId":"1","verifiedAt":"2020-01-01T00:00:00Z","abi":[],"compilation":{"language":"Solidity","compiler":"solc","compilerVersion":"1","compilerSettings":{},"fullyQualifiedName":"A.sol:A"},"sources":{"A.sol":{"content":"contract A {}"}},"creationBytecode":{"onchainBytecode":null,"recompiledBytecode":null},"runtimeBytecode":{"onchainBytecode":"0x6000","recompiledBytecode":"0x6000"}}' \
+            '{"type":"source-complete","records":1}' \
+            | "$bin" process --require-source-complete --output "$RUNNER_TEMP/bundle" \
+                --owner 0x1111111111111111111111111111111111111111
+          "$bin" verify "$RUNNER_TEMP/bundle"
+
+      - name: Package
+        id: package
+        run: |
+          name="$BIN-${{ steps.version.outputs.version }}-${{ matrix.target }}"
+          mkdir -p "staging/$name" dist
+          cp "target/${{ matrix.target }}/release/$BIN" README.md "staging/$name/"
+          tar -C staging -czf "dist/$name.tar.gz" "$name"
+          (cd dist && sha256sum "$name.tar.gz" >"$name.tar.gz.sha256")
+          cat "dist/$name.tar.gz.sha256" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "name=$name" >>"$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.package.outputs.name }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    name: GitHub Release
+    needs: build
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          (cd dist && sha256sum -c ./*.sha256)
+          flags=()
+          if [[ "$GITHUB_REF_NAME" == *-* ]]; then flags+=(--prerelease); fi
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" \
+            --generate-notes --verify-tag "${flags[@]}"
