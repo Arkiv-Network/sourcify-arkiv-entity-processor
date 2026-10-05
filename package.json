@@ -1,0 +1,14 @@
+{
+  "name": "sourcify-arkiv-entity-processor",
+  "private": true,
+  "type": "module",
+  "description": "Parquet -> DuckDB source stage feeding arkiv-entity-processor",
+  "scripts": {
+    "source:prepare": "bun source/prepare.ts",
+    "source:stream": "bun source/stream.ts",
+    "test": "bun test --timeout 30000 tests"
+  },
+  "dependencies": {
+    "@duckdb/node-api": "1.5.6-r.1"
+  }
+}

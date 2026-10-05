@@ -1,0 +1,8 @@
+*
+!Cargo.toml
+!Cargo.lock
+!src/
+!package.json
+!bun.lock
+!source/
+!pipeline/

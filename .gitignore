@@ -1,1 +1,5 @@
 /target/
+node_modules/
+/data/
+.env
+r2.env

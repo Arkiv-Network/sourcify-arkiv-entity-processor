@@ -1,0 +1,33 @@
+{
+  "producedBy": "sourcify-arkiv-helper 1565d6a: prepare-source.ts --all --no-signatures, source.ts --completion-marker --skip-missing-references, sourcify-offline-importer --require-source-complete --owner below",
+  "owner": "0x1111111111111111111111111111111111111111",
+  "selectedCount": 18,
+  "records": 14,
+  "lastMatchId": "28469961",
+  "skipped": [
+    {
+      "matchId": "15040941",
+      "reason": "Missing bytecode: 867248465032E1F5AAF5CBC1DD3E77B43F6C2A32409DA9999EE761BE2543297B"
+    },
+    {
+      "matchId": "23813307",
+      "reason": "Referenced Solidity metadata missing from local export"
+    },
+    {
+      "matchId": "28759260",
+      "reason": "ABI is not an array (Yul compilation); the entity transform requires one"
+    },
+    {
+      "matchId": "54163146",
+      "reason": "Missing deployed contract: bf49ab37-430a-4671-8db1-4dc075054083"
+    }
+  ],
+  "ndjsonSha256": "97d85cd4479a0fa28aa7e8f1910f09a67d86cfaa2d3442f9e179eab531b462f3",
+  "entities": 210,
+  "bundleSha256sums": {
+    "entities/000001.jsonl": "bb84ee4f0afddbfd72d7be92e8f068b1aced471c4f023ee545dfe2cc06049e3c",
+    "payloads.bin": "dbd8a820738419171355c5a26835afadbdefa0e4e3c2d9cbc62ec101a52a4474",
+    "metadata.jsonl": "900845592413afa118bb5b26521f9481c9cfbcb04f4068cac69e902f1ebeb8ba",
+    "seed.json": "8eb5fed6d18225de450c0438ca1cf7ebe0d1f99a87b526ec98335acce7d8b9b9"
+  }
+}

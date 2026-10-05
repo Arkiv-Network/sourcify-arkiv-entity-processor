@@ -58,3 +58,54 @@ jobs:
                 --owner 0x1111111111111111111111111111111111111111
           "$bin" verify "$RUNNER_TEMP/bundle"
           (cd "$RUNNER_TEMP/bundle" && sha256sum -c SHA256SUMS)
+
+  pipeline:
+    name: pipeline end-to-end (Bun + DuckDB + processor)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        run: |
+          rustup toolchain install
+          rustup show active-toolchain
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+
+      - name: Install source stage dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build release
+        run: cargo build --release --locked
+
+      # Byte-identical NDJSON and bundle against tests/fixture/expected.json, plus resume/refusal behaviour.
+      - name: End-to-end tests
+        run: bun run test
+
+  docker:
+    name: docker image on the fixture
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build image
+        run: docker build --build-arg REVISION="${GITHUB_SHA::7}" -t arkiv-entity-processor:ci .
+
+      - name: Run the pipeline on the fixture
+        run: |
+          work="$RUNNER_TEMP/work"
+          mkdir -p "$work"
+          docker run --rm --network none -u "$(id -u):$(id -g)" \
+            -v "$PWD/tests/fixture/parquet:/parquet:ro" -v "$work:/work" \
+            -e ENTITY_OWNER="$(jq -r .owner tests/fixture/expected.json)" \
+            -e PREPARE_MEMORY_LIMIT=2GB -e SOURCE_MEMORY_LIMIT=1GB \
+            arkiv-entity-processor:ci run
+          diff <(grep -v '  report.json$' "$work/bundle/SHA256SUMS" | sort) \
+            <(jq -r '.bundleSha256sums | to_entries[] | "\(.value)  \(.key)"' tests/fixture/expected.json | sort)
+          jq '{status, records, phases: (.phases | map_values(.status))}' "$work/timings.json"

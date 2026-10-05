@@ -1,0 +1,81 @@
+# Sourcify Parquet export -> Arkiv prefill seed bundle -> R2. See README.md, "Run with Docker Compose".
+#
+#   docker compose up pipeline                       # offline: prepare -> process -> verify (no network)
+#   docker compose --profile publish run --rm publish   # pack -> upload to R2 -> read back and check
+#
+# Settings come from .env (copy .env.example). Rerunning a command resumes; completed phases are reused.
+name: arkiv-entity-processor
+
+x-environment: &environment
+  # docker stop signals the whole job (DuckDB, Bun, Rust), so the failure is recorded in timings.json.
+  TINI_KILL_PROCESS_GROUP: "1"
+  PARQUET_DIR: /parquet
+  WORK_DIR: /work
+  ENTITY_OWNER: "${ENTITY_OWNER:?Set ENTITY_OWNER in .env to the public owner address of every entity}"
+  DESTINATION_CHAIN_ID: "${DESTINATION_CHAIN_ID:-7706815}"
+  PREPARE_LIMIT: "${PREPARE_LIMIT:-}"
+  PREPARE_THREADS: "${PREPARE_THREADS:-8}"
+  PREPARE_MEMORY_LIMIT: "${PREPARE_MEMORY_LIMIT:-24GB}"
+  SOURCE_BATCH_SIZE: "${SOURCE_BATCH_SIZE:-250}"
+  SOURCE_MEMORY_LIMIT: "${SOURCE_MEMORY_LIMIT:-6GB}"
+  CONTRACT_LIMIT: "${CONTRACT_LIMIT:-}"
+  SKIP_MISSING_REFERENCES: "${SKIP_MISSING_REFERENCES:-1}"
+  MAX_SKIPPED: "${MAX_SKIPPED:-100000}"
+  PROCESS_WORKERS: "${PROCESS_WORKERS:-4}"
+  COMPRESSION_WORKERS: "${COMPRESSION_WORKERS:-4}"
+  PROGRESS_INTERVAL: "${PROGRESS_INTERVAL:-60}"
+
+x-pipeline: &pipeline
+  image: arkiv-entity-processor:local
+  build:
+    context: .
+    args:
+      REVISION: "${REVISION:-}"
+  init: true
+  restart: "no"
+  user: "${PIPELINE_UID:-1000}:${PIPELINE_GID:-1000}"
+  cpus: "${PIPELINE_CPUS:-12}"
+  mem_limit: "${PIPELINE_MEMORY:-48g}"
+  # No swap beyond the memory limit: an over-budget phase fails (and resumes) instead of thrashing.
+  memswap_limit: "${PIPELINE_MEMORY:-48g}"
+  pids_limit: 512
+  stop_grace_period: 30s
+  volumes:
+    - type: bind
+      source: "${PARQUET_DIR:-./data/parquet}"
+      target: /parquet
+      read_only: true
+    - type: bind
+      source: "${WORK_DIR:-./data/work}"
+      target: /work
+
+services:
+  pipeline:
+    <<: *pipeline
+    command: ["run"]
+    network_mode: none
+    environment:
+      <<: *environment
+
+  publish:
+    <<: *pipeline
+    profiles: [publish]
+    command: ["publish"]
+    environment:
+      <<: *environment
+      R2_BUCKET: "${R2_BUCKET:-}"
+      R2_KEY: "${R2_KEY:-}"
+      R2_CREDENTIALS_FILE: /run/secrets/r2
+      ZSTD_LEVEL: "${ZSTD_LEVEL:-3}"
+      PACK_THREADS: "${PACK_THREADS:-8}"
+      UPLOAD_CONCURRENCY: "${UPLOAD_CONCURRENCY:-8}"
+      UPLOAD_PART_SIZE_MIB: "${UPLOAD_PART_SIZE_MIB:-64}"
+    secrets:
+      - source: r2
+        target: r2
+
+secrets:
+  r2:
+    # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_ENDPOINT_URL_S3 (and optionally AWS_DEFAULT_REGION) lines;
+    # readable by PIPELINE_UID. Mounted read-only; never part of the image, logs or command lines.
+    file: "${R2_CREDENTIALS_FILE:-./r2.env}"
