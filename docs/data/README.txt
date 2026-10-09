@@ -24,12 +24,12 @@ Reproduce from this saved response (run in the processor repository):
   python3 docs/export-example.py --work "$work" --captured-at 2026-10-09T13:34:56Z
 
 The export script checks every decoded payload against the processor audit
-bytes and SHA-256, then verifies 42 field and reference relationships. Its
+bytes and SHA-256, then verifies complete contract JSON equality and the individual field/reference relationships. Its
 re-export records the current repository revision. Bundle timing/report fields
 and archive timestamps can vary; entity keys and payloads remain reproducible.
 
 Scope: this illustrates the transform with live API input. The production
 pipeline reads Parquet. The API does not provide sourcifyIds, so those are absent
 here. The API supplies current proxyResolution, while the offline Parquet
-adapter cannot resolve current proxies. See provenance.json for field coverage
-and exclusions; this example is not a claim of full API response parity.
+adapter cannot resolve current proxies. The decoded verified-contract payload equals every JSON value in this captured API response.
+This does not claim complete API parity for records produced by the Parquet adapter.

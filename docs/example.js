@@ -50,7 +50,7 @@
   document.querySelector('#bundle-download').href = data.files.bundle;
   function relevant(entity) {
     const k = kind(entity);
-    if (k === 'verified_contract') return {...pick(source, ['chainId', 'address', 'matchId', 'verifiedAt', 'match', 'creationMatch', 'runtimeMatch', 'abi', 'compilation', 'deployment', 'proxyResolution', 'additionalInput']), creationBytecode: pick(source.creationBytecode || {}, ['transformations', 'transformationValues']), runtimeBytecode: pick(source.runtimeBytecode || {}, ['transformations', 'transformationValues'])};
+    if (k === 'verified_contract') return source;
     if (k === 'compilation') return {...pick(source, ['compilation', 'sources', 'metadata', 'storageLayout', 'transientStorageLayout', 'userdoc', 'devdoc', 'sourceIds']), creationBytecode: pick(source.creationBytecode || {}, ['recompiledBytecode', 'sourceMap', 'linkReferences', 'cborAuxdata']), runtimeBytecode: pick(source.runtimeBytecode || {}, ['recompiledBytecode', 'sourceMap', 'linkReferences', 'immutableReferences', 'cborAuxdata'])};
     if (k === 'sourcefile') {
       const content = entity.payload?.content;
@@ -160,19 +160,20 @@
     const entity = entities[Number(select.value)];
     const k = kind(entity);
     const descriptions = {
-      verified_contract: 'The verification record keeps the contract’s identity, match result and ABI. Its compilationref attribute links to the compilation entity; codeRefs identifies bytecode by content hash.',
+      verified_contract: 'The verification payload preserves the entire input JSON, including nested sources and bytecode. The compilationref and code-hash attributes provide additional links and indexes.',
       compilation: 'The compilation keeps compiler settings and artifacts. Its sources map replaces each source body with a SHA-256 reference to the source-file entity; recompiled bytecode is referenced by hash.',
-      sourcefile: 'The source text is stored once inside a JSON envelope. The compilation retains the file path and points to this entity’s hash attribute: SHA-256 of the exact UTF-8 source text.',
+      sourcefile: 'The shared source-file entity stores source text inside a JSON envelope; the complete verification payload retains it too. The compilation retains the file path and points to this entity’s hash attribute: SHA-256 of the exact UTF-8 source text.',
       code: 'Sourcify represents bytecode as hex; this entity stores the actual bytes (displayed as hex here). Its hash attribute is Keccak-256. Identical onchain and recompiled bytecode can share one entity.',
       blob: 'This entity holds one slice of a large payload. The parent’s spill reference identifies the complete body; part attributes determine the slice order.'
     };
-    document.querySelector('#relationship').textContent = descriptions[k] || '';
+    const equal = JSON.stringify(sortedForDisplay(source)) === JSON.stringify(sortedForDisplay(entity.payload));
+    document.querySelector('#relationship').textContent = (descriptions[k] || '') + (k === 'verified_contract' ? (equal ? ' Comparison: all JSON values equal.' : ' Comparison: payload differs from the captured source.') : '');
     document.querySelector('#entity-kind').textContent = k;
     document.querySelector('#entity-key').textContent = `Generated entity key: ${entity.key}`;
     const attributesMode = mode === 'attributes';
     document.querySelector('#source-heading').textContent = attributesMode ? 'Sourcify · flat attribute inputs' : 'Sourcify · nested fields';
     document.querySelector('#entity-heading').textContent = attributesMode ? 'Arkiv · attributes' : 'Arkiv · payload';
-    document.querySelector('#source-caption').textContent = attributesMode ? 'Actual source inputs. Derived hashes and processor metadata have no direct field equivalent.' : 'Actual nested source-field excerpt. Download the full response above.';
+    document.querySelector('#source-caption').textContent = attributesMode ? 'Actual source inputs. Derived hashes and processor metadata have no direct field equivalent.' : (k === 'verified_contract' ? 'Complete captured Sourcify response; no fields omitted.' : 'Actual nested source-field excerpt. Download the full response above.');
     document.querySelector('#entity-caption').textContent = attributesMode ? 'Actual typed index attributes, including generated storage metadata. See mappings below.' : 'Actual decoded payload. Binary bytecode is displayed as hex.';
     const comparison = attributeComparison(entity);
     showJSON(document.querySelector('#source-json'), attributesMode ? flattenAttributeInputs(comparison.inputs) : relevant(entity));

@@ -24,9 +24,9 @@
 <tr>
 <td>verified_contract</td>
 <td>One verification/deployment record</td>
-<td>sourcify.verifiedContract.v2</td>
-<td>JSON: status, identity, ABI, deployment, compiler summary, transforms, codeRefs, optional sourcifyIds.</td>
-<td>compilationref is a typed key; codeRefs hold content hashes.</td>
+<td>Original input JSON; no processor schema marker</td>
+<td>Complete original input JSON, with all nested fields and no injected schema marker or renamed fields.</td>
+<td>compilationref is a typed key attribute; code-hash attributes index bytecode. The payload retains the original bytecode and source content.</td>
 </tr>
 <tr>
 <td>compilation</td>

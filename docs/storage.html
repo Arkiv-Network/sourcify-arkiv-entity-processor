@@ -28,7 +28,7 @@
 <tr>
 <td>Code hash</td>
 <td>Keccak-256 of raw bytecode</td>
-<td>Used by codeRefs and indexed code hash attributes.</td>
+<td>Used by shared code entities and indexed code hash attributes. Original bytecode also remains in the verified_contract payload.</td>
 </tr>
 <tr>
 <td>Compilation indexed hash</td>
@@ -69,7 +69,7 @@
 </div>
 <h3>Two consequences of the current fingerprint</h3>
 <ul><li><strong>Same index, different entities:</strong> a metadata-only change can leave the indexed compilation hash unchanged. The payload changes, so the semantic staging ID still distinguishes the entities.</li><li><strong>Same payload, extra entities:</strong> the fingerprint includes onchain bytecode hashes, although the compilation payload stores the recompiled hashes. A change only to onchain bytecode can therefore produce different compilation attributes and staging IDs for identical compilation payloads. This can create redundant compilation entities; its prevalence has not been measured.</li></ul>
-<h3>Compression and oversized payloads</h3>
+<h3>Compression and oversized payloads</h3><p>The verified_contract logical payload is the complete input JSON, with no injected schema marker. Decode compression and resolve any spill parts before comparing it with the input. Full records are larger than the previous selected-field payloads and may need more blob parts; regenerate old bundles.</p>
 <ol>
 <li>Build the logical entity payload. Bodies over 122,880 bytes become a small <code>$spill</code> stub plus 100,000-byte blob slices.</li>
 <li>Apply gzip level 6 to each entity payload only when it reduces its size; otherwise use identity. The processor enforces a 120,000-byte wire-payload limit. Preserve original content type and payload checksum.</li>

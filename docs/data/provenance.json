@@ -3,25 +3,31 @@
   "chainId": "1",
   "capturedAt": "2026-10-09T13:34:56Z",
   "sourceUrl": "https://sourcify.dev/server/v2/contract/1/0x000000000034065b3a94C2118CFe5B4C0067B615?fields=all",
-  "processorRevision": "ec2453d2802ed01d80506dd0e400cef44f0e3688",
+  "processorRevision": "1a0a6a2845ee11dc0d72d33c25872fbba9ca59c1",
   "inputMethod": "The saved live Sourcify API JSON was passed unchanged as one NDJSON record to the current processor CLI, followed by a source-complete marker. This is an API-input illustration, not a production Parquet export or a deployed Arkiv response.",
   "owner": "0x1111111111111111111111111111111111111111",
   "ownerNote": "Explicit illustrative owner supplied to CLI; it is not a contract owner or proof of deployment.",
   "scopeNotes": [
     "Sourcify API has no sourcifyIds; these are therefore absent. The production Parquet adapter adds source database IDs.",
     "proxyResolution was returned by the live Sourcify API and preserved. The offline Parquet adapter cannot resolve current proxies.",
-    "signatures, stdJsonInput and stdJsonOutput are not stored as top-level payload fields by this transform. This example does not claim byte-for-byte response parity.",
+    "The complete contract payload equals the full supplied API JSON, including signatures, stdJsonInput and stdJsonOutput. Object-key order and JSON whitespace may differ. The Parquet adapter currently supplies a different record and does not supply those three fields.",
     "Code payloads are binary bytes shown here as hexadecimal. JSON payloads are decoded from actual gzip seed output.",
     "Entity keys are processor-generated seed keys. The bundle has not been deployed to Arkiv."
   ],
   "validation": {
+    "fullPayloadEquality": true,
     "bundleVerify": "passed",
     "entityPayloadHashes": 6,
     "fieldChecks": [
       {
-        "check": "match",
+        "check": "complete contract payload equals full source JSON",
         "passed": true,
-        "valueSha256": "427bf9e30ae695d12cf74584298135afc6495c03717a393649e137a708f78b50"
+        "valueSha256": "9ba620ec05235f7e0b229a753c7d5b0def078b92f9d2e1e72b335eba2b008465"
+      },
+      {
+        "check": "matchId",
+        "passed": true,
+        "valueSha256": "5f09838fb2895a1692c83004d3986c604db8fd69ca5844022e1a4dc9381b5115"
       },
       {
         "check": "creationMatch",
@@ -34,6 +40,101 @@
         "valueSha256": "427bf9e30ae695d12cf74584298135afc6495c03717a393649e137a708f78b50"
       },
       {
+        "check": "verifiedAt",
+        "passed": true,
+        "valueSha256": "4169ae8b5eebd1d45edee69f8ea2fdaeac692e6480da9af898c5831d16e92f67"
+      },
+      {
+        "check": "creationBytecode",
+        "passed": true,
+        "valueSha256": "242bce4a2d5fe8edf18492e3c8ca49d8c26e9631fd9a52549190ff1f1f802968"
+      },
+      {
+        "check": "runtimeBytecode",
+        "passed": true,
+        "valueSha256": "dcab0a0895cda198220dc836bc4413d002902c59351b838c33dc5d4a6f98242d"
+      },
+      {
+        "check": "deployment",
+        "passed": true,
+        "valueSha256": "65c62fa0a7bd84b69a15e48fe876cecbde4dcb72a394e2697e98077790e86299"
+      },
+      {
+        "check": "sources",
+        "passed": true,
+        "valueSha256": "d2c58541df0bb5658843f5ddce76e99275f96b3ca51b1366f147a87235511773"
+      },
+      {
+        "check": "compilation",
+        "passed": true,
+        "valueSha256": "9b576dc63ac4c1da45eadf8a76aa5f9a3335c233db7ebd5491d47e9323bd8ced"
+      },
+      {
+        "check": "abi",
+        "passed": true,
+        "valueSha256": "3b187c2aa68deb34b1cef3b0442dec2ea12cd6e5d549d58e55ab3bd1c4a8d89f"
+      },
+      {
+        "check": "metadata",
+        "passed": true,
+        "valueSha256": "78999b1035d05f807bde8428c59684e3235d9924aa7cd424b8a1a809117f888f"
+      },
+      {
+        "check": "storageLayout",
+        "passed": true,
+        "valueSha256": "c6ea670150de7e605b12717919daf0ce7c40d1291874f1a3ff0023f4c3909a77"
+      },
+      {
+        "check": "transientStorageLayout",
+        "passed": true,
+        "valueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+      },
+      {
+        "check": "userdoc",
+        "passed": true,
+        "valueSha256": "1083a132426069f4d765f4e9609faeb2cf2ef50cb6010ed1a62d6db556ede1cd"
+      },
+      {
+        "check": "devdoc",
+        "passed": true,
+        "valueSha256": "06eb6bf85ac939e4a04d1599c298346f8f5993cb565fc701ad1e011b1d702c28"
+      },
+      {
+        "check": "sourceIds",
+        "passed": true,
+        "valueSha256": "8bb1fdb60b03a5a074d9fbd4a36707372a7bd6429d16c6c3a83487ca578d88b6"
+      },
+      {
+        "check": "additionalInput",
+        "passed": true,
+        "valueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+      },
+      {
+        "check": "stdJsonInput",
+        "passed": true,
+        "valueSha256": "cbe485101a9c05dc65ee89a2ed44ee04825a516131ba3f4d51472c3fec4679db"
+      },
+      {
+        "check": "stdJsonOutput",
+        "passed": true,
+        "valueSha256": "64b7218eaae0c671cb036eb503d24ab90bd0b9940dd1cc776f8ca92e2205fd6e"
+      },
+      {
+        "check": "signatures",
+        "passed": true,
+        "valueSha256": "98c24dc22efe8804d2f83b1568975d015794ec45bd3e1fde2111c928be36c59d"
+      },
+      {
+        "check": "proxyResolution",
+        "passed": true,
+        "valueSha256": "67507d116b16999a1ddb6dfd7d1b48a8a06d6e722febc669b3d3eecc6b6c2bb4"
+      },
+      {
+        "check": "match",
+        "passed": true,
+        "valueSha256": "427bf9e30ae695d12cf74584298135afc6495c03717a393649e137a708f78b50"
+      },
+      {
         "check": "chainId",
         "passed": true,
         "valueSha256": "391552c099c101b131feaf24c5795a6a15bc8ec82015424e0d2b4274a369a0bf"
@@ -42,41 +143,6 @@
         "check": "address",
         "passed": true,
         "valueSha256": "04d8347d1f26fd021b48b44f46bb2833c05f56c06313563b048009d80ba0742b"
-      },
-      {
-        "check": "verifiedAt",
-        "passed": true,
-        "valueSha256": "4169ae8b5eebd1d45edee69f8ea2fdaeac692e6480da9af898c5831d16e92f67"
-      },
-      {
-        "check": "matchId",
-        "passed": true,
-        "valueSha256": "5f09838fb2895a1692c83004d3986c604db8fd69ca5844022e1a4dc9381b5115"
-      },
-      {
-        "check": "abi",
-        "passed": true,
-        "valueSha256": "3b187c2aa68deb34b1cef3b0442dec2ea12cd6e5d549d58e55ab3bd1c4a8d89f"
-      },
-      {
-        "check": "compilation",
-        "passed": true,
-        "valueSha256": "9b576dc63ac4c1da45eadf8a76aa5f9a3335c233db7ebd5491d47e9323bd8ced"
-      },
-      {
-        "check": "deployment",
-        "passed": true,
-        "valueSha256": "65c62fa0a7bd84b69a15e48fe876cecbde4dcb72a394e2697e98077790e86299"
-      },
-      {
-        "check": "proxyResolution",
-        "passed": true,
-        "valueSha256": "67507d116b16999a1ddb6dfd7d1b48a8a06d6e722febc669b3d3eecc6b6c2bb4"
-      },
-      {
-        "check": "additionalInput",
-        "passed": true,
-        "valueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
       },
       {
         "check": "compilation.language",

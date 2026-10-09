@@ -9,10 +9,10 @@
 <a href="sources.html">Sources</a></div></nav>
 <main id="main"><section>
 <h1>Sourcify field → processor entity</h1>
-<p>Sourcify API names are comparison vocabulary here, not processor endpoints. Entity paths describe decoded payloads. “Derivable” identifies information a future consumer could assemble; the processor does not assemble API responses.</p>
+<p>Sourcify API names are comparison vocabulary here, not processor endpoints. Entity paths describe decoded payloads. Every supplied input field is preserved at the same path in verified_contract. Shared entities provide additional representations. Parquet adapter limitations below apply before processing; an API input preserves those fields when supplied.</p>
 <div class="searchbar">
 <label for="search">Find a field or concept</label>
-<input id="search" type="search" placeholder="Try metadata, sourceMap, Vyper, codeRefs…" autocomplete="off">
+<input id="search" type="search" placeholder="Try metadata, sourceMap, Vyper, signatures…" autocomplete="off">
 <span id="count" aria-live="polite">
 </span>
 </div>
@@ -74,7 +74,7 @@
 <td>verifiedAt</td>
 <td>verified_contract</td>
 <td>verifiedAt</td>
-<td>Upstream verification time normalized to UTC seconds; fractional seconds are discarded. Not the Arkiv import time.</td>
+<td>Exact input timestamp preserved. The Parquet adapter normalizes to UTC seconds before processing; the query index uses Unix seconds.</td>
 <td>sourcify_matches + verified_contracts + contract_deployments</td>
 </tr>
 <tr>
@@ -137,181 +137,181 @@
 <td>deployment.transactionHash</td>
 <td>verified_contract</td>
 <td>deployment.transactionHash</td>
-<td>Preserve missing deployment values as null; numeric source values are represented as strings.</td>
+<td>Original input value and type preserved. The Parquet adapter supplies null for missing values and represents numeric values as strings.</td>
 <td>contract_deployments</td>
 </tr>
 <tr>
 <td>deployment.blockNumber</td>
 <td>verified_contract</td>
 <td>deployment.blockNumber</td>
-<td>Preserve missing deployment values as null; numeric source values are represented as strings.</td>
+<td>Original input value and type preserved. The Parquet adapter supplies null for missing values and represents numeric values as strings.</td>
 <td>contract_deployments</td>
 </tr>
 <tr>
 <td>deployment.transactionIndex</td>
 <td>verified_contract</td>
 <td>deployment.transactionIndex</td>
-<td>Preserve missing deployment values as null; numeric source values are represented as strings.</td>
+<td>Original input value and type preserved. The Parquet adapter supplies null for missing values and represents numeric values as strings.</td>
 <td>contract_deployments</td>
 </tr>
 <tr>
 <td>deployment.deployer</td>
 <td>verified_contract</td>
 <td>deployment.deployer</td>
-<td>Preserve missing deployment values as null; numeric source values are represented as strings.</td>
+<td>Original input value and type preserved. The Parquet adapter supplies null for missing values and represents numeric values as strings.</td>
 <td>contract_deployments</td>
 </tr>
 <tr>
 <td>sources</td>
-<td>compilation → sourcefile</td>
-<td>sources[path] → hash → content</td>
-<td>Path → SHA-256 of UTF-8 text. Source content lives in a separate entity; gzip and spills are storage layers.</td>
+<td>verified_contract</td>
+<td>sources</td>
+<td>Complete sources object preserved, including content and extra fields. Shared sourcefile entities also store source text.</td>
 <td>compiled_contracts_sources + sources</td>
 </tr>
 <tr>
 <td>metadata</td>
-<td>compilation</td>
+<td>verified_contract</td>
 <td>metadata</td>
-<td>Solidity metadata is retained when available. Missing metadata and non-Solidity metadata become null in the source adapter.</td>
+<td>Exact input value preserved; also represented in the shared compilation. Parquet supplies only available export artifacts; missing/non-Solidity metadata becomes null.</td>
 <td>compiled_contracts_metadata.metadata</td>
 </tr>
 <tr>
 <td>storageLayout</td>
-<td>compilation</td>
+<td>verified_contract</td>
 <td>storageLayout</td>
-<td>Compilation artifact, including explicit nulls.</td>
+<td>Exact input value preserved; also represented in the shared compilation. Parquet supplies only available export artifacts; missing/non-Solidity metadata becomes null.</td>
 <td>compiled_contracts.compilation_artifacts.storageLayout</td>
 </tr>
 <tr>
 <td>transientStorageLayout</td>
-<td>compilation</td>
+<td>verified_contract</td>
 <td>transientStorageLayout</td>
-<td>Compilation artifact, including explicit nulls.</td>
+<td>Exact input value preserved; also represented in the shared compilation. Parquet supplies only available export artifacts; missing/non-Solidity metadata becomes null.</td>
 <td>compiled_contracts.compilation_artifacts.transientStorageLayout</td>
 </tr>
 <tr>
 <td>userdoc</td>
-<td>compilation</td>
+<td>verified_contract</td>
 <td>userdoc</td>
-<td>Compilation artifact, including explicit nulls.</td>
+<td>Exact input value preserved; also represented in the shared compilation. Parquet supplies only available export artifacts; missing/non-Solidity metadata becomes null.</td>
 <td>compiled_contracts.compilation_artifacts.userdoc</td>
 </tr>
 <tr>
 <td>devdoc</td>
-<td>compilation</td>
+<td>verified_contract</td>
 <td>devdoc</td>
-<td>Compilation artifact, including explicit nulls.</td>
+<td>Exact input value preserved; also represented in the shared compilation. Parquet supplies only available export artifacts; missing/non-Solidity metadata becomes null.</td>
 <td>compiled_contracts.compilation_artifacts.devdoc</td>
 </tr>
 <tr>
 <td>sourceIds</td>
-<td>compilation</td>
+<td>verified_contract</td>
 <td>sourceIds</td>
-<td>Preserve compiler source-file IDs. These are not full ASTs.</td>
+<td>Exact input value preserved; also represented in the shared compilation. Parquet supplies only available export artifacts; missing/non-Solidity metadata becomes null.</td>
 <td>compiled_contracts.compilation_artifacts.sources</td>
 </tr>
 <tr>
 <td>creationBytecode.onchainBytecode</td>
-<td>verified_contract → code</td>
-<td>codeRefs.creationOnchain → hash → bytes</td>
-<td>Raw bytecode stored separately, referenced by Keccak-256. Null and empty 0x both become null references.</td>
+<td>verified_contract</td>
+<td>creationBytecode.onchainBytecode</td>
+<td>Exact input value preserved: null and 0x remain distinct. Supplementary shared code references collapse null and empty bytecode.</td>
 <td>contracts / compiled_contracts → code</td>
 </tr>
 <tr>
 <td>creationBytecode.recompiledBytecode</td>
-<td>compilation → code</td>
-<td>recompiledCreationHash → hash → bytes</td>
-<td>Raw bytecode stored separately, referenced by Keccak-256. Null and empty 0x both become null references.</td>
+<td>verified_contract</td>
+<td>creationBytecode.recompiledBytecode</td>
+<td>Exact input value preserved: null and 0x remain distinct. Supplementary shared code references collapse null and empty bytecode.</td>
 <td>contracts / compiled_contracts → code</td>
 </tr>
 <tr>
 <td>creationBytecode.sourceMap</td>
-<td>compilation</td>
-<td>creationCodeArtifacts.sourceMap</td>
+<td>verified_contract</td>
+<td>creationBytecode.sourceMap</td>
 <td>Source maps may be strings (Solidity) or objects (Vyper); preserve null.</td>
 <td>compiled_contracts.creation_code_artifacts</td>
 </tr>
 <tr>
 <td>creationBytecode.linkReferences</td>
-<td>compilation</td>
-<td>creationCodeArtifacts.linkReferences</td>
+<td>verified_contract</td>
+<td>creationBytecode.linkReferences</td>
 <td>Preserve the stored artifact, including explicit null.</td>
 <td>compiled_contracts.creation_code_artifacts</td>
 </tr>
 <tr>
 <td>creationBytecode.cborAuxdata</td>
-<td>compilation</td>
-<td>creationCodeArtifacts.cborAuxdata</td>
+<td>verified_contract</td>
+<td>creationBytecode.cborAuxdata</td>
 <td>Preserve the stored artifact, including explicit null.</td>
 <td>compiled_contracts.creation_code_artifacts</td>
 </tr>
 <tr>
 <td>creationBytecode.transformations</td>
 <td>verified_contract</td>
-<td>creationTransformations</td>
+<td>creationBytecode.transformations</td>
 <td>Explains the changes between compiled and deployed bytecode.</td>
 <td>verified_contracts.creation_transformations</td>
 </tr>
 <tr>
 <td>creationBytecode.transformationValues</td>
 <td>verified_contract</td>
-<td>creationTransformationValues</td>
+<td>creationBytecode.transformationValues</td>
 <td>Explains the changes between compiled and deployed bytecode.</td>
 <td>verified_contracts.creation_values</td>
 </tr>
 <tr>
 <td>runtimeBytecode.onchainBytecode</td>
-<td>verified_contract → code</td>
-<td>codeRefs.runtimeOnchain → hash → bytes</td>
-<td>Raw bytecode stored separately, referenced by Keccak-256. Null and empty 0x both become null references.</td>
+<td>verified_contract</td>
+<td>runtimeBytecode.onchainBytecode</td>
+<td>Exact input value preserved: null and 0x remain distinct. Supplementary shared code references collapse null and empty bytecode.</td>
 <td>contracts / compiled_contracts → code</td>
 </tr>
 <tr>
 <td>runtimeBytecode.recompiledBytecode</td>
-<td>compilation → code</td>
-<td>recompiledRuntimeHash → hash → bytes</td>
-<td>Raw bytecode stored separately, referenced by Keccak-256. Null and empty 0x both become null references.</td>
+<td>verified_contract</td>
+<td>runtimeBytecode.recompiledBytecode</td>
+<td>Exact input value preserved: null and 0x remain distinct. Supplementary shared code references collapse null and empty bytecode.</td>
 <td>contracts / compiled_contracts → code</td>
 </tr>
 <tr>
 <td>runtimeBytecode.sourceMap</td>
-<td>compilation</td>
-<td>runtimeCodeArtifacts.sourceMap</td>
+<td>verified_contract</td>
+<td>runtimeBytecode.sourceMap</td>
 <td>Source maps may be strings (Solidity) or objects (Vyper); preserve null.</td>
 <td>compiled_contracts.runtime_code_artifacts</td>
 </tr>
 <tr>
 <td>runtimeBytecode.linkReferences</td>
-<td>compilation</td>
-<td>runtimeCodeArtifacts.linkReferences</td>
+<td>verified_contract</td>
+<td>runtimeBytecode.linkReferences</td>
 <td>Preserve the stored artifact, including explicit null.</td>
 <td>compiled_contracts.runtime_code_artifacts</td>
 </tr>
 <tr>
 <td>runtimeBytecode.cborAuxdata</td>
-<td>compilation</td>
-<td>runtimeCodeArtifacts.cborAuxdata</td>
+<td>verified_contract</td>
+<td>runtimeBytecode.cborAuxdata</td>
 <td>Preserve the stored artifact, including explicit null.</td>
 <td>compiled_contracts.runtime_code_artifacts</td>
 </tr>
 <tr>
 <td>runtimeBytecode.immutableReferences</td>
-<td>compilation</td>
-<td>runtimeCodeArtifacts.immutableReferences</td>
+<td>verified_contract</td>
+<td>runtimeBytecode.immutableReferences</td>
 <td>Preserve the stored artifact, including explicit null.</td>
 <td>compiled_contracts.runtime_code_artifacts</td>
 </tr>
 <tr>
 <td>runtimeBytecode.transformations</td>
 <td>verified_contract</td>
-<td>runtimeTransformations</td>
+<td>runtimeBytecode.transformations</td>
 <td>Explains the changes between compiled and deployed bytecode.</td>
 <td>verified_contracts.runtime_transformations</td>
 </tr>
 <tr>
 <td>runtimeBytecode.transformationValues</td>
 <td>verified_contract</td>
-<td>runtimeTransformationValues</td>
+<td>runtimeBytecode.transformationValues</td>
 <td>Explains the changes between compiled and deployed bytecode.</td>
 <td>verified_contracts.runtime_values</td>
 </tr>
@@ -324,44 +324,44 @@
 </tr>
 <tr>
 <td>stdJsonInput</td>
-<td>derivable, not emitted</td>
-<td>compilation + sources + additionalInput</td>
-<td>Components are retained: language, source text, settings and additional input. No standard JSON input entity is emitted.</td>
+<td>verified_contract</td>
+<td>stdJsonInput</td>
+<td>Preserved when present in API/NDJSON input. Omitted by the Parquet adapter; exact input preservation does not recover it.</td>
 <td>Derived by Sourcify from stored compiler input</td>
 </tr>
 <tr>
 <td>stdJsonOutput</td>
-<td>derivable, not emitted</td>
-<td>compilation artifacts + ABI + recompiled code</td>
-<td>Some components are retained for the target contract. The original complete compiler output is not stored.</td>
+<td>verified_contract</td>
+<td>stdJsonOutput</td>
+<td>Preserved when present in API/NDJSON input. Omitted by the Parquet adapter; exact input preservation does not recover it.</td>
 <td>Derived by Sourcify from stored compiler output</td>
 </tr>
 <tr>
 <td>signatures.function</td>
-<td>not imported; ABI retained</td>
-<td>abi</td>
-<td>Signature tables are excluded. ABI can support later derivation, but the processor emits no signature entities or signature lists.</td>
+<td>verified_contract</td>
+<td>signatures.function</td>
+<td>Preserved when present in API/NDJSON input. Omitted by the Parquet adapter; exact input preservation does not recover it.</td>
 <td>Sourcify uses compiled_contracts_signatures + signatures</td>
 </tr>
 <tr>
 <td>signatures.event</td>
-<td>not imported; ABI retained</td>
-<td>abi</td>
-<td>Signature tables are excluded. ABI can support later derivation, but the processor emits no signature entities or signature lists.</td>
+<td>verified_contract</td>
+<td>signatures.event</td>
+<td>Preserved when present in API/NDJSON input. Omitted by the Parquet adapter; exact input preservation does not recover it.</td>
 <td>Sourcify uses compiled_contracts_signatures + signatures</td>
 </tr>
 <tr>
 <td>signatures.error</td>
-<td>not imported; ABI retained</td>
-<td>abi</td>
-<td>Signature tables are excluded. ABI can support later derivation, but the processor emits no signature entities or signature lists.</td>
+<td>verified_contract</td>
+<td>signatures.error</td>
+<td>Preserved when present in API/NDJSON input. Omitted by the Parquet adapter; exact input preservation does not recover it.</td>
 <td>Sourcify uses compiled_contracts_signatures + signatures</td>
 </tr>
 <tr>
 <td>proxyResolution</td>
-<td>verified_contract / unresolved</td>
+<td>verified_contract</td>
 <td>proxyResolution</td>
-<td>Parquet adapter supplies no live resolution; processor stores an empty object when absent. This does not mean isProxy:false.</td>
+<td>Preserved exactly when supplied; absent stays absent. Parquet provides no live resolution. Missing resolution does not mean isProxy:false.</td>
 <td>Upstream resolves dynamically when requested</td>
 </tr>
 <tr>
