@@ -1,0 +1,196 @@
+{
+  "data": {
+    "address": "0x000000000034065b3a94C2118CFe5B4C0067B615",
+    "chainId": "1",
+    "creationBytecode": {
+      "transformationValues": {
+        "constructorArguments": "0x00000000000000000000000041675c099f32341bf84bfc5382af534df5c7461a"
+      },
+      "transformations": [
+        {
+          "offset": 486,
+          "reason": "constructorArguments",
+          "type": "insert"
+        }
+      ]
+    },
+    "creationMatch": "exact_match",
+    "deployment": {
+      "blockNumber": "17487425",
+      "deployer": "0x34f845773D4364999f2fbC7AA26ABDeE902cBb46",
+      "transactionHash": "0xdac58edb65c2af3f86f03586eeec7caa7ee245d6d06679a913e5dda16617658e",
+      "transactionIndex": "11"
+    },
+    "match": "exact_match",
+    "matchId": "607",
+    "proxyResolution": {
+      "implementations": [
+        {
+          "address": "0x41675C099F32341bf84BFc5382aF534df5C7461a",
+          "name": "Safe"
+        }
+      ],
+      "isProxy": true,
+      "proxyType": "GnosisSafeProxy"
+    },
+    "runtimeBytecode": {
+      "transformationValues": {},
+      "transformations": []
+    },
+    "runtimeMatch": "exact_match",
+    "verifiedAt": "2024-08-08T10:04:59Z"
+  },
+  "references": [
+    {
+      "encoding": {
+        "prefix": true,
+        "uppercase": []
+      },
+      "hash": "0xd7d408ebcd99b2b70be43e20253d6d92a8ea8fab29bd3be7f55b10032331fb4c",
+      "kind": "code",
+      "path": "/runtimeBytecode/onchainBytecode"
+    },
+    {
+      "encoding": {
+        "prefix": true,
+        "uppercase": []
+      },
+      "hash": "0x76733d705f71b79841c0ee960a0ca880f779cde7ef446c989e6d23efc0a4adfb",
+      "kind": "code",
+      "path": "/creationBytecode/onchainBytecode"
+    },
+    {
+      "hash": "0x65139f49ade3b209312e73d3fd151dafc51b1bebd4ed4620c05eff137e0887d4",
+      "kind": "compilation",
+      "path": "/compilation",
+      "pointer": "/compilation"
+    },
+    {
+      "hash": "0x65139f49ade3b209312e73d3fd151dafc51b1bebd4ed4620c05eff137e0887d4",
+      "kind": "compilation",
+      "path": "/additionalInput",
+      "pointer": "/additionalInput"
+    },
+    {
+      "hash": "0x65139f49ade3b209312e73d3fd151dafc51b1bebd4ed4620c05eff137e0887d4",
+      "kind": "compilation",
+      "path": "/sources",
+      "pointer": "/sources"
+    },
+    {
+      "hash": "0x65139f49ade3b209312e73d3fd151dafc51b1bebd4ed4620c05eff137e0887d4",
+      "kind": "compilation",
+      "path": "/abi",
+      "pointer": "/abi"
+    },
+    {
+      "hash": "0x65139f49ade3b209312e73d3fd151dafc51b1bebd4ed4620c05eff137e0887d4",
+      "kind": "compilation",
+      "path": "/signatures",
+      "pointer": "/signatures"
+    },
+    {
+      "hash": "0x65139f49ade3b209312e73d3fd151dafc51b1bebd4ed4620c05eff137e0887d4",
+      "kind": "compilation",
+      "path": "/metadata",
+      "pointer": "/metadata"
+    },
+    {
+      "hash": "0x65139f49ade3b209312e73d3fd151dafc51b1bebd4ed4620c05eff137e0887d4",
+      "kind": "compilation",
+      "path": "/storageLayout",
+      "pointer": "/storageLayout"
+    },
+    {
+      "hash": "0x65139f49ade3b209312e73d3fd151dafc51b1bebd4ed4620c05eff137e0887d4",
+      "kind": "compilation",
+      "path": "/transientStorageLayout",
+      "pointer": "/transientStorageLayout"
+    },
+    {
+      "hash": "0x65139f49ade3b209312e73d3fd151dafc51b1bebd4ed4620c05eff137e0887d4",
+      "kind": "compilation",
+      "path": "/userdoc",
+      "pointer": "/userdoc"
+    },
+    {
+      "hash": "0x65139f49ade3b209312e73d3fd151dafc51b1bebd4ed4620c05eff137e0887d4",
+      "kind": "compilation",
+      "path": "/devdoc",
+      "pointer": "/devdoc"
+    },
+    {
+      "hash": "0x65139f49ade3b209312e73d3fd151dafc51b1bebd4ed4620c05eff137e0887d4",
+      "kind": "compilation",
+      "path": "/sourceIds",
+      "pointer": "/sourceIds"
+    },
+    {
+      "hash": "0x65139f49ade3b209312e73d3fd151dafc51b1bebd4ed4620c05eff137e0887d4",
+      "kind": "compilation",
+      "path": "/stdJsonInput",
+      "pointer": "/stdJsonInput"
+    },
+    {
+      "hash": "0x65139f49ade3b209312e73d3fd151dafc51b1bebd4ed4620c05eff137e0887d4",
+      "kind": "compilation",
+      "path": "/stdJsonOutput",
+      "pointer": "/stdJsonOutput"
+    },
+    {
+      "hash": "0x65139f49ade3b209312e73d3fd151dafc51b1bebd4ed4620c05eff137e0887d4",
+      "kind": "compilation",
+      "path": "/creationBytecode/recompiledBytecode",
+      "pointer": "/creationBytecode/recompiledBytecode"
+    },
+    {
+      "hash": "0x65139f49ade3b209312e73d3fd151dafc51b1bebd4ed4620c05eff137e0887d4",
+      "kind": "compilation",
+      "path": "/creationBytecode/sourceMap",
+      "pointer": "/creationBytecode/sourceMap"
+    },
+    {
+      "hash": "0x65139f49ade3b209312e73d3fd151dafc51b1bebd4ed4620c05eff137e0887d4",
+      "kind": "compilation",
+      "path": "/creationBytecode/linkReferences",
+      "pointer": "/creationBytecode/linkReferences"
+    },
+    {
+      "hash": "0x65139f49ade3b209312e73d3fd151dafc51b1bebd4ed4620c05eff137e0887d4",
+      "kind": "compilation",
+      "path": "/creationBytecode/cborAuxdata",
+      "pointer": "/creationBytecode/cborAuxdata"
+    },
+    {
+      "hash": "0x65139f49ade3b209312e73d3fd151dafc51b1bebd4ed4620c05eff137e0887d4",
+      "kind": "compilation",
+      "path": "/runtimeBytecode/recompiledBytecode",
+      "pointer": "/runtimeBytecode/recompiledBytecode"
+    },
+    {
+      "hash": "0x65139f49ade3b209312e73d3fd151dafc51b1bebd4ed4620c05eff137e0887d4",
+      "kind": "compilation",
+      "path": "/runtimeBytecode/sourceMap",
+      "pointer": "/runtimeBytecode/sourceMap"
+    },
+    {
+      "hash": "0x65139f49ade3b209312e73d3fd151dafc51b1bebd4ed4620c05eff137e0887d4",
+      "kind": "compilation",
+      "path": "/runtimeBytecode/linkReferences",
+      "pointer": "/runtimeBytecode/linkReferences"
+    },
+    {
+      "hash": "0x65139f49ade3b209312e73d3fd151dafc51b1bebd4ed4620c05eff137e0887d4",
+      "kind": "compilation",
+      "path": "/runtimeBytecode/immutableReferences",
+      "pointer": "/runtimeBytecode/immutableReferences"
+    },
+    {
+      "hash": "0x65139f49ade3b209312e73d3fd151dafc51b1bebd4ed4620c05eff137e0887d4",
+      "kind": "compilation",
+      "path": "/runtimeBytecode/cborAuxdata",
+      "pointer": "/runtimeBytecode/cborAuxdata"
+    }
+  ],
+  "schema": "sourcify.verified-contract.v3"
+}

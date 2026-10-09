@@ -1,11 +1,12 @@
 [
   {
-    "id": "4eaeff3b8e3f125b047d4df96257bb7fb721c82669d28dc9a619a0de08bc10c6",
-    "key": "0xce3250b15723b1f96b8755bcacc310459fcbb09c549c04bb36080737eaa26c68",
+    "id": "56625b1955690cae1f5302eede03e6b32a2509caec2fee1b975565d75c155297",
+    "key": "0xdd77fbbcd850a697a78049aeddf3157a5ef70ff14aa08d580c94f0b20a59b5bc",
     "kind": "sourcefile",
     "contentType": "application/json",
-    "payloadSha256": "f7a5b2e5dc742faad14e381d6bc939fb524d5ab77d508e7c59b2ed5a11c05231",
+    "payloadSha256": "fcd69cbc7012fe8b530bde078e6312daf917ce34dfd6e56aeda06d8fa3ec0a11",
     "payloadBytes": 2131,
+    "wirePayloadBytes": 911,
     "attributes": {
       "hash": "bytes32:0xa32e2bb41a928cc17ac82a7240571e7ad8b8230555f711c13343584d8a4802bb",
       "size": "i32:2029",
@@ -13,21 +14,21 @@
       "kind": "str:sourcefile",
       "contentencoding": "str:gzip",
       "originalcontenttype": "str:application/json",
-      "payloadsha256": "bytes32:0xf7a5b2e5dc742faad14e381d6bc939fb524d5ab77d508e7c59b2ed5a11c05231",
-      "stagingid": "bytes32:0x4eaeff3b8e3f125b047d4df96257bb7fb721c82669d28dc9a619a0de08bc10c6",
+      "payloadsha256": "bytes32:0xfcd69cbc7012fe8b530bde078e6312daf917ce34dfd6e56aeda06d8fa3ec0a11",
+      "stagingid": "bytes32:0x56625b1955690cae1f5302eede03e6b32a2509caec2fee1b975565d75c155297",
       "uploadschema": "str:sourcify-arkiv.upload.v1"
     },
     "payload": {
-      "schema": "sourcify.sourcefile.v1",
-      "content": "// SPDX-License-Identifier: LGPL-3.0-only\npragma solidity >=0.7.0 <0.9.0;\n\n/**\n * @title IProxy - Helper interface to access the singleton address of the Proxy on-chain.\n * @author Richard Meissner - @rmeissner\n */\ninterface IProxy {\n    function masterCopy() external view returns (address);\n}\n\n/**\n * @title SafeProxy - Generic proxy contract allows to execute all transactions applying the code of a master contract.\n * @author Stefan George - <stefan@gnosis.io>\n * @author Richard Meissner - <richard@gnosis.io>\n */\ncontract SafeProxy {\n    // Singleton always needs to be first declared variable, to ensure that it is at the same location in the contracts to which calls are delegated.\n    // To reduce deployment costs this variable is internal and needs to be retrieved via `getStorageAt`\n    address internal singleton;\n\n    /**\n     * @notice Constructor function sets address of singleton contract.\n     * @param _singleton Singleton address.\n     */\n    constructor(address _singleton) {\n        require(_singleton != address(0), \"Invalid singleton address provided\");\n        singleton = _singleton;\n    }\n\n    /// @dev Fallback function forwards all transactions and returns all received return data.\n    fallback() external payable {\n        // solhint-disable-next-line no-inline-assembly\n        assembly {\n            let _singleton := and(sload(0), 0xffffffffffffffffffffffffffffffffffffffff)\n            // 0xa619486e == keccak(\"masterCopy()\"). The value is right padded to 32-bytes with 0s\n            if eq(calldataload(0), 0xa619486e00000000000000000000000000000000000000000000000000000000) {\n                mstore(0, _singleton)\n                return(0, 0x20)\n            }\n            calldatacopy(0, 0, calldatasize())\n            let success := delegatecall(gas(), _singleton, 0, calldatasize(), 0, 0)\n            returndatacopy(0, 0, returndatasize())\n            if eq(success, 0) {\n                revert(0, returndatasize())\n            }\n            return(0, returndatasize())\n        }\n    }\n}\n"
+      "content": "// SPDX-License-Identifier: LGPL-3.0-only\npragma solidity >=0.7.0 <0.9.0;\n\n/**\n * @title IProxy - Helper interface to access the singleton address of the Proxy on-chain.\n * @author Richard Meissner - @rmeissner\n */\ninterface IProxy {\n    function masterCopy() external view returns (address);\n}\n\n/**\n * @title SafeProxy - Generic proxy contract allows to execute all transactions applying the code of a master contract.\n * @author Stefan George - <stefan@gnosis.io>\n * @author Richard Meissner - <richard@gnosis.io>\n */\ncontract SafeProxy {\n    // Singleton always needs to be first declared variable, to ensure that it is at the same location in the contracts to which calls are delegated.\n    // To reduce deployment costs this variable is internal and needs to be retrieved via `getStorageAt`\n    address internal singleton;\n\n    /**\n     * @notice Constructor function sets address of singleton contract.\n     * @param _singleton Singleton address.\n     */\n    constructor(address _singleton) {\n        require(_singleton != address(0), \"Invalid singleton address provided\");\n        singleton = _singleton;\n    }\n\n    /// @dev Fallback function forwards all transactions and returns all received return data.\n    fallback() external payable {\n        // solhint-disable-next-line no-inline-assembly\n        assembly {\n            let _singleton := and(sload(0), 0xffffffffffffffffffffffffffffffffffffffff)\n            // 0xa619486e == keccak(\"masterCopy()\"). The value is right padded to 32-bytes with 0s\n            if eq(calldataload(0), 0xa619486e00000000000000000000000000000000000000000000000000000000) {\n                mstore(0, _singleton)\n                return(0, 0x20)\n            }\n            calldatacopy(0, 0, calldatasize())\n            let success := delegatecall(gas(), _singleton, 0, calldatasize(), 0, 0)\n            returndatacopy(0, 0, returndatasize())\n            if eq(success, 0) {\n                revert(0, returndatasize())\n            }\n            return(0, returndatasize())\n        }\n    }\n}\n",
+      "schema": "sourcify.sourcefile.v1"
     },
     "seed": {
-      "$key": "0xce3250b15723b1f96b8755bcacc310459fcbb09c549c04bb36080737eaa26c68",
+      "$key": "0xdd77fbbcd850a697a78049aeddf3157a5ef70ff14aa08d580c94f0b20a59b5bc",
       "$creator": "0x1111111111111111111111111111111111111111",
       "$owner": "0x1111111111111111111111111111111111111111",
       "$expiresAt": "never",
       "$contentType": "application/gzip",
-      "$payload": "H4sIAAAAAAAA/51V34/bNgz+V7g8OYfYcduhW2+X4oYO6w64AYelD3sIsDISHQvnSKkkJ/GK/O+j/DtpgBsq5EGmKPLj95HK14kTOW1xcjtxprRCZVVSbyhTBSX7V5PZRBjtSXt2mc9h+fTb3/GjEqQdxQ+S7SpTZG/h8ePTY/wmSWOji2qldxY3WwRnCiWVr+D9Ik1+SlK4S5N3SfrLSq/0/OZmpeEG7r3yBcHDkzXHCmL4g4odWVCc1WYoCLwBFIKcA58TOKU3BXmjAaW0wWqy+qC5b3QsclQ6aWJj6XNj4S/FRivhT1LOaY4ew73dth/Bc77SQ8IWylc+4JWVWnjF+bbo2OOD2VXRFOjIe40F7BUdwJIvrXYQtZimXOHpSpFLzKir8yNxbiVgV38Hli0KD1gU5uBC0XQkUXoKFuAz7bDG4QB3u6JiGuqyhZEUKMAWXx/pnIGlpww1JzV2Q5z9ztWG+402TrlEmfcvEXZnG9vFFWauxz6U13IXOmbQqzhg5UATybq+NUGmrPMgSRRoScIercJ1QbO6fO1Ky+rn6EHxj+v2TQfglqAwAmtVlG5paDDUkQ85QwXBxPEljiGpoA16kkkP65Nh0WQpwuGuMNWWW5mDuBAg51wdlJC37oygNWp5Bp9lt4r2AblC+Lwhv/SGO59+9Z+bTF2P9iH69q1noAZTt0hYTL82nocLPrDM3paCow3954jBjZp+mISx5G2gHVrcwj+Dz/JybnrnebMRQ86ujUf3p52kYVn6UipL0Sj8D4subpROZ7CaPOg98vBfmVdu+L2SJFeTMCZdzMFvMUrbOpx6sli6e0l7+J3FXaN4HujJjD1we7or88KydRMaDi0JUkG1xggSPbZsZG3Y8YTvsKo7YUQAo+CnLWdVY6lcOI01+8eF0gTaxEqHXYzO0XYd3sPuYmcZBwuLix2LdbsIoCNXGJQ1n+kx+59reh6YkaZHfPvq3Y8/vyVYLOCZhMDnaDUZP2csRQKfeIxYs7Lueas2uefSJQsVuv3N63hdeXJwUD6H1J1nURnQlygMXOByhLrLnH7nml4SFdbWcY9SlM7G/fmtW6NucEuPr9MLh9P5ZwddBDrCjVlvcupfiqbTb/VyZfOvxGJ1D0y4E23QRdMxtivhatMlpgbwBYzBeBVIw3wLJYS8RpjlN8r66OVop2uAXrh36keUf5PTf3oufWBTCAAA",
+      "$payload": "H4sIAAAAAAAA/51W34/bNgz+V7g8OYfYcduhW2+X4oYO6w64AYelD3sIsDISHQvnSKkkJ/GK/O+j/DtpgBsq+MGmKPLj95FKvk6E0Z60n9xO5nNYPv32d/yoBGlH8YNku8oU2Vt4/Pj0GL9J0tjoolrpncXNFsGZQknlK3i/SJOfkhTu0uRdkv6y0is9v7lZabiBe698QfDwZM2xghj+oGJHFhRntRkKAm8AhSDnwOcETulNQd5oQCltsJqs3mjOGx2LHJVOmthY+txY+Eux0Ur4k5RzmqPHcG+37UfwnK/0kLCF8pU3eGWlFl5xvi069vhgdlU0BTryu8YC9ooOYMmXVjuIWkxTrvB0pcglZtTV+ZE4txKwq78DyxaFBywKc3ChaDqSKD0FC/CedljjcIC7XVExDXXZwkgKFGCLr490zsDSU4aakxq7Ic5+52rD/UYbp1yizPuXCLuzje3iCDPXYx/Ka7kLHTPoVRywcqCJZF3fmiBT1nmQJAq0JGGPVuG6oFldvnalZfVz9KD44bp90wG4JSiMwFoVpVsaGgx15EPOUEEwcXyIY0gqaIOeZNLD+mRYNFmKsLkrTLXlVuYgLgTIOVcHJeStOyNojVqewWfZraJ9QK4QPm/IL73hzqdf/ecmU9ejfYi+fesZqMHULRIW06+N5+GCDyyzt6XgaEP/OWJwo6YfJmEseRtohxa38M/gs7ycm9553ryIIWfXxqPz007SsCx9KZWlaBT+h0UXN0qnM1hNHvQeefivzCs3/F5JkqtJGJMu5uC3GKVtHU49WSzdvaQ9/M7irlE8D/Rkxh64Pd2VeWHZugkNm5YEqaBaYwSJHls2sjbseMJ3WNWdMCKAUfDVlrOqsVQu7Maa/eNCaQJtYqXDW4zO0XYd7sPuYGcZBwuLix2LdbsIoCNXGJQ1n+kx+59reh6YkaZHfPvq3Y8/vyVYLOCZhMDnaDUZX2csRQKfeIxYs7Lueas2uefSJQsVuv3N63hdeXJwUD6H1J1nURnQlygMXOByhLrLnH7nml4SFdbWcY9SlM7G/fmtW6NucEuPr9MLh9P5ZwddBDrCiVlvcupfiqbTb/VyZfOrxGJ1F0w4E23QRdMxtivhatMlpgbwBYzBeBVIw3wLJYS8RpjlO8r66OVop2uAXjh36keUn8ls4kROW+S/C86UVqisSuoXylRByf7V5PQfmmL941MIAAA=",
       "$creationFlags": [],
       "hash": "bytes32:0xa32e2bb41a928cc17ac82a7240571e7ad8b8230555f711c13343584d8a4802bb",
       "size": "i32:2029",
@@ -35,46 +36,8 @@
       "kind": "str:sourcefile",
       "contentencoding": "str:gzip",
       "originalcontenttype": "str:application/json",
-      "payloadsha256": "bytes32:0xf7a5b2e5dc742faad14e381d6bc939fb524d5ab77d508e7c59b2ed5a11c05231",
-      "stagingid": "bytes32:0x4eaeff3b8e3f125b047d4df96257bb7fb721c82669d28dc9a619a0de08bc10c6",
-      "uploadschema": "str:sourcify-arkiv.upload.v1"
-    }
-  },
-  {
-    "id": "f238e9d8fd55e52fbc4bf11259078833aa223c7b293e0316abcdf833029829d8",
-    "key": "0x86697e81126b27088189e808f138f6fa5940f7c42c7101267d396088489a47bd",
-    "kind": "code",
-    "contentType": "application/octet-stream",
-    "payloadSha256": "6218c30b15b18be0310ea5a2e7ab7ea9cf4cc5b6b50d00f8b6a39f35945e04ce",
-    "payloadBytes": 518,
-    "attributes": {
-      "hash": "bytes32:0x76733d705f71b79841c0ee960a0ca880f779cde7ef446c989e6d23efc0a4adfb",
-      "size": "i32:518",
-      "projectid": "str:sourcify",
-      "kind": "str:code",
-      "contentencoding": "str:gzip",
-      "originalcontenttype": "str:application/octet-stream",
-      "payloadsha256": "bytes32:0x6218c30b15b18be0310ea5a2e7ab7ea9cf4cc5b6b50d00f8b6a39f35945e04ce",
-      "stagingid": "bytes32:0xf238e9d8fd55e52fbc4bf11259078833aa223c7b293e0316abcdf833029829d8",
-      "uploadschema": "str:sourcify-arkiv.upload.v1"
-    },
-    "payload": "0x608060405234801561001057600080fd5b506040516101e63803806101e68339818101604052602081101561003357600080fd5b8101908080519060200190929190505050600073ffffffffffffffffffffffffffffffffffffffff168173ffffffffffffffffffffffffffffffffffffffff1614156100ca576040517f08c379a00000000000000000000000000000000000000000000000000000000081526004018080602001828103825260228152602001806101c46022913960400191505060405180910390fd5b806000806101000a81548173ffffffffffffffffffffffffffffffffffffffff021916908373ffffffffffffffffffffffffffffffffffffffff1602179055505060ab806101196000396000f3fe608060405273ffffffffffffffffffffffffffffffffffffffff600054167fa619486e0000000000000000000000000000000000000000000000000000000060003514156050578060005260206000f35b3660008037600080366000845af43d6000803e60008114156070573d6000fd5b3d6000f3fea264697066735822122003d1488ee65e08fa41e58e888a9865554c535f2c77126a82cb4c0f917f31441364736f6c63430007060033496e76616c69642073696e676c65746f6e20616464726573732070726f766964656400000000000000000000000041675c099f32341bf84bfc5382af534df5c7461a",
-    "seed": {
-      "$key": "0x86697e81126b27088189e808f138f6fa5940f7c42c7101267d396088489a47bd",
-      "$creator": "0x1111111111111111111111111111111111111111",
-      "$owner": "0x1111111111111111111111111111111111111111",
-      "$expiresAt": "never",
-      "$contentType": "application/gzip",
-      "$payload": "H4sIAAAAAAAA/32QTUsCURSG79Uoa5OYGtZmcN2mtA8XhlKEkcH4xUQTdYZmkgkZxQmjlfeOLaKFzLRqV7Ro06IfURDUqh+Rf6CCiKyOtGkxeOB+Hd77vg8HGKTycRZSiF8CwrqyCKmcQjsLXoZ7K8E5RQEI3I+S2J+EU5uxnA0Ctc8cWxRFIOaPS4W5ezuIVo8S5jR9d0eXpE/xPAxQxjDJ4l4rD1FsCBTJ7iHqJCBFHbHHyxyv3ZUZwimUjPCie64nErZb7kSecbuETjf4PwIkAeT1G3qDcVUDKYab15GM0Y8cyGwwBKKEUIiMhvIc4s3jwvN48y2Jt0UgHEU1CR9dOdlLvVL12p65EQ0I3udMu7Pt+0y/tE9Oz7VStrAzdRjYt56yo05zenlMNauV3SUyNEhiq0ZDqeiqYOpGuaIdVA1BUdW6ZppCrV5t6Kqm/idLl7eGL2bikx9rXwXrtrD+/rAy8QtZtQhgBgIAAA==",
-      "$creationFlags": [],
-      "hash": "bytes32:0x76733d705f71b79841c0ee960a0ca880f779cde7ef446c989e6d23efc0a4adfb",
-      "size": "i32:518",
-      "projectid": "str:sourcify",
-      "kind": "str:code",
-      "contentencoding": "str:gzip",
-      "originalcontenttype": "str:application/octet-stream",
-      "payloadsha256": "bytes32:0x6218c30b15b18be0310ea5a2e7ab7ea9cf4cc5b6b50d00f8b6a39f35945e04ce",
-      "stagingid": "bytes32:0xf238e9d8fd55e52fbc4bf11259078833aa223c7b293e0316abcdf833029829d8",
+      "payloadsha256": "bytes32:0xfcd69cbc7012fe8b530bde078e6312daf917ce34dfd6e56aeda06d8fa3ec0a11",
+      "stagingid": "bytes32:0x56625b1955690cae1f5302eede03e6b32a2509caec2fee1b975565d75c155297",
       "uploadschema": "str:sourcify-arkiv.upload.v1"
     }
   },
@@ -85,6 +48,7 @@
     "contentType": "application/octet-stream",
     "payloadSha256": "cdac0e1d7a8897472ab08d29d19e028896c4feaaff65bba661c2e5e49a39bf61",
     "payloadBytes": 486,
+    "wirePayloadBytes": 339,
     "attributes": {
       "hash": "bytes32:0x1856e0ee08399d74e0ea0b03adca210aeade6f748969ac023cdcb4dd62dcaf5f",
       "size": "i32:486",
@@ -123,6 +87,7 @@
     "contentType": "application/octet-stream",
     "payloadSha256": "a8a0fbd3cdf49e751346664e01b529a58322a814cf8df8d85deb20e63bd6415e",
     "payloadBytes": 171,
+    "wirePayloadBytes": 169,
     "attributes": {
       "hash": "bytes32:0xd7d408ebcd99b2b70be43e20253d6d92a8ea8fab29bd3be7f55b10032331fb4c",
       "size": "i32:171",
@@ -155,12 +120,13 @@
     }
   },
   {
-    "id": "d6a343fa04173478f785dee505e03ba051a0b2ae77edf7eec58c2fb7af949a3c",
-    "key": "0x52c755a8caf3582971eb4edf717febcca48d74a2a6bbb45369dac017375e17a7",
+    "id": "4d33bec10ad3a95caa5b3b127382887120a5386785b540844d8cb909f340e4e8",
+    "key": "0xd48f23965a98f84d3cb1c1b4dd2f793f8d98c0b8c46818800285574117de5111",
     "kind": "compilation",
     "contentType": "application/json",
-    "payloadSha256": "5e8bff6d95c48e7fa59cb4781a6147e49a56075bb652e7513da1cf6efed13f13",
-    "payloadBytes": 5673,
+    "payloadSha256": "65139f49ade3b209312e73d3fd151dafc51b1bebd4ed4620c05eff137e0887d4",
+    "payloadBytes": 9510,
+    "wirePayloadBytes": 2689,
     "attributes": {
       "compiler": "str:solc",
       "compilerversion": "str:0.7.6+commit.7338295f",
@@ -170,187 +136,330 @@
       "optimizer": "bool:false",
       "optimizerruns": "i32:200",
       "viair": "bool:false",
-      "hash": "bytes32:0x86f1a3c492190b46dfca103919a23c6c0a1814b8af12e004a0f222e768a9a369",
+      "hash": "bytes32:0x65139f49ade3b209312e73d3fd151dafc51b1bebd4ed4620c05eff137e0887d4",
       "projectid": "str:sourcify",
       "kind": "str:compilation",
       "contentencoding": "str:gzip",
       "originalcontenttype": "str:application/json",
-      "payloadsha256": "bytes32:0x5e8bff6d95c48e7fa59cb4781a6147e49a56075bb652e7513da1cf6efed13f13",
-      "stagingid": "bytes32:0xd6a343fa04173478f785dee505e03ba051a0b2ae77edf7eec58c2fb7af949a3c",
+      "payloadsha256": "bytes32:0x65139f49ade3b209312e73d3fd151dafc51b1bebd4ed4620c05eff137e0887d4",
+      "stagingid": "bytes32:0x4d33bec10ad3a95caa5b3b127382887120a5386785b540844d8cb909f340e4e8",
       "uploadschema": "str:sourcify-arkiv.upload.v1"
     },
     "payload": {
-      "schema": "sourcify.compilation.v2",
-      "compiler": "solc",
-      "compilerSettings": {
-        "evmVersion": "istanbul",
-        "libraries": {},
-        "metadata": {
-          "bytecodeHash": "ipfs",
-          "useLiteralContent": true
-        },
-        "optimizer": {
-          "enabled": false,
-          "runs": 200
-        },
-        "remappings": []
-      },
-      "compilerVersion": "0.7.6+commit.7338295f",
-      "fullyQualifiedName": "contracts/proxies/SafeProxy.sol:SafeProxy",
-      "language": "Solidity",
-      "name": "SafeProxy",
-      "sources": {
-        "contracts/proxies/SafeProxy.sol": "0xa32e2bb41a928cc17ac82a7240571e7ad8b8230555f711c13343584d8a4802bb"
-      },
-      "metadata": {
-        "compiler": {
-          "version": "0.7.6+commit.7338295f"
-        },
-        "language": "Solidity",
-        "output": {
-          "abi": [
-            {
-              "inputs": [
-                {
-                  "internalType": "address",
-                  "name": "_singleton",
-                  "type": "address"
-                }
-              ],
-              "stateMutability": "nonpayable",
-              "type": "constructor"
-            },
-            {
-              "stateMutability": "payable",
-              "type": "fallback"
-            }
-          ],
-          "devdoc": {
-            "author": "Stefan George - <stefan@gnosis.io>Richard Meissner - <richard@gnosis.io>",
-            "kind": "dev",
-            "methods": {
-              "constructor": {
-                "params": {
-                  "_singleton": "Singleton address."
-                }
-              }
-            },
-            "title": "SafeProxy - Generic proxy contract allows to execute all transactions applying the code of a master contract.",
-            "version": 1
-          },
-          "userdoc": {
-            "kind": "user",
-            "methods": {
-              "constructor": {
-                "notice": "Constructor function sets address of singleton contract."
-              }
-            },
-            "version": 1
-          }
-        },
-        "settings": {
-          "compilationTarget": {
-            "contracts/proxies/SafeProxy.sol": "SafeProxy"
-          },
-          "evmVersion": "istanbul",
-          "libraries": {},
-          "metadata": {
-            "bytecodeHash": "ipfs",
-            "useLiteralContent": true
-          },
-          "optimizer": {
-            "enabled": false,
-            "runs": 200
-          },
-          "remappings": []
-        },
-        "sources": {
-          "contracts/proxies/SafeProxy.sol": {
-            "content": "// SPDX-License-Identifier: LGPL-3.0-only\npragma solidity >=0.7.0 <0.9.0;\n\n/**\n * @title IProxy - Helper interface to access the singleton address of the Proxy on-chain.\n * @author Richard Meissner - @rmeissner\n */\ninterface IProxy {\n    function masterCopy() external view returns (address);\n}\n\n/**\n * @title SafeProxy - Generic proxy contract allows to execute all transactions applying the code of a master contract.\n * @author Stefan George - <stefan@gnosis.io>\n * @author Richard Meissner - <richard@gnosis.io>\n */\ncontract SafeProxy {\n    // Singleton always needs to be first declared variable, to ensure that it is at the same location in the contracts to which calls are delegated.\n    // To reduce deployment costs this variable is internal and needs to be retrieved via `getStorageAt`\n    address internal singleton;\n\n    /**\n     * @notice Constructor function sets address of singleton contract.\n     * @param _singleton Singleton address.\n     */\n    constructor(address _singleton) {\n        require(_singleton != address(0), \"Invalid singleton address provided\");\n        singleton = _singleton;\n    }\n\n    /// @dev Fallback function forwards all transactions and returns all received return data.\n    fallback() external payable {\n        // solhint-disable-next-line no-inline-assembly\n        assembly {\n            let _singleton := and(sload(0), 0xffffffffffffffffffffffffffffffffffffffff)\n            // 0xa619486e == keccak(\"masterCopy()\"). The value is right padded to 32-bytes with 0s\n            if eq(calldataload(0), 0xa619486e00000000000000000000000000000000000000000000000000000000) {\n                mstore(0, _singleton)\n                return(0, 0x20)\n            }\n            calldatacopy(0, 0, calldatasize())\n            let success := delegatecall(gas(), _singleton, 0, calldatasize(), 0, 0)\n            returndatacopy(0, 0, returndatasize())\n            if eq(success, 0) {\n                revert(0, returndatasize())\n            }\n            return(0, returndatasize())\n        }\n    }\n}\n",
-            "keccak256": "0x5dccbe86285c1d4c4b2fed0ae8007620c3186d22411f43feecfbf8a028e5c7e2",
-            "license": "LGPL-3.0-only"
-          }
-        },
-        "version": 1
-      },
-      "storageLayout": {
-        "storage": [
+      "data": {
+        "abi": [
           {
-            "astId": 11,
-            "contract": "contracts/proxies/SafeProxy.sol:SafeProxy",
-            "label": "singleton",
-            "offset": 0,
-            "slot": "0",
-            "type": "t_address"
+            "inputs": [
+              {
+                "internalType": "address",
+                "name": "_singleton",
+                "type": "address"
+              }
+            ],
+            "stateMutability": "nonpayable",
+            "type": "constructor"
+          },
+          {
+            "stateMutability": "payable",
+            "type": "fallback"
           }
         ],
-        "types": {
-          "t_address": {
-            "encoding": "inplace",
-            "label": "address",
-            "numberOfBytes": "20"
-          }
-        }
-      },
-      "transientStorageLayout": null,
-      "userdoc": {
-        "kind": "user",
-        "methods": {
-          "constructor": {
-            "notice": "Constructor function sets address of singleton contract."
+        "additionalInput": null,
+        "compilation": {
+          "compiler": "solc",
+          "compilerSettings": {
+            "evmVersion": "istanbul",
+            "libraries": {},
+            "metadata": {
+              "bytecodeHash": "ipfs",
+              "useLiteralContent": true
+            },
+            "optimizer": {
+              "enabled": false,
+              "runs": 200
+            },
+            "remappings": []
+          },
+          "compilerVersion": "0.7.6+commit.7338295f",
+          "fullyQualifiedName": "contracts/proxies/SafeProxy.sol:SafeProxy",
+          "language": "Solidity",
+          "name": "SafeProxy"
+        },
+        "creationBytecode": {
+          "cborAuxdata": {
+            "1": {
+              "offset": 399,
+              "value": "0xa264697066735822122003d1488ee65e08fa41e58e888a9865554c535f2c77126a82cb4c0f917f31441364736f6c63430007060033"
+            }
+          },
+          "linkReferences": {},
+          "sourceMap": "520:1508:0:-:0;;;965:152;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;1037:1;1015:24;;:10;:24;;;;1007:71;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;1100:10;1088:9;;:22;;;;;;;;;;;;;;;;;;965:152;520:1508;;;;;;"
+        },
+        "devdoc": {
+          "author": "Stefan George - <stefan@gnosis.io>Richard Meissner - <richard@gnosis.io>",
+          "kind": "dev",
+          "methods": {
+            "constructor": {
+              "params": {
+                "_singleton": "Singleton address."
+              }
+            }
+          },
+          "title": "SafeProxy - Generic proxy contract allows to execute all transactions applying the code of a master contract.",
+          "version": 1
+        },
+        "metadata": {
+          "compiler": {
+            "version": "0.7.6+commit.7338295f"
+          },
+          "language": "Solidity",
+          "output": {
+            "abi": [
+              {
+                "inputs": [
+                  {
+                    "internalType": "address",
+                    "name": "_singleton",
+                    "type": "address"
+                  }
+                ],
+                "stateMutability": "nonpayable",
+                "type": "constructor"
+              },
+              {
+                "stateMutability": "payable",
+                "type": "fallback"
+              }
+            ],
+            "devdoc": {
+              "author": "Stefan George - <stefan@gnosis.io>Richard Meissner - <richard@gnosis.io>",
+              "kind": "dev",
+              "methods": {
+                "constructor": {
+                  "params": {
+                    "_singleton": "Singleton address."
+                  }
+                }
+              },
+              "title": "SafeProxy - Generic proxy contract allows to execute all transactions applying the code of a master contract.",
+              "version": 1
+            },
+            "userdoc": {
+              "kind": "user",
+              "methods": {
+                "constructor": {
+                  "notice": "Constructor function sets address of singleton contract."
+                }
+              },
+              "version": 1
+            }
+          },
+          "settings": {
+            "compilationTarget": {
+              "contracts/proxies/SafeProxy.sol": "SafeProxy"
+            },
+            "evmVersion": "istanbul",
+            "libraries": {},
+            "metadata": {
+              "bytecodeHash": "ipfs",
+              "useLiteralContent": true
+            },
+            "optimizer": {
+              "enabled": false,
+              "runs": 200
+            },
+            "remappings": []
+          },
+          "sources": {
+            "contracts/proxies/SafeProxy.sol": {
+              "keccak256": "0x5dccbe86285c1d4c4b2fed0ae8007620c3186d22411f43feecfbf8a028e5c7e2",
+              "license": "LGPL-3.0-only"
+            }
+          },
+          "version": 1
+        },
+        "runtimeBytecode": {
+          "cborAuxdata": {
+            "1": {
+              "offset": 118,
+              "value": "0xa264697066735822122003d1488ee65e08fa41e58e888a9865554c535f2c77126a82cb4c0f917f31441364736f6c63430007060033"
+            }
+          },
+          "immutableReferences": {},
+          "linkReferences": {},
+          "sourceMap": "520:1508:0:-:0;;;1367:42;1363:1;1357:8;1353:57;1545:66;1541:1;1528:15;1525:87;1522:2;;;1641:10;1638:1;1631:21;1679:4;1676:1;1669:15;1522:2;1730:14;1727:1;1724;1711:34;1827:1;1824;1808:14;1805:1;1793:10;1786:5;1773:56;1863:16;1860:1;1857;1842:38;1908:1;1899:7;1896:14;1893:2;;;1939:16;1936:1;1929:27;1893:2;1993:16;1990:1;1983:27"
+        },
+        "signatures": {
+          "error": [],
+          "event": [],
+          "function": []
+        },
+        "sourceIds": {
+          "contracts/proxies/SafeProxy.sol": {
+            "id": 0
           }
         },
-        "version": 1
-      },
-      "devdoc": {
-        "author": "Stefan George - <stefan@gnosis.io>Richard Meissner - <richard@gnosis.io>",
-        "kind": "dev",
-        "methods": {
-          "constructor": {
-            "params": {
-              "_singleton": "Singleton address."
+        "sources": {
+          "contracts/proxies/SafeProxy.sol": {}
+        },
+        "stdJsonInput": {
+          "language": "Solidity"
+        },
+        "stdJsonOutput": {
+          "contracts": {
+            "contracts/proxies/SafeProxy.sol": {
+              "SafeProxy": {
+                "evm": {
+                  "bytecode": {
+                    "linkReferences": {}
+                  },
+                  "deployedBytecode": {
+                    "immutableReferences": {},
+                    "linkReferences": {}
+                  }
+                },
+                "metadata": "{\"compiler\":{\"version\":\"0.7.6+commit.7338295f\"},\"language\":\"Solidity\",\"output\":{\"abi\":[{\"inputs\":[{\"internalType\":\"address\",\"name\":\"_singleton\",\"type\":\"address\"}],\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"stateMutability\":\"payable\",\"type\":\"fallback\"}],\"devdoc\":{\"author\":\"Stefan George - <stefan@gnosis.io>Richard Meissner - <richard@gnosis.io>\",\"kind\":\"dev\",\"methods\":{\"constructor\":{\"params\":{\"_singleton\":\"Singleton address.\"}}},\"title\":\"SafeProxy - Generic proxy contract allows to execute all transactions applying the code of a master contract.\",\"version\":1},\"userdoc\":{\"kind\":\"user\",\"methods\":{\"constructor\":{\"notice\":\"Constructor function sets address of singleton contract.\"}},\"version\":1}},\"settings\":{\"compilationTarget\":{\"contracts/proxies/SafeProxy.sol\":\"SafeProxy\"},\"evmVersion\":\"istanbul\",\"libraries\":{},\"metadata\":{\"bytecodeHash\":\"ipfs\",\"useLiteralContent\":true},\"optimizer\":{\"enabled\":false,\"runs\":200},\"remappings\":[]},\"sources\":{\"contracts/proxies/SafeProxy.sol\":{\"content\":\"// SPDX-License-Identifier: LGPL-3.0-only\\npragma solidity >=0.7.0 <0.9.0;\\n\\n/**\\n * @title IProxy - Helper interface to access the singleton address of the Proxy on-chain.\\n * @author Richard Meissner - @rmeissner\\n */\\ninterface IProxy {\\n    function masterCopy() external view returns (address);\\n}\\n\\n/**\\n * @title SafeProxy - Generic proxy contract allows to execute all transactions applying the code of a master contract.\\n * @author Stefan George - <stefan@gnosis.io>\\n * @author Richard Meissner - <richard@gnosis.io>\\n */\\ncontract SafeProxy {\\n    // Singleton always needs to be first declared variable, to ensure that it is at the same location in the contracts to which calls are delegated.\\n    // To reduce deployment costs this variable is internal and needs to be retrieved via `getStorageAt`\\n    address internal singleton;\\n\\n    /**\\n     * @notice Constructor function sets address of singleton contract.\\n     * @param _singleton Singleton address.\\n     */\\n    constructor(address _singleton) {\\n        require(_singleton != address(0), \\\"Invalid singleton address provided\\\");\\n        singleton = _singleton;\\n    }\\n\\n    /// @dev Fallback function forwards all transactions and returns all received return data.\\n    fallback() external payable {\\n        // solhint-disable-next-line no-inline-assembly\\n        assembly {\\n            let _singleton := and(sload(0), 0xffffffffffffffffffffffffffffffffffffffff)\\n            // 0xa619486e == keccak(\\\"masterCopy()\\\"). The value is right padded to 32-bytes with 0s\\n            if eq(calldataload(0), 0xa619486e00000000000000000000000000000000000000000000000000000000) {\\n                mstore(0, _singleton)\\n                return(0, 0x20)\\n            }\\n            calldatacopy(0, 0, calldatasize())\\n            let success := delegatecall(gas(), _singleton, 0, calldatasize(), 0, 0)\\n            returndatacopy(0, 0, returndatasize())\\n            if eq(success, 0) {\\n                revert(0, returndatasize())\\n            }\\n            return(0, returndatasize())\\n        }\\n    }\\n}\\n\",\"keccak256\":\"0x5dccbe86285c1d4c4b2fed0ae8007620c3186d22411f43feecfbf8a028e5c7e2\",\"license\":\"LGPL-3.0-only\"}},\"version\":1}",
+                "transientStorageLayout": null,
+                "userdoc": {
+                  "kind": "user",
+                  "methods": {
+                    "constructor": {
+                      "notice": "Constructor function sets address of singleton contract."
+                    }
+                  },
+                  "version": 1
+                }
+              }
+            }
+          },
+          "sources": {
+            "contracts/proxies/SafeProxy.sol": {
+              "id": 0
             }
           }
         },
-        "title": "SafeProxy - Generic proxy contract allows to execute all transactions applying the code of a master contract.",
-        "version": 1
-      },
-      "sourceIds": {
-        "contracts/proxies/SafeProxy.sol": {
-          "id": 0
-        }
-      },
-      "creationCodeArtifacts": {
-        "sourceMap": "520:1508:0:-:0;;;965:152;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;1037:1;1015:24;;:10;:24;;;;1007:71;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;1100:10;1088:9;;:22;;;;;;;;;;;;;;;;;;965:152;520:1508;;;;;;",
-        "linkReferences": {},
-        "cborAuxdata": {
-          "1": {
-            "offset": 399,
-            "value": "0xa264697066735822122003d1488ee65e08fa41e58e888a9865554c535f2c77126a82cb4c0f917f31441364736f6c63430007060033"
+        "storageLayout": {
+          "storage": [
+            {
+              "astId": 11,
+              "contract": "contracts/proxies/SafeProxy.sol:SafeProxy",
+              "label": "singleton",
+              "offset": 0,
+              "slot": "0",
+              "type": "t_address"
+            }
+          ],
+          "types": {
+            "t_address": {
+              "encoding": "inplace",
+              "label": "address",
+              "numberOfBytes": "20"
+            }
           }
+        },
+        "transientStorageLayout": null,
+        "userdoc": {
+          "kind": "user",
+          "methods": {
+            "constructor": {
+              "notice": "Constructor function sets address of singleton contract."
+            }
+          },
+          "version": 1
         }
       },
-      "runtimeCodeArtifacts": {
-        "sourceMap": "520:1508:0:-:0;;;1367:42;1363:1;1357:8;1353:57;1545:66;1541:1;1528:15;1525:87;1522:2;;;1641:10;1638:1;1631:21;1679:4;1676:1;1669:15;1522:2;1730:14;1727:1;1724;1711:34;1827:1;1824;1808:14;1805:1;1793:10;1786:5;1773:56;1863:16;1860:1;1857;1842:38;1908:1;1899:7;1896:14;1893:2;;;1939:16;1936:1;1929:27;1893:2;1993:16;1990:1;1983:27",
-        "linkReferences": {},
-        "immutableReferences": {},
-        "cborAuxdata": {
-          "1": {
-            "offset": 118,
-            "value": "0xa264697066735822122003d1488ee65e08fa41e58e888a9865554c535f2c77126a82cb4c0f917f31441364736f6c63430007060033"
-          }
+      "references": [
+        {
+          "kind": "local",
+          "path": "/stdJsonInput/settings",
+          "pointer": "/compilation/compilerSettings"
+        },
+        {
+          "kind": "local",
+          "path": "/stdJsonInput/sources",
+          "pointer": "/sources"
+        },
+        {
+          "kind": "local",
+          "path": "/stdJsonOutput/contracts/contracts~1proxies~1SafeProxy.sol/SafeProxy/abi",
+          "pointer": "/abi"
+        },
+        {
+          "kind": "local",
+          "path": "/stdJsonOutput/contracts/contracts~1proxies~1SafeProxy.sol/SafeProxy/devdoc",
+          "pointer": "/metadata/output/devdoc"
+        },
+        {
+          "kind": "local",
+          "path": "/stdJsonOutput/contracts/contracts~1proxies~1SafeProxy.sol/SafeProxy/evm/bytecode/sourceMap",
+          "pointer": "/creationBytecode/sourceMap"
+        },
+        {
+          "kind": "local",
+          "path": "/stdJsonOutput/contracts/contracts~1proxies~1SafeProxy.sol/SafeProxy/evm/deployedBytecode/sourceMap",
+          "pointer": "/runtimeBytecode/sourceMap"
+        },
+        {
+          "kind": "local",
+          "path": "/stdJsonOutput/contracts/contracts~1proxies~1SafeProxy.sol/SafeProxy/storageLayout",
+          "pointer": "/storageLayout"
+        },
+        {
+          "hash": "0xa32e2bb41a928cc17ac82a7240571e7ad8b8230555f711c13343584d8a4802bb",
+          "kind": "sourcefile",
+          "path": "/sources/contracts~1proxies~1SafeProxy.sol/content"
+        },
+        {
+          "hash": "0xa32e2bb41a928cc17ac82a7240571e7ad8b8230555f711c13343584d8a4802bb",
+          "kind": "sourcefile",
+          "path": "/metadata/sources/contracts~1proxies~1SafeProxy.sol/content"
+        },
+        {
+          "encoding": {
+            "prefix": false,
+            "uppercase": []
+          },
+          "hash": "0x1856e0ee08399d74e0ea0b03adca210aeade6f748969ac023cdcb4dd62dcaf5f",
+          "kind": "code",
+          "path": "/stdJsonOutput/contracts/contracts~1proxies~1SafeProxy.sol/SafeProxy/evm/bytecode/object"
+        },
+        {
+          "encoding": {
+            "prefix": false,
+            "uppercase": []
+          },
+          "hash": "0xd7d408ebcd99b2b70be43e20253d6d92a8ea8fab29bd3be7f55b10032331fb4c",
+          "kind": "code",
+          "path": "/stdJsonOutput/contracts/contracts~1proxies~1SafeProxy.sol/SafeProxy/evm/deployedBytecode/object"
+        },
+        {
+          "encoding": {
+            "prefix": true,
+            "uppercase": []
+          },
+          "hash": "0x1856e0ee08399d74e0ea0b03adca210aeade6f748969ac023cdcb4dd62dcaf5f",
+          "kind": "code",
+          "path": "/creationBytecode/recompiledBytecode"
+        },
+        {
+          "encoding": {
+            "prefix": true,
+            "uppercase": []
+          },
+          "hash": "0xd7d408ebcd99b2b70be43e20253d6d92a8ea8fab29bd3be7f55b10032331fb4c",
+          "kind": "code",
+          "path": "/runtimeBytecode/recompiledBytecode"
         }
-      },
-      "recompiledCreationHash": "0x1856e0ee08399d74e0ea0b03adca210aeade6f748969ac023cdcb4dd62dcaf5f",
-      "recompiledRuntimeHash": "0xd7d408ebcd99b2b70be43e20253d6d92a8ea8fab29bd3be7f55b10032331fb4c"
+      ],
+      "schema": "sourcify.compilation.v3"
     },
     "seed": {
-      "$key": "0x52c755a8caf3582971eb4edf717febcca48d74a2a6bbb45369dac017375e17a7",
+      "$key": "0xd48f23965a98f84d3cb1c1b4dd2f793f8d98c0b8c46818800285574117de5111",
       "$creator": "0x1111111111111111111111111111111111111111",
       "$owner": "0x1111111111111111111111111111111111111111",
       "$expiresAt": "never",
       "$contentType": "application/gzip",
-      "$payload": "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",
+      "$payload": "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",
       "$creationFlags": [],
       "compiler": "str:solc",
       "compilerversion": "str:0.7.6+commit.7338295f",
@@ -360,23 +469,63 @@
       "optimizer": "bool:false",
       "optimizerruns": "i32:200",
       "viair": "bool:false",
-      "hash": "bytes32:0x86f1a3c492190b46dfca103919a23c6c0a1814b8af12e004a0f222e768a9a369",
+      "hash": "bytes32:0x65139f49ade3b209312e73d3fd151dafc51b1bebd4ed4620c05eff137e0887d4",
       "projectid": "str:sourcify",
       "kind": "str:compilation",
       "contentencoding": "str:gzip",
       "originalcontenttype": "str:application/json",
-      "payloadsha256": "bytes32:0x5e8bff6d95c48e7fa59cb4781a6147e49a56075bb652e7513da1cf6efed13f13",
-      "stagingid": "bytes32:0xd6a343fa04173478f785dee505e03ba051a0b2ae77edf7eec58c2fb7af949a3c",
+      "payloadsha256": "bytes32:0x65139f49ade3b209312e73d3fd151dafc51b1bebd4ed4620c05eff137e0887d4",
+      "stagingid": "bytes32:0x4d33bec10ad3a95caa5b3b127382887120a5386785b540844d8cb909f340e4e8",
       "uploadschema": "str:sourcify-arkiv.upload.v1"
     }
   },
   {
-    "id": "bde01dd86bdb115ac50148c1527e1abb674c1fc7e67fd8af1e47b7cce0c57d2b",
-    "key": "0xadffae68ff3d4ac128fcda6a4599d7080928fc3d38f39dc34fd409d23ae4bad3",
+    "id": "f238e9d8fd55e52fbc4bf11259078833aa223c7b293e0316abcdf833029829d8",
+    "key": "0x86697e81126b27088189e808f138f6fa5940f7c42c7101267d396088489a47bd",
+    "kind": "code",
+    "contentType": "application/octet-stream",
+    "payloadSha256": "6218c30b15b18be0310ea5a2e7ab7ea9cf4cc5b6b50d00f8b6a39f35945e04ce",
+    "payloadBytes": 518,
+    "wirePayloadBytes": 367,
+    "attributes": {
+      "hash": "bytes32:0x76733d705f71b79841c0ee960a0ca880f779cde7ef446c989e6d23efc0a4adfb",
+      "size": "i32:518",
+      "projectid": "str:sourcify",
+      "kind": "str:code",
+      "contentencoding": "str:gzip",
+      "originalcontenttype": "str:application/octet-stream",
+      "payloadsha256": "bytes32:0x6218c30b15b18be0310ea5a2e7ab7ea9cf4cc5b6b50d00f8b6a39f35945e04ce",
+      "stagingid": "bytes32:0xf238e9d8fd55e52fbc4bf11259078833aa223c7b293e0316abcdf833029829d8",
+      "uploadschema": "str:sourcify-arkiv.upload.v1"
+    },
+    "payload": "0x608060405234801561001057600080fd5b506040516101e63803806101e68339818101604052602081101561003357600080fd5b8101908080519060200190929190505050600073ffffffffffffffffffffffffffffffffffffffff168173ffffffffffffffffffffffffffffffffffffffff1614156100ca576040517f08c379a00000000000000000000000000000000000000000000000000000000081526004018080602001828103825260228152602001806101c46022913960400191505060405180910390fd5b806000806101000a81548173ffffffffffffffffffffffffffffffffffffffff021916908373ffffffffffffffffffffffffffffffffffffffff1602179055505060ab806101196000396000f3fe608060405273ffffffffffffffffffffffffffffffffffffffff600054167fa619486e0000000000000000000000000000000000000000000000000000000060003514156050578060005260206000f35b3660008037600080366000845af43d6000803e60008114156070573d6000fd5b3d6000f3fea264697066735822122003d1488ee65e08fa41e58e888a9865554c535f2c77126a82cb4c0f917f31441364736f6c63430007060033496e76616c69642073696e676c65746f6e20616464726573732070726f766964656400000000000000000000000041675c099f32341bf84bfc5382af534df5c7461a",
+    "seed": {
+      "$key": "0x86697e81126b27088189e808f138f6fa5940f7c42c7101267d396088489a47bd",
+      "$creator": "0x1111111111111111111111111111111111111111",
+      "$owner": "0x1111111111111111111111111111111111111111",
+      "$expiresAt": "never",
+      "$contentType": "application/gzip",
+      "$payload": "H4sIAAAAAAAA/32QTUsCURSG79Uoa5OYGtZmcN2mtA8XhlKEkcH4xUQTdYZmkgkZxQmjlfeOLaKFzLRqV7Ro06IfURDUqh+Rf6CCiKyOtGkxeOB+Hd77vg8HGKTycRZSiF8CwrqyCKmcQjsLXoZ7K8E5RQEI3I+S2J+EU5uxnA0Ctc8cWxRFIOaPS4W5ezuIVo8S5jR9d0eXpE/xPAxQxjDJ4l4rD1FsCBTJ7iHqJCBFHbHHyxyv3ZUZwimUjPCie64nErZb7kSecbuETjf4PwIkAeT1G3qDcVUDKYab15GM0Y8cyGwwBKKEUIiMhvIc4s3jwvN48y2Jt0UgHEU1CR9dOdlLvVL12p65EQ0I3udMu7Pt+0y/tE9Oz7VStrAzdRjYt56yo05zenlMNauV3SUyNEhiq0ZDqeiqYOpGuaIdVA1BUdW6ZppCrV5t6Kqm/idLl7eGL2bikx9rXwXrtrD+/rAy8QtZtQhgBgIAAA==",
+      "$creationFlags": [],
+      "hash": "bytes32:0x76733d705f71b79841c0ee960a0ca880f779cde7ef446c989e6d23efc0a4adfb",
+      "size": "i32:518",
+      "projectid": "str:sourcify",
+      "kind": "str:code",
+      "contentencoding": "str:gzip",
+      "originalcontenttype": "str:application/octet-stream",
+      "payloadsha256": "bytes32:0x6218c30b15b18be0310ea5a2e7ab7ea9cf4cc5b6b50d00f8b6a39f35945e04ce",
+      "stagingid": "bytes32:0xf238e9d8fd55e52fbc4bf11259078833aa223c7b293e0316abcdf833029829d8",
+      "uploadschema": "str:sourcify-arkiv.upload.v1"
+    }
+  },
+  {
+    "id": "13916b963ffc392dc777cd129b9f8c4eb47cc3283afa8dd75f504e80c2f7dc64",
+    "key": "0x7ca75ddefed11bf8b8fb8f2cd9b5ca5ee0690e8524a1cadbb97675b13d55f609",
     "kind": "verified_contract",
     "contentType": "application/json",
-    "payloadSha256": "9ba620ec05235f7e0b229a753c7d5b0def078b92f9d2e1e72b335eba2b008465",
-    "payloadBytes": 20171,
+    "payloadSha256": "03aac5529b24ccf41e0b4d72db987db6366cf0a71e491163490a7f78807e3186",
+    "payloadBytes": 4814,
+    "wirePayloadBytes": 982,
     "attributes": {
       "compiler": "str:solc",
       "compilerversion": "str:0.7.6+commit.7338295f",
@@ -395,359 +544,220 @@
       "abihash": "bytes32:0x3b187c2aa68deb34b1cef3b0442dec2ea12cd6e5d549d58e55ab3bd1c4a8d89f",
       "blocknumber": "u64:17487425",
       "deployer": "addr:0x34f845773D4364999f2fbC7AA26ABDeE902cBb46",
-      "compilationref": "key:0x52c755a8caf3582971eb4edf717febcca48d74a2a6bbb45369dac017375e17a7",
+      "compilationref": "key:0xd48f23965a98f84d3cb1c1b4dd2f793f8d98c0b8c46818800285574117de5111",
       "creationcodehash": "bytes32:0x76733d705f71b79841c0ee960a0ca880f779cde7ef446c989e6d23efc0a4adfb",
       "runtimecodehash": "bytes32:0xd7d408ebcd99b2b70be43e20253d6d92a8ea8fab29bd3be7f55b10032331fb4c",
       "projectid": "str:sourcify",
       "kind": "str:verified_contract",
       "contentencoding": "str:gzip",
       "originalcontenttype": "str:application/json",
-      "payloadsha256": "bytes32:0x9ba620ec05235f7e0b229a753c7d5b0def078b92f9d2e1e72b335eba2b008465",
-      "stagingid": "bytes32:0xbde01dd86bdb115ac50148c1527e1abb674c1fc7e67fd8af1e47b7cce0c57d2b",
+      "payloadsha256": "bytes32:0x03aac5529b24ccf41e0b4d72db987db6366cf0a71e491163490a7f78807e3186",
+      "stagingid": "bytes32:0x13916b963ffc392dc777cd129b9f8c4eb47cc3283afa8dd75f504e80c2f7dc64",
       "uploadschema": "str:sourcify-arkiv.upload.v1"
     },
     "payload": {
-      "abi": [
-        {
-          "inputs": [
+      "data": {
+        "address": "0x000000000034065b3a94C2118CFe5B4C0067B615",
+        "chainId": "1",
+        "creationBytecode": {
+          "transformationValues": {
+            "constructorArguments": "0x00000000000000000000000041675c099f32341bf84bfc5382af534df5c7461a"
+          },
+          "transformations": [
             {
-              "internalType": "address",
-              "name": "_singleton",
-              "type": "address"
+              "offset": 486,
+              "reason": "constructorArguments",
+              "type": "insert"
+            }
+          ]
+        },
+        "creationMatch": "exact_match",
+        "deployment": {
+          "blockNumber": "17487425",
+          "deployer": "0x34f845773D4364999f2fbC7AA26ABDeE902cBb46",
+          "transactionHash": "0xdac58edb65c2af3f86f03586eeec7caa7ee245d6d06679a913e5dda16617658e",
+          "transactionIndex": "11"
+        },
+        "match": "exact_match",
+        "matchId": "607",
+        "proxyResolution": {
+          "implementations": [
+            {
+              "address": "0x41675C099F32341bf84BFc5382aF534df5C7461a",
+              "name": "Safe"
             }
           ],
-          "stateMutability": "nonpayable",
-          "type": "constructor"
+          "isProxy": true,
+          "proxyType": "GnosisSafeProxy"
+        },
+        "runtimeBytecode": {
+          "transformationValues": {},
+          "transformations": []
+        },
+        "runtimeMatch": "exact_match",
+        "verifiedAt": "2024-08-08T10:04:59Z"
+      },
+      "references": [
+        {
+          "encoding": {
+            "prefix": true,
+            "uppercase": []
+          },
+          "hash": "0xd7d408ebcd99b2b70be43e20253d6d92a8ea8fab29bd3be7f55b10032331fb4c",
+          "kind": "code",
+          "path": "/runtimeBytecode/onchainBytecode"
         },
         {
-          "stateMutability": "payable",
-          "type": "fallback"
+          "encoding": {
+            "prefix": true,
+            "uppercase": []
+          },
+          "hash": "0x76733d705f71b79841c0ee960a0ca880f779cde7ef446c989e6d23efc0a4adfb",
+          "kind": "code",
+          "path": "/creationBytecode/onchainBytecode"
+        },
+        {
+          "hash": "0x65139f49ade3b209312e73d3fd151dafc51b1bebd4ed4620c05eff137e0887d4",
+          "kind": "compilation",
+          "path": "/compilation",
+          "pointer": "/compilation"
+        },
+        {
+          "hash": "0x65139f49ade3b209312e73d3fd151dafc51b1bebd4ed4620c05eff137e0887d4",
+          "kind": "compilation",
+          "path": "/additionalInput",
+          "pointer": "/additionalInput"
+        },
+        {
+          "hash": "0x65139f49ade3b209312e73d3fd151dafc51b1bebd4ed4620c05eff137e0887d4",
+          "kind": "compilation",
+          "path": "/sources",
+          "pointer": "/sources"
+        },
+        {
+          "hash": "0x65139f49ade3b209312e73d3fd151dafc51b1bebd4ed4620c05eff137e0887d4",
+          "kind": "compilation",
+          "path": "/abi",
+          "pointer": "/abi"
+        },
+        {
+          "hash": "0x65139f49ade3b209312e73d3fd151dafc51b1bebd4ed4620c05eff137e0887d4",
+          "kind": "compilation",
+          "path": "/signatures",
+          "pointer": "/signatures"
+        },
+        {
+          "hash": "0x65139f49ade3b209312e73d3fd151dafc51b1bebd4ed4620c05eff137e0887d4",
+          "kind": "compilation",
+          "path": "/metadata",
+          "pointer": "/metadata"
+        },
+        {
+          "hash": "0x65139f49ade3b209312e73d3fd151dafc51b1bebd4ed4620c05eff137e0887d4",
+          "kind": "compilation",
+          "path": "/storageLayout",
+          "pointer": "/storageLayout"
+        },
+        {
+          "hash": "0x65139f49ade3b209312e73d3fd151dafc51b1bebd4ed4620c05eff137e0887d4",
+          "kind": "compilation",
+          "path": "/transientStorageLayout",
+          "pointer": "/transientStorageLayout"
+        },
+        {
+          "hash": "0x65139f49ade3b209312e73d3fd151dafc51b1bebd4ed4620c05eff137e0887d4",
+          "kind": "compilation",
+          "path": "/userdoc",
+          "pointer": "/userdoc"
+        },
+        {
+          "hash": "0x65139f49ade3b209312e73d3fd151dafc51b1bebd4ed4620c05eff137e0887d4",
+          "kind": "compilation",
+          "path": "/devdoc",
+          "pointer": "/devdoc"
+        },
+        {
+          "hash": "0x65139f49ade3b209312e73d3fd151dafc51b1bebd4ed4620c05eff137e0887d4",
+          "kind": "compilation",
+          "path": "/sourceIds",
+          "pointer": "/sourceIds"
+        },
+        {
+          "hash": "0x65139f49ade3b209312e73d3fd151dafc51b1bebd4ed4620c05eff137e0887d4",
+          "kind": "compilation",
+          "path": "/stdJsonInput",
+          "pointer": "/stdJsonInput"
+        },
+        {
+          "hash": "0x65139f49ade3b209312e73d3fd151dafc51b1bebd4ed4620c05eff137e0887d4",
+          "kind": "compilation",
+          "path": "/stdJsonOutput",
+          "pointer": "/stdJsonOutput"
+        },
+        {
+          "hash": "0x65139f49ade3b209312e73d3fd151dafc51b1bebd4ed4620c05eff137e0887d4",
+          "kind": "compilation",
+          "path": "/creationBytecode/recompiledBytecode",
+          "pointer": "/creationBytecode/recompiledBytecode"
+        },
+        {
+          "hash": "0x65139f49ade3b209312e73d3fd151dafc51b1bebd4ed4620c05eff137e0887d4",
+          "kind": "compilation",
+          "path": "/creationBytecode/sourceMap",
+          "pointer": "/creationBytecode/sourceMap"
+        },
+        {
+          "hash": "0x65139f49ade3b209312e73d3fd151dafc51b1bebd4ed4620c05eff137e0887d4",
+          "kind": "compilation",
+          "path": "/creationBytecode/linkReferences",
+          "pointer": "/creationBytecode/linkReferences"
+        },
+        {
+          "hash": "0x65139f49ade3b209312e73d3fd151dafc51b1bebd4ed4620c05eff137e0887d4",
+          "kind": "compilation",
+          "path": "/creationBytecode/cborAuxdata",
+          "pointer": "/creationBytecode/cborAuxdata"
+        },
+        {
+          "hash": "0x65139f49ade3b209312e73d3fd151dafc51b1bebd4ed4620c05eff137e0887d4",
+          "kind": "compilation",
+          "path": "/runtimeBytecode/recompiledBytecode",
+          "pointer": "/runtimeBytecode/recompiledBytecode"
+        },
+        {
+          "hash": "0x65139f49ade3b209312e73d3fd151dafc51b1bebd4ed4620c05eff137e0887d4",
+          "kind": "compilation",
+          "path": "/runtimeBytecode/sourceMap",
+          "pointer": "/runtimeBytecode/sourceMap"
+        },
+        {
+          "hash": "0x65139f49ade3b209312e73d3fd151dafc51b1bebd4ed4620c05eff137e0887d4",
+          "kind": "compilation",
+          "path": "/runtimeBytecode/linkReferences",
+          "pointer": "/runtimeBytecode/linkReferences"
+        },
+        {
+          "hash": "0x65139f49ade3b209312e73d3fd151dafc51b1bebd4ed4620c05eff137e0887d4",
+          "kind": "compilation",
+          "path": "/runtimeBytecode/immutableReferences",
+          "pointer": "/runtimeBytecode/immutableReferences"
+        },
+        {
+          "hash": "0x65139f49ade3b209312e73d3fd151dafc51b1bebd4ed4620c05eff137e0887d4",
+          "kind": "compilation",
+          "path": "/runtimeBytecode/cborAuxdata",
+          "pointer": "/runtimeBytecode/cborAuxdata"
         }
       ],
-      "additionalInput": null,
-      "address": "0x000000000034065b3a94C2118CFe5B4C0067B615",
-      "chainId": "1",
-      "compilation": {
-        "compiler": "solc",
-        "compilerSettings": {
-          "evmVersion": "istanbul",
-          "libraries": {},
-          "metadata": {
-            "bytecodeHash": "ipfs",
-            "useLiteralContent": true
-          },
-          "optimizer": {
-            "enabled": false,
-            "runs": 200
-          },
-          "remappings": []
-        },
-        "compilerVersion": "0.7.6+commit.7338295f",
-        "fullyQualifiedName": "contracts/proxies/SafeProxy.sol:SafeProxy",
-        "language": "Solidity",
-        "name": "SafeProxy"
-      },
-      "creationBytecode": {
-        "cborAuxdata": {
-          "1": {
-            "offset": 399,
-            "value": "0xa264697066735822122003d1488ee65e08fa41e58e888a9865554c535f2c77126a82cb4c0f917f31441364736f6c63430007060033"
-          }
-        },
-        "linkReferences": {},
-        "onchainBytecode": "0x608060405234801561001057600080fd5b506040516101e63803806101e68339818101604052602081101561003357600080fd5b8101908080519060200190929190505050600073ffffffffffffffffffffffffffffffffffffffff168173ffffffffffffffffffffffffffffffffffffffff1614156100ca576040517f08c379a00000000000000000000000000000000000000000000000000000000081526004018080602001828103825260228152602001806101c46022913960400191505060405180910390fd5b806000806101000a81548173ffffffffffffffffffffffffffffffffffffffff021916908373ffffffffffffffffffffffffffffffffffffffff1602179055505060ab806101196000396000f3fe608060405273ffffffffffffffffffffffffffffffffffffffff600054167fa619486e0000000000000000000000000000000000000000000000000000000060003514156050578060005260206000f35b3660008037600080366000845af43d6000803e60008114156070573d6000fd5b3d6000f3fea264697066735822122003d1488ee65e08fa41e58e888a9865554c535f2c77126a82cb4c0f917f31441364736f6c63430007060033496e76616c69642073696e676c65746f6e20616464726573732070726f766964656400000000000000000000000041675c099f32341bf84bfc5382af534df5c7461a",
-        "recompiledBytecode": "0x608060405234801561001057600080fd5b506040516101e63803806101e68339818101604052602081101561003357600080fd5b8101908080519060200190929190505050600073ffffffffffffffffffffffffffffffffffffffff168173ffffffffffffffffffffffffffffffffffffffff1614156100ca576040517f08c379a00000000000000000000000000000000000000000000000000000000081526004018080602001828103825260228152602001806101c46022913960400191505060405180910390fd5b806000806101000a81548173ffffffffffffffffffffffffffffffffffffffff021916908373ffffffffffffffffffffffffffffffffffffffff1602179055505060ab806101196000396000f3fe608060405273ffffffffffffffffffffffffffffffffffffffff600054167fa619486e0000000000000000000000000000000000000000000000000000000060003514156050578060005260206000f35b3660008037600080366000845af43d6000803e60008114156070573d6000fd5b3d6000f3fea264697066735822122003d1488ee65e08fa41e58e888a9865554c535f2c77126a82cb4c0f917f31441364736f6c63430007060033496e76616c69642073696e676c65746f6e20616464726573732070726f7669646564",
-        "sourceMap": "520:1508:0:-:0;;;965:152;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;1037:1;1015:24;;:10;:24;;;;1007:71;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;1100:10;1088:9;;:22;;;;;;;;;;;;;;;;;;965:152;520:1508;;;;;;",
-        "transformationValues": {
-          "constructorArguments": "0x00000000000000000000000041675c099f32341bf84bfc5382af534df5c7461a"
-        },
-        "transformations": [
-          {
-            "offset": 486,
-            "reason": "constructorArguments",
-            "type": "insert"
-          }
-        ]
-      },
-      "creationMatch": "exact_match",
-      "deployment": {
-        "blockNumber": "17487425",
-        "deployer": "0x34f845773D4364999f2fbC7AA26ABDeE902cBb46",
-        "transactionHash": "0xdac58edb65c2af3f86f03586eeec7caa7ee245d6d06679a913e5dda16617658e",
-        "transactionIndex": "11"
-      },
-      "devdoc": {
-        "author": "Stefan George - <stefan@gnosis.io>Richard Meissner - <richard@gnosis.io>",
-        "kind": "dev",
-        "methods": {
-          "constructor": {
-            "params": {
-              "_singleton": "Singleton address."
-            }
-          }
-        },
-        "title": "SafeProxy - Generic proxy contract allows to execute all transactions applying the code of a master contract.",
-        "version": 1
-      },
-      "match": "exact_match",
-      "matchId": "607",
-      "metadata": {
-        "compiler": {
-          "version": "0.7.6+commit.7338295f"
-        },
-        "language": "Solidity",
-        "output": {
-          "abi": [
-            {
-              "inputs": [
-                {
-                  "internalType": "address",
-                  "name": "_singleton",
-                  "type": "address"
-                }
-              ],
-              "stateMutability": "nonpayable",
-              "type": "constructor"
-            },
-            {
-              "stateMutability": "payable",
-              "type": "fallback"
-            }
-          ],
-          "devdoc": {
-            "author": "Stefan George - <stefan@gnosis.io>Richard Meissner - <richard@gnosis.io>",
-            "kind": "dev",
-            "methods": {
-              "constructor": {
-                "params": {
-                  "_singleton": "Singleton address."
-                }
-              }
-            },
-            "title": "SafeProxy - Generic proxy contract allows to execute all transactions applying the code of a master contract.",
-            "version": 1
-          },
-          "userdoc": {
-            "kind": "user",
-            "methods": {
-              "constructor": {
-                "notice": "Constructor function sets address of singleton contract."
-              }
-            },
-            "version": 1
-          }
-        },
-        "settings": {
-          "compilationTarget": {
-            "contracts/proxies/SafeProxy.sol": "SafeProxy"
-          },
-          "evmVersion": "istanbul",
-          "libraries": {},
-          "metadata": {
-            "bytecodeHash": "ipfs",
-            "useLiteralContent": true
-          },
-          "optimizer": {
-            "enabled": false,
-            "runs": 200
-          },
-          "remappings": []
-        },
-        "sources": {
-          "contracts/proxies/SafeProxy.sol": {
-            "content": "// SPDX-License-Identifier: LGPL-3.0-only\npragma solidity >=0.7.0 <0.9.0;\n\n/**\n * @title IProxy - Helper interface to access the singleton address of the Proxy on-chain.\n * @author Richard Meissner - @rmeissner\n */\ninterface IProxy {\n    function masterCopy() external view returns (address);\n}\n\n/**\n * @title SafeProxy - Generic proxy contract allows to execute all transactions applying the code of a master contract.\n * @author Stefan George - <stefan@gnosis.io>\n * @author Richard Meissner - <richard@gnosis.io>\n */\ncontract SafeProxy {\n    // Singleton always needs to be first declared variable, to ensure that it is at the same location in the contracts to which calls are delegated.\n    // To reduce deployment costs this variable is internal and needs to be retrieved via `getStorageAt`\n    address internal singleton;\n\n    /**\n     * @notice Constructor function sets address of singleton contract.\n     * @param _singleton Singleton address.\n     */\n    constructor(address _singleton) {\n        require(_singleton != address(0), \"Invalid singleton address provided\");\n        singleton = _singleton;\n    }\n\n    /// @dev Fallback function forwards all transactions and returns all received return data.\n    fallback() external payable {\n        // solhint-disable-next-line no-inline-assembly\n        assembly {\n            let _singleton := and(sload(0), 0xffffffffffffffffffffffffffffffffffffffff)\n            // 0xa619486e == keccak(\"masterCopy()\"). The value is right padded to 32-bytes with 0s\n            if eq(calldataload(0), 0xa619486e00000000000000000000000000000000000000000000000000000000) {\n                mstore(0, _singleton)\n                return(0, 0x20)\n            }\n            calldatacopy(0, 0, calldatasize())\n            let success := delegatecall(gas(), _singleton, 0, calldatasize(), 0, 0)\n            returndatacopy(0, 0, returndatasize())\n            if eq(success, 0) {\n                revert(0, returndatasize())\n            }\n            return(0, returndatasize())\n        }\n    }\n}\n",
-            "keccak256": "0x5dccbe86285c1d4c4b2fed0ae8007620c3186d22411f43feecfbf8a028e5c7e2",
-            "license": "LGPL-3.0-only"
-          }
-        },
-        "version": 1
-      },
-      "proxyResolution": {
-        "implementations": [
-          {
-            "address": "0x41675C099F32341bf84BFc5382aF534df5C7461a",
-            "name": "Safe"
-          }
-        ],
-        "isProxy": true,
-        "proxyType": "GnosisSafeProxy"
-      },
-      "runtimeBytecode": {
-        "cborAuxdata": {
-          "1": {
-            "offset": 118,
-            "value": "0xa264697066735822122003d1488ee65e08fa41e58e888a9865554c535f2c77126a82cb4c0f917f31441364736f6c63430007060033"
-          }
-        },
-        "immutableReferences": {},
-        "linkReferences": {},
-        "onchainBytecode": "0x608060405273ffffffffffffffffffffffffffffffffffffffff600054167fa619486e0000000000000000000000000000000000000000000000000000000060003514156050578060005260206000f35b3660008037600080366000845af43d6000803e60008114156070573d6000fd5b3d6000f3fea264697066735822122003d1488ee65e08fa41e58e888a9865554c535f2c77126a82cb4c0f917f31441364736f6c63430007060033",
-        "recompiledBytecode": "0x608060405273ffffffffffffffffffffffffffffffffffffffff600054167fa619486e0000000000000000000000000000000000000000000000000000000060003514156050578060005260206000f35b3660008037600080366000845af43d6000803e60008114156070573d6000fd5b3d6000f3fea264697066735822122003d1488ee65e08fa41e58e888a9865554c535f2c77126a82cb4c0f917f31441364736f6c63430007060033",
-        "sourceMap": "520:1508:0:-:0;;;1367:42;1363:1;1357:8;1353:57;1545:66;1541:1;1528:15;1525:87;1522:2;;;1641:10;1638:1;1631:21;1679:4;1676:1;1669:15;1522:2;1730:14;1727:1;1724;1711:34;1827:1;1824;1808:14;1805:1;1793:10;1786:5;1773:56;1863:16;1860:1;1857;1842:38;1908:1;1899:7;1896:14;1893:2;;;1939:16;1936:1;1929:27;1893:2;1993:16;1990:1;1983:27",
-        "transformationValues": {},
-        "transformations": []
-      },
-      "runtimeMatch": "exact_match",
-      "signatures": {
-        "error": [],
-        "event": [],
-        "function": []
-      },
-      "sourceIds": {
-        "contracts/proxies/SafeProxy.sol": {
-          "id": 0
-        }
-      },
-      "sources": {
-        "contracts/proxies/SafeProxy.sol": {
-          "content": "// SPDX-License-Identifier: LGPL-3.0-only\npragma solidity >=0.7.0 <0.9.0;\n\n/**\n * @title IProxy - Helper interface to access the singleton address of the Proxy on-chain.\n * @author Richard Meissner - @rmeissner\n */\ninterface IProxy {\n    function masterCopy() external view returns (address);\n}\n\n/**\n * @title SafeProxy - Generic proxy contract allows to execute all transactions applying the code of a master contract.\n * @author Stefan George - <stefan@gnosis.io>\n * @author Richard Meissner - <richard@gnosis.io>\n */\ncontract SafeProxy {\n    // Singleton always needs to be first declared variable, to ensure that it is at the same location in the contracts to which calls are delegated.\n    // To reduce deployment costs this variable is internal and needs to be retrieved via `getStorageAt`\n    address internal singleton;\n\n    /**\n     * @notice Constructor function sets address of singleton contract.\n     * @param _singleton Singleton address.\n     */\n    constructor(address _singleton) {\n        require(_singleton != address(0), \"Invalid singleton address provided\");\n        singleton = _singleton;\n    }\n\n    /// @dev Fallback function forwards all transactions and returns all received return data.\n    fallback() external payable {\n        // solhint-disable-next-line no-inline-assembly\n        assembly {\n            let _singleton := and(sload(0), 0xffffffffffffffffffffffffffffffffffffffff)\n            // 0xa619486e == keccak(\"masterCopy()\"). The value is right padded to 32-bytes with 0s\n            if eq(calldataload(0), 0xa619486e00000000000000000000000000000000000000000000000000000000) {\n                mstore(0, _singleton)\n                return(0, 0x20)\n            }\n            calldatacopy(0, 0, calldatasize())\n            let success := delegatecall(gas(), _singleton, 0, calldatasize(), 0, 0)\n            returndatacopy(0, 0, returndatasize())\n            if eq(success, 0) {\n                revert(0, returndatasize())\n            }\n            return(0, returndatasize())\n        }\n    }\n}\n"
-        }
-      },
-      "stdJsonInput": {
-        "language": "Solidity",
-        "settings": {
-          "evmVersion": "istanbul",
-          "libraries": {},
-          "metadata": {
-            "bytecodeHash": "ipfs",
-            "useLiteralContent": true
-          },
-          "optimizer": {
-            "enabled": false,
-            "runs": 200
-          },
-          "remappings": []
-        },
-        "sources": {
-          "contracts/proxies/SafeProxy.sol": {
-            "content": "// SPDX-License-Identifier: LGPL-3.0-only\npragma solidity >=0.7.0 <0.9.0;\n\n/**\n * @title IProxy - Helper interface to access the singleton address of the Proxy on-chain.\n * @author Richard Meissner - @rmeissner\n */\ninterface IProxy {\n    function masterCopy() external view returns (address);\n}\n\n/**\n * @title SafeProxy - Generic proxy contract allows to execute all transactions applying the code of a master contract.\n * @author Stefan George - <stefan@gnosis.io>\n * @author Richard Meissner - <richard@gnosis.io>\n */\ncontract SafeProxy {\n    // Singleton always needs to be first declared variable, to ensure that it is at the same location in the contracts to which calls are delegated.\n    // To reduce deployment costs this variable is internal and needs to be retrieved via `getStorageAt`\n    address internal singleton;\n\n    /**\n     * @notice Constructor function sets address of singleton contract.\n     * @param _singleton Singleton address.\n     */\n    constructor(address _singleton) {\n        require(_singleton != address(0), \"Invalid singleton address provided\");\n        singleton = _singleton;\n    }\n\n    /// @dev Fallback function forwards all transactions and returns all received return data.\n    fallback() external payable {\n        // solhint-disable-next-line no-inline-assembly\n        assembly {\n            let _singleton := and(sload(0), 0xffffffffffffffffffffffffffffffffffffffff)\n            // 0xa619486e == keccak(\"masterCopy()\"). The value is right padded to 32-bytes with 0s\n            if eq(calldataload(0), 0xa619486e00000000000000000000000000000000000000000000000000000000) {\n                mstore(0, _singleton)\n                return(0, 0x20)\n            }\n            calldatacopy(0, 0, calldatasize())\n            let success := delegatecall(gas(), _singleton, 0, calldatasize(), 0, 0)\n            returndatacopy(0, 0, returndatasize())\n            if eq(success, 0) {\n                revert(0, returndatasize())\n            }\n            return(0, returndatasize())\n        }\n    }\n}\n"
-          }
-        }
-      },
-      "stdJsonOutput": {
-        "contracts": {
-          "contracts/proxies/SafeProxy.sol": {
-            "SafeProxy": {
-              "abi": [
-                {
-                  "inputs": [
-                    {
-                      "internalType": "address",
-                      "name": "_singleton",
-                      "type": "address"
-                    }
-                  ],
-                  "stateMutability": "nonpayable",
-                  "type": "constructor"
-                },
-                {
-                  "stateMutability": "payable",
-                  "type": "fallback"
-                }
-              ],
-              "devdoc": {
-                "author": "Stefan George - <stefan@gnosis.io>Richard Meissner - <richard@gnosis.io>",
-                "kind": "dev",
-                "methods": {
-                  "constructor": {
-                    "params": {
-                      "_singleton": "Singleton address."
-                    }
-                  }
-                },
-                "title": "SafeProxy - Generic proxy contract allows to execute all transactions applying the code of a master contract.",
-                "version": 1
-              },
-              "evm": {
-                "bytecode": {
-                  "linkReferences": {},
-                  "object": "608060405234801561001057600080fd5b506040516101e63803806101e68339818101604052602081101561003357600080fd5b8101908080519060200190929190505050600073ffffffffffffffffffffffffffffffffffffffff168173ffffffffffffffffffffffffffffffffffffffff1614156100ca576040517f08c379a00000000000000000000000000000000000000000000000000000000081526004018080602001828103825260228152602001806101c46022913960400191505060405180910390fd5b806000806101000a81548173ffffffffffffffffffffffffffffffffffffffff021916908373ffffffffffffffffffffffffffffffffffffffff1602179055505060ab806101196000396000f3fe608060405273ffffffffffffffffffffffffffffffffffffffff600054167fa619486e0000000000000000000000000000000000000000000000000000000060003514156050578060005260206000f35b3660008037600080366000845af43d6000803e60008114156070573d6000fd5b3d6000f3fea264697066735822122003d1488ee65e08fa41e58e888a9865554c535f2c77126a82cb4c0f917f31441364736f6c63430007060033496e76616c69642073696e676c65746f6e20616464726573732070726f7669646564",
-                  "sourceMap": "520:1508:0:-:0;;;965:152;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;1037:1;1015:24;;:10;:24;;;;1007:71;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;1100:10;1088:9;;:22;;;;;;;;;;;;;;;;;;965:152;520:1508;;;;;;"
-                },
-                "deployedBytecode": {
-                  "immutableReferences": {},
-                  "linkReferences": {},
-                  "object": "608060405273ffffffffffffffffffffffffffffffffffffffff600054167fa619486e0000000000000000000000000000000000000000000000000000000060003514156050578060005260206000f35b3660008037600080366000845af43d6000803e60008114156070573d6000fd5b3d6000f3fea264697066735822122003d1488ee65e08fa41e58e888a9865554c535f2c77126a82cb4c0f917f31441364736f6c63430007060033",
-                  "sourceMap": "520:1508:0:-:0;;;1367:42;1363:1;1357:8;1353:57;1545:66;1541:1;1528:15;1525:87;1522:2;;;1641:10;1638:1;1631:21;1679:4;1676:1;1669:15;1522:2;1730:14;1727:1;1724;1711:34;1827:1;1824;1808:14;1805:1;1793:10;1786:5;1773:56;1863:16;1860:1;1857;1842:38;1908:1;1899:7;1896:14;1893:2;;;1939:16;1936:1;1929:27;1893:2;1993:16;1990:1;1983:27"
-                }
-              },
-              "metadata": "{\"compiler\":{\"version\":\"0.7.6+commit.7338295f\"},\"language\":\"Solidity\",\"output\":{\"abi\":[{\"inputs\":[{\"internalType\":\"address\",\"name\":\"_singleton\",\"type\":\"address\"}],\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"stateMutability\":\"payable\",\"type\":\"fallback\"}],\"devdoc\":{\"author\":\"Stefan George - <stefan@gnosis.io>Richard Meissner - <richard@gnosis.io>\",\"kind\":\"dev\",\"methods\":{\"constructor\":{\"params\":{\"_singleton\":\"Singleton address.\"}}},\"title\":\"SafeProxy - Generic proxy contract allows to execute all transactions applying the code of a master contract.\",\"version\":1},\"userdoc\":{\"kind\":\"user\",\"methods\":{\"constructor\":{\"notice\":\"Constructor function sets address of singleton contract.\"}},\"version\":1}},\"settings\":{\"compilationTarget\":{\"contracts/proxies/SafeProxy.sol\":\"SafeProxy\"},\"evmVersion\":\"istanbul\",\"libraries\":{},\"metadata\":{\"bytecodeHash\":\"ipfs\",\"useLiteralContent\":true},\"optimizer\":{\"enabled\":false,\"runs\":200},\"remappings\":[]},\"sources\":{\"contracts/proxies/SafeProxy.sol\":{\"content\":\"// SPDX-License-Identifier: LGPL-3.0-only\\npragma solidity >=0.7.0 <0.9.0;\\n\\n/**\\n * @title IProxy - Helper interface to access the singleton address of the Proxy on-chain.\\n * @author Richard Meissner - @rmeissner\\n */\\ninterface IProxy {\\n    function masterCopy() external view returns (address);\\n}\\n\\n/**\\n * @title SafeProxy - Generic proxy contract allows to execute all transactions applying the code of a master contract.\\n * @author Stefan George - <stefan@gnosis.io>\\n * @author Richard Meissner - <richard@gnosis.io>\\n */\\ncontract SafeProxy {\\n    // Singleton always needs to be first declared variable, to ensure that it is at the same location in the contracts to which calls are delegated.\\n    // To reduce deployment costs this variable is internal and needs to be retrieved via `getStorageAt`\\n    address internal singleton;\\n\\n    /**\\n     * @notice Constructor function sets address of singleton contract.\\n     * @param _singleton Singleton address.\\n     */\\n    constructor(address _singleton) {\\n        require(_singleton != address(0), \\\"Invalid singleton address provided\\\");\\n        singleton = _singleton;\\n    }\\n\\n    /// @dev Fallback function forwards all transactions and returns all received return data.\\n    fallback() external payable {\\n        // solhint-disable-next-line no-inline-assembly\\n        assembly {\\n            let _singleton := and(sload(0), 0xffffffffffffffffffffffffffffffffffffffff)\\n            // 0xa619486e == keccak(\\\"masterCopy()\\\"). The value is right padded to 32-bytes with 0s\\n            if eq(calldataload(0), 0xa619486e00000000000000000000000000000000000000000000000000000000) {\\n                mstore(0, _singleton)\\n                return(0, 0x20)\\n            }\\n            calldatacopy(0, 0, calldatasize())\\n            let success := delegatecall(gas(), _singleton, 0, calldatasize(), 0, 0)\\n            returndatacopy(0, 0, returndatasize())\\n            if eq(success, 0) {\\n                revert(0, returndatasize())\\n            }\\n            return(0, returndatasize())\\n        }\\n    }\\n}\\n\",\"keccak256\":\"0x5dccbe86285c1d4c4b2fed0ae8007620c3186d22411f43feecfbf8a028e5c7e2\",\"license\":\"LGPL-3.0-only\"}},\"version\":1}",
-              "storageLayout": {
-                "storage": [
-                  {
-                    "astId": 11,
-                    "contract": "contracts/proxies/SafeProxy.sol:SafeProxy",
-                    "label": "singleton",
-                    "offset": 0,
-                    "slot": "0",
-                    "type": "t_address"
-                  }
-                ],
-                "types": {
-                  "t_address": {
-                    "encoding": "inplace",
-                    "label": "address",
-                    "numberOfBytes": "20"
-                  }
-                }
-              },
-              "transientStorageLayout": null,
-              "userdoc": {
-                "kind": "user",
-                "methods": {
-                  "constructor": {
-                    "notice": "Constructor function sets address of singleton contract."
-                  }
-                },
-                "version": 1
-              }
-            }
-          }
-        },
-        "sources": {
-          "contracts/proxies/SafeProxy.sol": {
-            "id": 0
-          }
-        }
-      },
-      "storageLayout": {
-        "storage": [
-          {
-            "astId": 11,
-            "contract": "contracts/proxies/SafeProxy.sol:SafeProxy",
-            "label": "singleton",
-            "offset": 0,
-            "slot": "0",
-            "type": "t_address"
-          }
-        ],
-        "types": {
-          "t_address": {
-            "encoding": "inplace",
-            "label": "address",
-            "numberOfBytes": "20"
-          }
-        }
-      },
-      "transientStorageLayout": null,
-      "userdoc": {
-        "kind": "user",
-        "methods": {
-          "constructor": {
-            "notice": "Constructor function sets address of singleton contract."
-          }
-        },
-        "version": 1
-      },
-      "verifiedAt": "2024-08-08T10:04:59Z"
+      "schema": "sourcify.verified-contract.v3"
     },
     "seed": {
-      "$key": "0xadffae68ff3d4ac128fcda6a4599d7080928fc3d38f39dc34fd409d23ae4bad3",
+      "$key": "0x7ca75ddefed11bf8b8fb8f2cd9b5ca5ee0690e8524a1cadbb97675b13d55f609",
       "$creator": "0x1111111111111111111111111111111111111111",
       "$owner": "0x1111111111111111111111111111111111111111",
       "$expiresAt": "never",
       "$contentType": "application/gzip",
-      "$payload": "H4sIAAAAAAAA/+1ce3PcthH/Kiz/klJJBt8PxZnYSu24Yydp7Ml0GnoSHAlKrHnkheTJUjX33ftbgK87na07+VFnSlpjkiB2sbtYALs/QLrR+SzTw19v9KxYLJu6fWxEVfD81fVC6KHOk6QSda0f6QWfU8FvdVac56IpC5Q165VWr4/0uuGNeLFswDrPmmt8Lcpiwa/5LBcDRVwWdVMt46as9NXRzRaqWyQpz/MZj9/IVtBi1mQl5HxGouthsczzo16QUGdXrL8sm7nOzOKBfWYahn/2RDiP7TPGXO+xazhoIb7gWfEsAZlBb+V8keWc2OvhTfsqKnytyzzuK4jqpWgaGKOmWuJy/ouoakmjZ1CnmC1z1M2zWcWrTFCl1ZE+Fw1PeMOJZHbdiLhMxPe8viCiRUpmXtbieYYu4PlZia4ooBsMJUBbLppsnv2HJEF7BVkHIsMstTjSq2WBJkzGULESc75YKMl+fb0aBB4kZCfeiftXlM+z5sSzLN8MnBStpzDj9T+WPM/STCQ/qC5HZzUVj5v6waIqr6DLg5c8FT/h+foEJgn7N9KXF+dLfk5kL8s8S6gze98ZKpJQlZA2ftyaQdp6VlaPlledhQz6r0zTWsAKVhAc6Zc8XwrZvdx0bTfwmOt6luObpmFCeSsxbN8XwnUE81NuG8Lxhe/7PPBdx3Hs2LGc1Iw9zzBd7pvxzI5ZGhheahm2bViu7Vlu6sauZVvwGzAHS0tfragfizc/i1RUooi7ziwL6TiDAhDLZT6obOaYlu0zw3ENxgzmeOCEL2nizBz13cAXQ7iWz/Cjnn3LCnzDx7Pi4DKT+YbRcrGsMReqFeDZB6eAUU16D8wA/zvyH9X1rHTHy3B9Y5/ahq2kijlJRfp4KfNjyws4u+/lG6QzmBm+tCLp5JvQFO4prWGqGrJc2iy2qTQwrIBkgAUMpTnJ47MAlIGyFlOWIxo8cPCx99GXmWDtwt7WPjYClYfecJRMfKbaNwKSxZL/p1YqBo/ZnTfROrbheil3jcD2XcHueUlZHNmb5DWespSyspIQM6errGe1/te+2w5PbStpy4S8G4qTB07qC1m/fYKun2/Q2oErPNc1UB64tomRgLtwPbw7no36AvoZkMb2TJSgX1GH4TkFFShcx7XfZTMyvBOzIEgtjHJjlvr2LIWUvslTx7KT1InRhMF1morbuTeZZolplthqo2mW+HPPEhjldbmsYvGCLzC4HZOF8C8/ZOFxyE5PTwPXQYF5uvcFv/RC45RGdmjap6ehwU7lA31iXugZu7MCAZEbzPfDAKzMLfJ0gnYaqFIKwCte1GlZzWW89guFYLWKjPsg/lF1vpwjWN0MvdevnSfO1WajKjfpQkG4Mk2tvJax7FYx+rQhK2pRNUgaRiHnC97EFHKLK0S1v83l25GeiEVeXs9lyI3oPC/jNz8s5zMZ+Rue7Xu26fTVZCm7smzo4Hie9Z0NFwugmZnOzrxHj0z30ePvxN8CZsaPZ7bbWRHtof024mcIdGN4cTJznRgmsFLfTTHOMFCFiL2Yc08I03YSN6GxEHBMYcJJEm7AZT0XlOtsnxWJuCJhDTJgIi6TMiZV+LK5KEnel41IeaE9FWV1LrRj7etaFnx7XpR1Vp9k5Tc/Zwhpq0R7IbK6LkRFlSpVNqqFZt9kBeVLaESXWc1FmWz6BL0ueMXn8sMob4Qg3bPWZmwnCLKp07MmX0sU0P5TATmyWFvI9y4X0ZANlm9rrSk1cSXiZSOoRBtZo9aQBOXXaElrLoRGa69WphrX5hxqVz2nEyhw2SVGBuVoW71D3mWOiIlLX8/khhTxZmD1jhxr9a4cqVw2MpO9+fNm5ZPL3dPlkPRXreVaLankvWoWZZPFJPjZUK6ly0IKomGarDtFSYTeEiMZSPuRFHirR4DGCAV5xdF3TSvD+5CAzRT/iwZF1KJd76SWqiLb1R880F7+9N0/j5/D/Fhbjp8lKCe4pAq1509/en5snbDjssivo2JR8fM51+p2kGvfPKQ5gWlfs5PghJ1GRVQ8+OqrqNC+0r6Vfqg961zwe5Ev4DFy3Kc8FuR1PI6pO8m16k1vpk6mD4q+LI4lNHGieKvRqG0Zad9W8/aFaj6IiqHBVpQbfMDVe5Zy5bNycX1wiHGgpiXtMhNvtUo0ywqD4KCV6RAarrYo+VmH2poF7p6N7jLYlqmptVwv+6BeazvymKG/8rf8utYKIRKp30xoaVbVjZaIOOeVSLRLDA3y4yOpflEvK/T+BW+0DD/Qu1EegIlfQ4wiRyj8pDVD68hE+vYComoxDAci8EhELs4xoScnvVivSnRasozpYxf8gElNDC7QVicKtdstQRovkjXx0e0Yy5ckeca13zFVvMRchPXtUfO7aqnz0Z5F775yDEhhpIvQBfOruU2778w2MJJrgTasA9rtVaCr/EA9jGbZzo1H9Iddl9JViT+WWSUORuz/8rDje8AOj7RIf1YAscySLeMVDn+ZJSKJdBomHc+h3sNRs22FVW8sdN23WAe1J+3qO5gHEfNbuGe9Zbyg27oRSh8BTYiMek0VajQDt9boFvXxCG9X/rEBIAWmtgv06nGS1fT1uED9Y2ClQivK46ygp2Ne12I+o/mwI+xKxszogrLjzgofktAHdV7yRNqTXe2a+h6uM4akQIzbJFh7+FB7I+KYvzmI9PF0hq440V5hGEmUmXy+ys4vGqieoKPI2y3zmBaoWnubNRcaq9dbyVJN/HFAA45sOZL6Q9Pvw01D0TWv4aPigB2N/fN2NdW7VI1dmWyjwmr9tRM9JnMQxVFfVGONPTg8vN1f9VKtSuisboIhmoNzXh8cjmXbwk4WbcqkBN4QYyjcKoiyfCsKsdxmsApzVNUc3M1ttU2gO+hW/RDFDwWr0sFMx5V5npPE8Uz4ruk7sZHYsT0zU5EwLnwk8q7JYsvw3cQ0bcMAWJIi+0uRHHNm+gIpsTBlzCTDDbBbCzI2o7gjXa6kPwuMzGW3hZXNF7mguX2US4+3ymRefoa8/Emflz9+ovLyJyovP+sAzdFOjgz5s1pFezIeaxtvk5SncoVcCwgRkCFcE7tu+WCz7n+45ZPN55T65GJz32f/vaAJs/uIfbMDqj7Z+6Pa+734Jui80DbpbhFciQ2I0KebFTreKSB0J3Rduhv01TF9kNPdCX36bJohYZEAWQ2JUGKvg+q5lhGadPeC0KabK0vdoKUmKkDzkAVfPVMCpZ5Jz4YRWrj7qsynMmwUyHrYBpH1Aks25fluCGZA70IHEvokv7wzSUnS+7YZWtAmYFIqPwhCKg1cxQ+MpPCBFUjSwJJiYoMlNL3uuxEEinEQSMaBj1Lv3bjqVvDz9TB7bkcv6+y84FieVEYrqopggl9fUxIu81Z67KLEtQz4WbJrDpwhs2arKXWeUucpdZ5S5yl1nlLnKXXuril13maVe6TOMr5okr/XtJ/Zboht3zCr/yzHL6dwaQqXpnBpCpemcGkKl6ZwSV5TuLTNKvcKl4Z46cf+BFE/O+8Ycwwg/XT86P/w+BGi53FELEPubXscs3+LuJEn4Kbj6/e9puPru/Ketmam4+sffnx91Z/YTsbbzvtt7t6e+CY3nnYYv/QdxtUa4qXfRP1B9Qh+HXUxAF6i7YfVI4yeqEffZL0Of4t0fFFH1hUzBGkRxYpRGzf2L0PkKBm04Y+kp+hRFg6hkixvblVGeBdtxoOyxhBHrlOOojLS4mY79VbSLqZsW1VRZaukjCuVIT5SZCnbpthSckVjsqCNL1Wra7pQgYox1fPYdCTWbdhBBpqRijRVnc+KipE6g6cZJEp73F0p0OtOpTsoryAbSXFv2EaXFhlLRe8doNw1vHEAvpfnfdnUuoHVABrAafm1g6elrj1AHcmlJuoHrGptDFIrYsDUkvAWUB11SHU0QNWKSQtWRx1aHUm4Omrx6mgEWEcKsY46yHpXldtKSopoD+D6buQaSJSCdT8peL0Heq1A2K349QcB2JTPb1X28w7XfVHs+8DYnQm3AtlfKpL9GaHsu7Fs6ShSHuUsdH0EOHs/PHsAtHdFtPeCtKOdQO1Iwtp349odajZY7tNB27tg2/cHt7ei258O3t4R3442EO7oHhj3ZwS5d0W574a5NxHdvYHuT4N03wvqvhvr3g/sfr9t3gd3j/HuYejK4SsD5u54vUpePviAfRuLyXBFslwPU27Hi5Szqgn7Ob8uFereFqjj9XVDvyxsGEd9+LT3X1KaCfqNyjG03h2MZ2g9L4kjG7Dw5rcx5E6FEoYeiuW5BSz9YCh/MX6RI3oZtTSC9eXvvf+YEmJCvyJgshatprkww3r3cl139de3vojfYt3/fGp7rHU19egX2aPyRf45skeNFNy0j5mPn1cGC5kdOsG/9NV/ATYJ36bLTgAA",
+      "$payload": "H4sIAAAAAAAA/8WYWW/jNhCA/wufvbukeEl+i71Nm6LbFruLPrRYFDyGMRHrgI7ARuD/XlJ2fCh2EvRBNgzYGg453xzUUHpCVrUKTZ+QsraGpkFThFd4/6EMC66pytg8ISSd3wKfsTnGQs4E4WiCzEL54s6GaSRe1aBaXxazdQumtBAXbmtVNK6s837kL7XsoIlyUxZNW3emLeub+r7LoWiH1k8/jAjJDc4yRxPKiHYp085wmibKccqs40YyQRTaTAZGw7r/PKHSuQZaNGWpmKAA2pRFsHcWIyywrgI98kUDdYs2PzYH576o1izCGKyUaf/N+6sJslAty3WcHp3Ty9I8/N7lGuoYGslSyRK+V+uleEVZ8IFLST8zKlgWPEucnsubm0TczD7DTxlOzEwzgXYOBXvB/i+qWfTTrTI8BasFNyEE1KXCYcpTAQBGGqUkQMK4FRYLITOVEQrcWkWEIFKEmafL3hUWVhGWxADmZ53sf/tsCyzDdVWXq/VXaMplF5eInvu8WkIMw1Hkj2urz+I8ZPF2n8XZ7TaLt9sszrdZnKBC5TEH35SDkIEJ8s2f0R6ahnzBzvj3bZ5+LsrGN1FzqxI8qLui9Tm8oxTP1suPwxLnE/4ItXce7E1IOEpwwj7gNHy/EzzFbMqzv3sIcFBDYWAbiPCvtL64jzBVGPOrZ2e6qoLaqAZ2phf7JEvLcAra2CzTiZZYA6MQ7HEaMpslKgWVOqWTTFuqQTrONQkbN6GUOM1MIH3whe0r3caUV6qNK38axOdTWfR7eR+vzeR/8UohKbUScyeJllnKiMEAmcAKG5Wm2EmZGQsSHGPCZGkGwiYUnMGKKev0Rd7hveUs8B5DcEIzxzJlgeoEZ5QkIKmlzhJOrAr3DaKJBm0ZWCYSbDAH5wiVgNM0hPwYI6/8sjd9THMqLX3R9pv6ZGBUorDJfBSp5V1Rde0p1XBwVLKm7Oq4A06InoXjxkj7QVyCYNxY+PtCtV39IhwH+ag8ObSqPwKc0Oyl48Ym9GB1D7+pdTms39OhUan61uBDQ/t2Ge+CzqicXTip2NKcgj0LRyWx8PgCZCe7wn3nzp6980TxyNVtf23iMat6WdxHI9dg+qNrL0HthsbtrcNOX8NWEey+2Z/23HdMuK4H25r7oqo3wA961+Vd+uLh6+Hs+jr0QPm65EaHB7lu9bKnvao5KvPw5P1Web9D/6r8F4r7stpVaV8r7Td0r8rt87xrlV7Ce+HPTbiqBxe35muK8cG/MQvIw1sq1JeQd+uPzw/fH8Lrm3D4Mu3HR4o2/wEVJjRXzhIAAA==",
       "$creationFlags": [],
       "compiler": "str:solc",
       "compilerversion": "str:0.7.6+commit.7338295f",
@@ -766,15 +776,15 @@
       "abihash": "bytes32:0x3b187c2aa68deb34b1cef3b0442dec2ea12cd6e5d549d58e55ab3bd1c4a8d89f",
       "blocknumber": "u64:17487425",
       "deployer": "addr:0x34f845773D4364999f2fbC7AA26ABDeE902cBb46",
-      "compilationref": "key:0x52c755a8caf3582971eb4edf717febcca48d74a2a6bbb45369dac017375e17a7",
+      "compilationref": "key:0xd48f23965a98f84d3cb1c1b4dd2f793f8d98c0b8c46818800285574117de5111",
       "creationcodehash": "bytes32:0x76733d705f71b79841c0ee960a0ca880f779cde7ef446c989e6d23efc0a4adfb",
       "runtimecodehash": "bytes32:0xd7d408ebcd99b2b70be43e20253d6d92a8ea8fab29bd3be7f55b10032331fb4c",
       "projectid": "str:sourcify",
       "kind": "str:verified_contract",
       "contentencoding": "str:gzip",
       "originalcontenttype": "str:application/json",
-      "payloadsha256": "bytes32:0x9ba620ec05235f7e0b229a753c7d5b0def078b92f9d2e1e72b335eba2b008465",
-      "stagingid": "bytes32:0xbde01dd86bdb115ac50148c1527e1abb674c1fc7e67fd8af1e47b7cce0c57d2b",
+      "payloadsha256": "bytes32:0x03aac5529b24ccf41e0b4d72db987db6366cf0a71e491163490a7f78807e3186",
+      "stagingid": "bytes32:0x13916b963ffc392dc777cd129b9f8c4eb47cc3283afa8dd75f504e80c2f7dc64",
       "uploadschema": "str:sourcify-arkiv.upload.v1"
     }
   }

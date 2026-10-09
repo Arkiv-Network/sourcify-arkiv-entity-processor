@@ -35,6 +35,8 @@
   document.querySelector('#contract-identity').textContent = `${name} · Ethereum mainnet · ${data.address || source.address} · match ${source.matchId}`;
   document.querySelector('#source-download').href = data.files.source;
   document.querySelector('#entities-download').href = data.files.entities;
+  document.querySelector('#hydrated-download').href = data.files.hydrated;
+  document.querySelector('#stored-download').href = data.files.stored;
   document.querySelector('#seed-download').href = data.files.seed;
   const capture = document.querySelector('#capture-details');
   capture.append(document.createTextNode(`Captured ${data.capturedAt}. Processor revision ${data.processorRevision.slice(0, 7)}. ${entities.length} generated entities. Source: `));
@@ -42,7 +44,7 @@
   sourceLink.href = data.sourceUrl;
   sourceLink.textContent = 'Sourcify fields=all response';
   capture.append(sourceLink);
-  document.querySelector('#sample-checks').textContent = `${data.validation?.fieldChecks?.length || 0} source-to-entity field checks passed; ${data.validation?.entityPayloadHashes || 0} payload hashes checked. The full seed bundle passed processor verification.`;
+  document.querySelector('#sample-checks').textContent = `${data.validation?.fieldChecks?.length || 0} hydrated-to-source checks passed; ${data.validation?.entityPayloadHashes || 0} payload hashes checked. The full seed bundle passed processor verification.`;
   const provenanceLink = document.createElement('a');
   provenanceLink.href = data.files.provenance;
   provenanceLink.textContent = ' Detailed provenance and checks';
@@ -51,7 +53,7 @@
   function relevant(entity) {
     const k = kind(entity);
     if (k === 'verified_contract') return source;
-    if (k === 'compilation') return {...pick(source, ['compilation', 'sources', 'metadata', 'storageLayout', 'transientStorageLayout', 'userdoc', 'devdoc', 'sourceIds']), creationBytecode: pick(source.creationBytecode || {}, ['recompiledBytecode', 'sourceMap', 'linkReferences', 'cborAuxdata']), runtimeBytecode: pick(source.runtimeBytecode || {}, ['recompiledBytecode', 'sourceMap', 'linkReferences', 'immutableReferences', 'cborAuxdata'])};
+    if (k === 'compilation') return {...pick(source, ['compilation', 'sources', 'metadata', 'storageLayout', 'transientStorageLayout', 'userdoc', 'devdoc', 'sourceIds', 'abi', 'signatures', 'stdJsonInput', 'stdJsonOutput', 'additionalInput']), creationBytecode: pick(source.creationBytecode || {}, ['recompiledBytecode', 'sourceMap', 'linkReferences', 'cborAuxdata']), runtimeBytecode: pick(source.runtimeBytecode || {}, ['recompiledBytecode', 'sourceMap', 'linkReferences', 'immutableReferences', 'cborAuxdata'])};
     if (k === 'sourcefile') {
       const content = entity.payload?.content;
       const matches = Object.entries(source.sources || {}).filter(([, value]) => value.content === content);
@@ -120,7 +122,7 @@
         ['chainid','chainId','Decimal chain ID stored as u64.'], ['address','address','Address stored with checksum casing.'], ['match','match','Match status stored as text.'],
         ['verifiedat','verifiedAt','ISO timestamp converted to Unix seconds.'], ['matchid','matchId','Decimal ID stored as u64.'], ['isproxy','proxyResolution.isProxy','Boolean from this live response.'], ['proxytype','proxyResolution.proxyType','Text proxy type from this live response.'],
         ['blocknumber','deployment.blockNumber','Decimal block number stored as u64; missing value uses index sentinel 0.'], ['deployer','deployment.deployer','Checksummed address; missing value uses zero-address index sentinel.'],
-        ['abihash','abi','Derived: SHA-256 of serialized ABI JSON.'], ['creationcodehash','creationBytecode.onchainBytecode','Derived: Keccak-256 of bytecode bytes.'], ['runtimecodehash','runtimeBytecode.onchainBytecode','Derived: Keccak-256 of bytecode bytes.']
+        ['abihash','abi','Derived: SHA-256 of canonical exact ABI JSON.'], ['creationcodehash','creationBytecode.onchainBytecode','Derived: Keccak-256 of bytecode bytes.'], ['runtimecodehash','runtimeBytecode.onchainBytecode','Derived: Keccak-256 of bytecode bytes.']
       ]) map(attribute,path,explanation);
       rows.push(['compilationref','Generated reference to the compilation entity key. No direct Sourcify API field.']);
     }
@@ -129,7 +131,7 @@
       rows.push(['hash', k === 'sourcefile' ? 'Derived: SHA-256 of the UTF-8 source content shown on the left.' : 'Derived: Keccak-256 of the bytecode bytes shown on the left.']);
       rows.push(['size', k === 'sourcefile' ? 'Derived: source content length in UTF-8 bytes.' : 'Derived: bytecode length in bytes, excluding the hex prefix.']);
     }
-    if (k === 'compilation') rows.push(['hash','Derived fingerprint: compiler/version/language/FQN/settings, source path–hash map and four bytecode hashes. Not a direct Sourcify field or full-payload hash. Left shows compiler index inputs only; payload mode and downloads retain other fingerprint inputs.']);
+    if (k === 'compilation') rows.push(['hash','SHA-256 of the complete canonical compilation v3 envelope before spill. This identifies the shared representation, including all references; it is not a Sourcify relational ID.']);
     rows.push(['projectid, kind','Generated dataset namespace and entity kind; no direct Sourcify field.']);
     rows.push(['contentencoding, originalcontenttype, payloadsha256, stagingid, uploadschema','Generated storage/encoding metadata and integrity hashes; no direct Sourcify fields. Included on the right exactly as written to the seed.']);
     return {inputs, rows};
@@ -160,24 +162,42 @@
     const entity = entities[Number(select.value)];
     const k = kind(entity);
     const descriptions = {
-      verified_contract: 'The verification payload preserves the entire input JSON, including nested sources and bytecode. The compilationref and code-hash attributes provide additional links and indexes.',
-      compilation: 'The compilation keeps compiler settings and artifacts. Its sources map replaces each source body with a SHA-256 reference to the source-file entity; recompiled bytecode is referenced by hash.',
-      sourcefile: 'The shared source-file entity stores source text inside a JSON envelope; the complete verification payload retains it too. The compilation retains the file path and points to this entity’s hash attribute: SHA-256 of the exact UTF-8 source text.',
-      code: 'Sourcify represents bytecode as hex; this entity stores the actual bytes (displayed as hex here). Its hash attribute is Keccak-256. Identical onchain and recompiled bytecode can share one entity.',
-      blob: 'This entity holds one slice of a large payload. The parent’s spill reference identifies the complete body; part attributes determine the slice order.'
+      verified_contract: 'Stored verification JSON is a versioned envelope. Its data keeps contract-specific fields; references restore shared compilation fields, source text and bytecode. This stripped JSON is not the full Sourcify response.',
+      compilation: 'The shared compilation envelope holds compiler-owned values, ABI, metadata, docs, signatures and standard JSON. Repeated source text and bytecode are replaced with references. Follow a reference below to inspect its actual target.',
+      sourcefile: 'This shared entity holds exact source text. SHA-256 of its UTF-8 content identifies it; reference paths place the content back into the original JSON.',
+      code: 'This shared entity stores binary bytecode, displayed as hex. Keccak-256 identifies the bytes. Each reference also preserves the original prefix and hex casing for lossless hydration.',
+      blob: 'This is a slice of an oversized payload. The parent spill hash identifies the complete body; part attributes determine ordering.'
     };
-    const equal = JSON.stringify(sortedForDisplay(source)) === JSON.stringify(sortedForDisplay(entity.payload));
-    document.querySelector('#relationship').textContent = (descriptions[k] || '') + (k === 'verified_contract' ? (equal ? ' Comparison: all JSON values equal.' : ' Comparison: payload differs from the captured source.') : '');
-    document.querySelector('#entity-kind').textContent = k;
-    document.querySelector('#entity-key').textContent = `Generated entity key: ${entity.key}`;
+    const full = mode === 'hydrated';
+    const wire = mode === 'wire';
     const attributesMode = mode === 'attributes';
-    document.querySelector('#source-heading').textContent = attributesMode ? 'Sourcify · flat attribute inputs' : 'Sourcify · nested fields';
-    document.querySelector('#entity-heading').textContent = attributesMode ? 'Arkiv · attributes' : 'Arkiv · payload';
-    document.querySelector('#source-caption').textContent = attributesMode ? 'Actual source inputs. Derived hashes and processor metadata have no direct field equivalent.' : (k === 'verified_contract' ? 'Complete captured Sourcify response; no fields omitted.' : 'Actual nested source-field excerpt. Download the full response above.');
-    document.querySelector('#entity-caption').textContent = attributesMode ? 'Actual typed index attributes, including generated storage metadata. See mappings below.' : 'Actual decoded payload. Binary bytecode is displayed as hex.';
+    select.disabled = full;
+    document.querySelector('#relationship').textContent = full ? 'Full hydrated JSON was reconstructed by the CLI from the generated seed bundle. Every JSON value equals the captured Sourcify response, including unknown fields. The stored envelope remains available in Stored / stripped JSON.' : descriptions[k] || '';
+    document.querySelector('#entity-kind').textContent = full ? 'hydrated contract' : k;
+    document.querySelector('#entity-key').textContent = full ? 'Hydration resolves validated shared references; this full JSON is a reader result, not an additional stored entity.' : `Generated entity key: ${entity.key}`;
+    document.querySelector('#source-heading').textContent = attributesMode ? 'Sourcify · flat attribute inputs' : full || k === 'verified_contract' ? 'Sourcify · original full JSON' : 'Sourcify · relevant original fields';
+    document.querySelector('#entity-heading').textContent = full ? 'Hydrated · full original JSON' : attributesMode ? 'Arkiv · typed attributes' : wire ? 'Arkiv · actual seed wire entry' : k === 'verified_contract' ? 'Arkiv · stored stripped JSON' : 'Arkiv · stored shared payload';
+    document.querySelector('#source-caption').textContent = attributesMode ? 'Actual source inputs; generated storage metadata has no direct equivalent.' : full || k === 'verified_contract' ? 'Complete captured response. Compare every field with the full hydrated view.' : 'Original field excerpt associated with the selected shared entity.';
+    document.querySelector('#entity-caption').textContent = full ? 'Actual hydrate command output. Equality with the captured response was verified.' : attributesMode ? 'Actual index attributes written to the seed.' : wire ? 'Exact seed entry, including base64 wire payload and transport attributes.' : 'Actual decoded stored payload. Shared references remain unresolved; binary is shown as hex.';
+    const metrics = data.metrics;
+    const fmt = value => Number(value).toLocaleString('en-US');
+    document.querySelector('#size-details').textContent = `${full ? 'Original compact JSON: ' + fmt(metrics.originalCompactJsonBytes) : 'Selected payload: ' + fmt(entity.payloadBytes) + ' decoded; ' + fmt(entity.wirePayloadBytes) + ' wire'} bytes. All ${entities.length} stored entities: ${fmt(metrics.allEntitiesDecodedBytes)} decoded payload bytes; ${fmt(metrics.allEntitiesWireBytes)} wire payload bytes. JSONL including attributes/base64: ${fmt(metrics.seedJsonlBytes)} bytes. Single-sample measurements.`;
+    const links = document.querySelector('#reference-list');
+    links.replaceChildren();
+    links.hidden = full || attributesMode || wire;
+    for (const ref of entity.payload?.references || []) {
+      const target = ref.kind === 'local' ? Number(select.value) : entities.findIndex(candidate => candidate.kind === ref.kind && String(attr(candidate, 'hash')).replace(/^bytes32:/, '') === ref.hash);
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = `${ref.path || '/'} → ${ref.kind}${ref.pointer ? ' ' + ref.pointer : ''}`;
+      button.title = ref.kind === 'local' ? `Same compilation: ${ref.pointer}` : ref.hash;
+      button.disabled = target < 0;
+      button.addEventListener('click', () => { select.value = String(target); mode = 'payload'; render(); });
+      links.append(button);
+    }
     const comparison = attributeComparison(entity);
-    showJSON(document.querySelector('#source-json'), attributesMode ? flattenAttributeInputs(comparison.inputs) : relevant(entity));
-    showJSON(document.querySelector('#entity-json'), attributesMode ? entity.attributes : entity.payload);
+    showJSON(document.querySelector('#source-json'), attributesMode ? flattenAttributeInputs(comparison.inputs) : full ? source : relevant(entity));
+    showJSON(document.querySelector('#entity-json'), full ? data.hydrated : attributesMode ? entity.attributes : wire ? entity.seed : entity.payload);
     const mapping = document.querySelector('#attribute-mapping');
     mapping.hidden = !attributesMode;
     const rows = document.querySelector('#mapping-rows');
