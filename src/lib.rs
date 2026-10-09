@@ -63,13 +63,21 @@ pub fn transform_line(line: Vec<u8>) -> Result<Line> {
             skipped: v.get_mut("skipped").map(Value::take),
         });
     }
-    let mut record = match v.as_object_mut() {
+    let wrapped = match v.as_object_mut() {
         Some(m) => m.remove("record").or_else(|| m.remove("contract")),
         None => None,
-    }
-    .unwrap_or(v);
+    };
+    let provenance = if wrapped.is_some() {
+        v.as_object_mut().and_then(|m| m.remove("sourcifyIds"))
+    } else {
+        None
+    };
+    let mut record = wrapped.unwrap_or(v);
     canonicalize(&mut record);
-    Ok(Line::Record(convert(&record)?))
+    Ok(Line::Record(convert_with_provenance(
+        &record,
+        provenance.as_ref(),
+    )?))
 }
 // JavaScript JSON.stringify enumerates integer-index keys before string keys.
 pub fn bytes(v: &Value) -> Vec<u8> {
@@ -274,15 +282,45 @@ fn compiler_attrs(r: &Value, runs: bool) -> Map<String, Value> {
     a
 }
 pub fn transform(input: &Value) -> Result<Vec<Entity>> {
-    convert(&canonical(
-        input
-            .get("record")
-            .or_else(|| input.get("contract"))
-            .unwrap_or(input),
-    ))
+    match input.get("record").or_else(|| input.get("contract")) {
+        Some(record) => convert_with_provenance(&canonical(record), input.get("sourcifyIds")),
+        None => convert(&canonical(input)),
+    }
 }
 /// Transforms a canonical (key-sorted) record.
 fn convert(r: &Value) -> Result<Vec<Entity>> {
+    convert_with_provenance(r, None)
+}
+/// Envelope provenance belongs only in attributes; source-owned JSON remains untouched.
+fn provenance_attrs(ids: Option<&Value>) -> Result<Map<String, Value>> {
+    let mut attributes = Map::new();
+    let Some(ids) = ids else {
+        return Ok(attributes);
+    };
+    let ids = ids
+        .as_object()
+        .context("envelope sourcifyIds must be an object")?;
+    for (name, value) in ids {
+        let attribute = match name.as_str() {
+            "compilationId" => "sourcifycompilationid",
+            "deploymentId" => "sourcifydeploymentid",
+            "verificationId" => "sourcifyverificationid",
+            "contractId" => "sourcifycontractid",
+            _ => bail!("unknown envelope sourcifyIds field: {name}"),
+        };
+        let value = value
+            .as_str()
+            .with_context(|| format!("envelope sourcifyIds.{name} must be a nonempty string"))?;
+        ensure!(
+            !value.trim().is_empty(),
+            "envelope sourcifyIds.{name} must be a nonempty string"
+        );
+        attributes.insert(attribute.into(), attr("str", value));
+    }
+    Ok(attributes)
+}
+fn convert_with_provenance(r: &Value, ids: Option<&Value>) -> Result<Vec<Entity>> {
+    let provenance = provenance_attrs(ids)?;
     ensure!(
         r["chainId"] == "1" || r["chainId"] == 1,
         "Ethereum mainnet only"
@@ -292,14 +330,14 @@ fn convert(r: &Value) -> Result<Vec<Entity>> {
             .is_some_and(|abi| abi.is_array() || abi.is_null()),
         "ABI must be an array or null"
     );
-    for name in [
-        "compilation",
-        "sources",
-        "creationBytecode",
-        "runtimeBytecode",
-    ] {
+    for name in ["compilation", "creationBytecode", "runtimeBytecode"] {
         ensure!(r[name].is_object(), "missing object {name}");
     }
+    ensure!(
+        r.get("sources")
+            .is_some_and(|sources| sources.is_object() || sources.is_null()),
+        "sources must be an object or null"
+    );
     let address = r["address"].as_str().context("address missing")?;
     ensure!(
         address.starts_with("0x") && address.len() == 42 && hex::decode(&address[2..]).is_ok(),
@@ -308,7 +346,7 @@ fn convert(r: &Value) -> Result<Vec<Entity>> {
     let mut out = Vec::new();
     let mut sources = Map::new();
     let mut seen = HashSet::new();
-    for (path, source) in r["sources"].as_object().unwrap() {
+    for (path, source) in r["sources"].as_object().into_iter().flatten() {
         let content = source["content"].as_str().context("missing source body")?;
         let hash = hx(sha(content));
         sources.insert(path.clone(), Value::String(hash.clone()));
@@ -415,6 +453,7 @@ fn convert(r: &Value) -> Result<Vec<Entity>> {
     let deployment = object(&r["deployment"]);
     let abi = &r["abi"];
     let mut va = compiler_attrs(r, false);
+    va.extend(provenance);
     va.insert("chainid".into(), attr("u64", "1"));
     va.insert("address".into(), attr("addr", checksum_address(address)?));
     va.insert("match".into(), attr("str", string(&r["match"], "null")));
@@ -553,6 +592,18 @@ mod tests {
         assert_ne!(verified.id, with_array.last().unwrap().id);
     }
     #[test]
+    fn nullable_sources_preserved_without_source_entities() {
+        let mut record = fixture();
+        record["sources"] = Value::Null;
+        let entities = transform(&record).unwrap();
+        assert_eq!(restored_contract(&entities), canonical(&record));
+        assert!(!entities.iter().any(|entity| entity.kind == "sourcefile"));
+        record.as_object_mut().unwrap().remove("sources");
+        assert!(transform(&record).is_err());
+        record["sources"] = json!([]);
+        assert!(transform(&record).is_err());
+    }
+    #[test]
     fn source_provenance_does_not_change_shared_entities() {
         let mut r = fixture();
         let baseline = transform(&r).unwrap();
@@ -601,6 +652,97 @@ mod tests {
         assert_eq!(payload.len() as u64, spill["bytes"].as_u64().unwrap());
         assert_eq!(hx(sha(&payload)), spill["hash"]);
         serde_json::from_slice(&payload).unwrap()
+    }
+
+    #[test]
+    fn envelope_provenance_is_attributes_only_and_part_of_identity() {
+        for spill in [false, true] {
+            let mut record = fixture();
+            // A source-owned field with this name is never interpreted or removed.
+            record["sourcifyIds"] = json!({"future": [null, 123]});
+            if spill {
+                record["future"] = json!("x".repeat(BUDGET));
+            }
+            let baseline = transform(&record).unwrap();
+            for wrapper in ["record", "contract"] {
+                let input = json!({wrapper: record, "sourcifyIds": {
+                    "compilationId":"compilation-uuid", "deploymentId":"deployment-uuid",
+                    "verificationId":"9007199254740993", "contractId":"contract-uuid"
+                }});
+                let entities = transform(&input).unwrap();
+                assert_eq!(restored_contract(&entities), canonical(&record));
+                let verified = entities.last().unwrap();
+                for (attribute, expected) in [
+                    ("sourcifycompilationid", "compilation-uuid"),
+                    ("sourcifydeploymentid", "deployment-uuid"),
+                    ("sourcifyverificationid", "9007199254740993"),
+                    ("sourcifycontractid", "contract-uuid"),
+                ] {
+                    assert_eq!(verified.attributes[attribute], attr("str", expected));
+                }
+                assert_ne!(verified.id, baseline.last().unwrap().id);
+                let mut recomputed = verified.clone();
+                recomputed.identify();
+                assert_eq!(verified.id, recomputed.id);
+                assert_eq!(entities.len(), baseline.len());
+                for (before, after) in baseline.iter().zip(&entities).take(entities.len() - 1) {
+                    assert_eq!(before.id, after.id);
+                }
+                let Line::Record(streamed) =
+                    transform_line(serde_json::to_vec(&input).unwrap()).unwrap()
+                else {
+                    panic!("record expected");
+                };
+                assert_eq!(restored_contract(&streamed), canonical(&record));
+                assert_eq!(streamed.last().unwrap().id, verified.id);
+                let mut changed = input.clone();
+                changed["sourcifyIds"]["verificationId"] = json!("9007199254740994");
+                assert_ne!(transform(&changed).unwrap().last().unwrap().id, verified.id);
+            }
+        }
+    }
+
+    #[test]
+    fn malformed_envelope_provenance_is_rejected() {
+        for ids in [
+            Value::Null,
+            json!([]),
+            json!("id"),
+            json!({"compilationId": 42}),
+            json!({"deploymentId": null}),
+            json!({"verificationId": ""}),
+            json!({"contractId": "  "}),
+            json!({"address": "override"}),
+        ] {
+            let input = json!({"record": fixture(), "sourcifyIds": ids});
+            assert!(transform(&input).is_err(), "accepted {ids}");
+            assert!(
+                transform_line(serde_json::to_vec(&input).unwrap()).is_err(),
+                "accepted {ids}"
+            );
+        }
+        // Partial provenance is optional; only supplied recognized IDs become attributes.
+        let input = json!({"record":fixture(), "sourcifyIds":{"compilationId":"c"}});
+        let entities = transform(&input).unwrap();
+        let attributes = &entities.last().unwrap().attributes;
+        assert_eq!(attributes["sourcifycompilationid"], attr("str", "c"));
+        assert!(!attributes.contains_key("sourcifydeploymentid"));
+    }
+
+    #[test]
+    fn legacy_wrappers_and_empty_provenance_preserve_identity() {
+        let mut record = fixture();
+        record["sourcifyIds"] = json!({"unrecognized": 99});
+        let baseline = transform(&record).unwrap();
+        for input in [
+            json!({"record":record}),
+            json!({"contract":record}),
+            json!({"record":record, "sourcifyIds":{}}),
+        ] {
+            let entities = transform(&input).unwrap();
+            assert_eq!(restored_contract(&entities), canonical(&record));
+            assert_eq!(entities.last().unwrap().id, baseline.last().unwrap().id);
+        }
     }
 
     #[test]

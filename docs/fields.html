@@ -326,35 +326,35 @@
 <td>stdJsonInput</td>
 <td>verified_contract</td>
 <td>stdJsonInput</td>
-<td>Preserved when present in API/NDJSON input. Omitted by the Parquet adapter; exact input preservation does not recover it.</td>
+<td>Reconstructed from exported language, sources, compiler settings and additional input using Sourcify’s mapping.</td>
 <td>Derived by Sourcify from stored compiler input</td>
 </tr>
 <tr>
 <td>stdJsonOutput</td>
 <td>verified_contract</td>
 <td>stdJsonOutput</td>
-<td>Preserved when present in API/NDJSON input. Omitted by the Parquet adapter; exact input preservation does not recover it.</td>
+<td>Reconstructed from exported compiler artifacts and bytecode using Sourcify’s mapping; metadata retains its exported JSON text.</td>
 <td>Derived by Sourcify from stored compiler output</td>
 </tr>
 <tr>
 <td>signatures.function</td>
 <td>verified_contract</td>
 <td>signatures.function</td>
-<td>Preserved when present in API/NDJSON input. Omitted by the Parquet adapter; exact input preservation does not recover it.</td>
+<td>Read from compiled_contracts_signatures and signatures; grouped by type, deduplicated, with explicit empty arrays.</td>
 <td>Sourcify uses compiled_contracts_signatures + signatures</td>
 </tr>
 <tr>
 <td>signatures.event</td>
 <td>verified_contract</td>
 <td>signatures.event</td>
-<td>Preserved when present in API/NDJSON input. Omitted by the Parquet adapter; exact input preservation does not recover it.</td>
+<td>Read from compiled_contracts_signatures and signatures; grouped by type, deduplicated, with explicit empty arrays.</td>
 <td>Sourcify uses compiled_contracts_signatures + signatures</td>
 </tr>
 <tr>
 <td>signatures.error</td>
 <td>verified_contract</td>
 <td>signatures.error</td>
-<td>Preserved when present in API/NDJSON input. Omitted by the Parquet adapter; exact input preservation does not recover it.</td>
+<td>Read from compiled_contracts_signatures and signatures; grouped by type, deduplicated, with explicit empty arrays.</td>
 <td>Sourcify uses compiled_contracts_signatures + signatures</td>
 </tr>
 <tr>
@@ -365,10 +365,10 @@
 <td>Upstream resolves dynamically when requested</td>
 </tr>
 <tr>
-<td>sourcifyIds (storage only)</td>
-<td>verified_contract</td>
-<td>sourcifyIds</td>
-<td>compilationId, deploymentId, verificationId, contractId retained as strings. Not an API v2 response field.</td>
+<td>sourcifyIds (wrapper only)</td>
+<td>verified_contract attributes</td>
+<td>sourcifycompilationid / sourcifydeploymentid / sourcifyverificationid / sourcifycontractid</td>
+<td>Exported IDs retained as string attributes, outside the contract payload. Not API v2 response fields.</td>
 <td>Original exported relational IDs</td>
 </tr>
 </tbody>

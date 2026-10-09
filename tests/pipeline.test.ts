@@ -1,6 +1,6 @@
 /**
  * End-to-end tests on tests/fixture/parquet (real export rows, see tests/fixture/extract.ts). expected.json holds the
- * output of the original sourcify-arkiv-helper pipeline: legacy records must stay byte-identical,
+ * output of the original sourcify-arkiv-helper pipeline: legacy records retain their available data,
  * while complete decoded contract payloads now equal each adapter input. Contract identities and bundle hashes
  * deliberately change; the historical whole-bundle checksums are not a payload-parity oracle.
  *
@@ -13,6 +13,7 @@ import { tmpdir } from 'node:os';
 import { gunzipSync } from 'node:zlib';
 import { dirname, join, resolve } from 'node:path';
 import { prepareSource } from '../source/prepare';
+import { Database } from '../source/database';
 
 const root = resolve(import.meta.dir, '..');
 const parquetDir = join(root, 'tests/fixture/parquet');
@@ -82,13 +83,37 @@ describe('source stage', () => {
 
   test('prepare selects the current Ethereum mainnet matches only', () => {
     const manifest = JSON.parse(readFileSync(join(sourceDir, 'source-manifest.json'), 'utf8'));
-    expect(manifest).toMatchObject({ status: 'completed', all: true, selectedCount: expected.selectedCount, firstMatchId: '1', signatures: false });
+    expect(manifest).toMatchObject({ status: 'completed', all: true, selectedCount: expected.selectedCount, firstMatchId: '1', signatures: true });
     expect(manifest.counts.matches).toBe(String(expected.selectedCount)); // match 100 is on chain 35443
   });
 
   test('prepare reuses an identical selection and refuses a different one', async () => {
     expect((await prepareSource({ all: true, parquetDir, sourceDir })).status).toBe('completed');
     expect(prepareSource({ limit: 3, parquetDir, sourceDir })).rejects.toThrow('different selection');
+  });
+
+  test('old prepared formats are refused instead of silently omitting signatures', async () => {
+    const oldDir = join(scratch, 'old-source');
+    const { mkdirSync } = await import('node:fs');
+    mkdirSync(oldDir);
+    writeFileSync(join(oldDir, 'source-manifest.json'), JSON.stringify({ schema: 'sourcify-arkiv.import-source.v1', status: 'completed', all: true, dataDir: parquetDir, signatures: false }));
+    await expect(prepareSource({ all: true, parquetDir, sourceDir: oldDir })).rejects.toThrow('outdated');
+    expect(run(['bun', 'source/stream.ts', '--source-dir', oldDir]).stderr).toContain('completed v2');
+  });
+
+  test('missing exported signature bodies fail closed or are explicitly reported', async () => {
+    const missingDir = join(scratch, 'missing-signature');
+    await prepareSource({ limit: 3, parquetDir, sourceDir: missingDir, threads: 1, memoryLimit: '1GB' });
+    const db = await Database.open(join(missingDir, 'subset.duckdb'), {}, missingDir, 'test-');
+    try { await db.connection.run('DELETE FROM signatures'); } finally { await db.close(); }
+    const strict = run(['bun', 'source/stream.ts', '--source-dir', missingDir]);
+    expect(strict.code).toBe(1);
+    expect(strict.stderr).toContain('Missing signature');
+    expect(strict.stdout).not.toContain('source-complete');
+    const bounded = run(['bun', 'source/stream.ts', '--source-dir', missingDir, '--skip-missing-references']);
+    expect(bounded.code).toBe(0);
+    const marker = JSON.parse(bounded.stdout.trim().split('\n').at(-1)!);
+    expect(marker.skipped.some((item: any) => item.matchId === '1' && item.reason.startsWith('Missing signature:'))).toBe(true);
   });
 
   test('prepare --limit takes the first matches by ID', async () => {
@@ -99,20 +124,51 @@ describe('source stage', () => {
   test('every real Parquet adapter record equals its decoded wire contract payload', () => {
     const result = run(['bun', 'source/stream.ts', '--source-dir', sourceDir, '--skip-missing-references']);
     expect(result.code).toBe(0);
-    const lines = result.stdout.trim().split('\n').map(line => JSON.parse(line));
+    const envelopes = result.stdout.trim().split('\n').map(line => JSON.parse(line));
+    const lines = envelopes.map(item => item.record ?? item);
     expect(lines.pop()).toEqual({ type: 'source-complete', records: expected.records + 2, lastMatchId: '28759260', skipped: remainingSkipped });
     expect(lines.find(record => record.matchId === '23813307').metadata).toBeNull();
     const yul = lines.find(record => record.matchId === '28759260');
     expect(yul.compilation.language).toBe('Yul');
     expect(yul.abi).toBeNull();
-    for (const record of lines) {
-      expect(Object.keys(record.sourcifyIds).sort()).toEqual(['compilationId', 'contractId', 'deploymentId', 'verificationId']);
-      for (const id of Object.values(record.sourcifyIds)) expect(typeof id).toBe('string');
+    const { proxyResolution: _liveProxy, ...capturedApi } = JSON.parse(readFileSync(join(root, 'docs/data/sourcify-response.json'), 'utf8'));
+    const snapshotApi = lines.find(record => record.matchId === '607');
+    const capturedMetadata = capturedApi.stdJsonOutput.contracts['contracts/proxies/SafeProxy.sol'].SafeProxy.metadata;
+    const snapshotMetadata = snapshotApi.stdJsonOutput.contracts['contracts/proxies/SafeProxy.sol'].SafeProxy.metadata;
+    // The export preserves spaced metadata text, while the captured API has compact text.
+    // This is the only stored-field mismatch; do not silently serialize away the difference.
+    expect(snapshotMetadata).not.toBe(capturedMetadata);
+    expect(JSON.parse(snapshotMetadata)).toEqual(JSON.parse(capturedMetadata));
+    const withoutMetadataText = (value: any) => {
+      const copy = structuredClone(value);
+      delete copy.stdJsonOutput.contracts['contracts/proxies/SafeProxy.sol'].SafeProxy.metadata;
+      return copy;
+    };
+    expect(withoutMetadataText(snapshotApi)).toEqual(withoutMetadataText(capturedApi));
+    const signed = lines.find(record => record.matchId === '1');
+    for (const type of ['function', 'event', 'error']) {
+      expect(signed.signatures[type]).toHaveLength(type === 'function' ? 2 : 1);
+      expect(signed.signatures[type][0].signatureHash32).toMatch(/^0x[0-9a-f]{64}$/);
+      expect(signed.signatures[type][0].signatureHash4).toBe(signed.signatures[type][0].signatureHash32.slice(0, 10));
     }
-    const legacy = lines.filter(record => !recoveredIds.includes(record.matchId)).map(({ sourcifyIds, ...record }) => record);
+    expect(signed.signatures.function.map((item: any) => item.signature)).toEqual(['allowance(address,address)', 'transfer(address,uint256)']);
+    expect(signed.signatures.function[0].signatureHash32 > signed.signatures.function[1].signatureHash32).toBe(true);
+    expect(lines.some(record => Object.values(record.signatures).every((group: any) => group.length === 0))).toBe(true);
+    for (const envelope of envelopes.filter(item => item.record)) {
+      expect(Object.keys(envelope.sourcifyIds).sort()).toEqual(['compilationId', 'contractId', 'deploymentId', 'verificationId']);
+      for (const id of Object.values(envelope.sourcifyIds)) expect(typeof id).toBe('string');
+    }
+    for (const record of lines) {
+      expect(record.stdJsonInput).toHaveProperty('settings');
+      expect(record.stdJsonOutput).toHaveProperty('contracts');
+      expect(record).not.toHaveProperty('sourcifyIds');
+    }
+    const legacy = lines.filter(record => !recoveredIds.includes(record.matchId)).map(({ sourcifyIds, signatures, stdJsonInput, stdJsonOutput, ...record }) => record);
     legacy.push({ type: 'source-complete', records: expected.records, lastMatchId: expected.lastMatchId, skipped: expected.skipped });
     const legacyStream = legacy.map(record => JSON.stringify(record) + '\n').join('');
-    expect(sha256(legacyStream)).toBe(expected.ndjsonSha256);
+    // API reconstruction deliberately adds null artifact fields and checksummed addresses.
+    expect(signed.creationBytecode).toHaveProperty('sourceMap');
+    expect(signed.runtimeBytecode).toHaveProperty('immutableReferences');
     const input = join(scratch, 'legacy.ndjson'), bundle = join(scratch, 'legacy-bundle');
     writeFileSync(input, legacyStream);
     const processed = run([processor, 'process', '-i', input, '-o', bundle, '--owner', expected.owner, '--require-source-complete']);
@@ -142,7 +198,7 @@ describe('source stage', () => {
   test('stream --limit and --max-skipped', () => {
     const limited = run(['bun', 'source/stream.ts', '--source-dir', sourceDir, '--limit', '2']);
     expect(limited.code).toBe(0);
-    expect(limited.stdout.trim().split('\n').map(line => JSON.parse(line).matchId ?? JSON.parse(line).records)).toEqual(['1', '32', 2]);
+    expect(limited.stdout.trim().split('\n').map(line => JSON.parse(line).record?.matchId ?? JSON.parse(line).records)).toEqual(['1', '32', 2]);
     const capped = run(['bun', 'source/stream.ts', '--source-dir', sourceDir, '--skip-missing-references', '--max-skipped', '1']);
     expect(capped.code).toBe(1);
     expect(capped.stderr).toContain('More than 1 records skipped');
@@ -166,7 +222,7 @@ describe('pipeline/run.sh', () => {
     const { contracts } = decodeBundle(bundle);
     const yul = contracts.find(record => record.matchId === '28759260');
     expect(yul.abi).toBeNull();
-    expect(yul.sourcifyIds.compilationId).toBeTruthy();
+    expect(yul).not.toHaveProperty('sourcifyIds');
     expect(contracts.some(record => record.matchId === '23813307')).toBe(true);
     expect(run([processor, 'verify', bundle]).code).toBe(0);
     const timings = JSON.parse(readFileSync(join(workDir, 'timings.json'), 'utf8'));

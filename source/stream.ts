@@ -64,7 +64,7 @@ export async function streamRecords(options: Options, write: (line: string) => P
         console.error(JSON.stringify({ skippedMatchId: item.matchId, reason }));
         continue;
       }
-      await write(JSON.stringify(item.record) + '\n');
+      await write(JSON.stringify({ record: item.record, sourcifyIds: item.sourcifyIds }) + '\n');
       records++; lastMatchId = item.matchId;
       if (records % 1000 === 0) console.error(JSON.stringify({ sourceRecords: records, lastMatchId, ...(skipped ? { skipped: skipped.length } : {}), elapsedSeconds: (performance.now() - started) / 1000 }));
       if (options.limit !== undefined && records >= options.limit) break;

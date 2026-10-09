@@ -26,9 +26,17 @@ This is JSON-value equality, not preservation of the input file’s whitespace o
 Shared source, code and compilation entities and query attributes remain available.
 
 This guarantee starts at the processor input. A captured full API response retains every supplied
-field, including standard compiler JSON and signatures. The Parquet adapter builds a narrower
-record: it omits `stdJsonInput`, `stdJsonOutput` and `signatures`, and adds `sourcifyIds`.
-Preserving that record exactly does **not** establish complete Sourcify API parity.
+field, including standard compiler JSON and signatures. The Parquet adapter reconstructs
+`stdJsonInput` and `stdJsonOutput` using Sourcify’s stored-field mapping and reads `signatures`
+from the export’s signature tables. Original database IDs travel outside the contract JSON,
+in an NDJSON wrapper, and become entity attributes. Live `proxyResolution` is not available
+from an offline snapshot; full live API parity is not claimed.
+
+The real SafeProxy Parquet fixture matches the saved API response except for live proxy
+resolution and whitespace inside the `stdJsonOutput` metadata **string**. The exported
+metadata text is retained, not rewritten to hide that difference. Signatures come from exported tables and are ordered by signature text, following the
+production selector. Snapshot/API metadata text and live proxy state remain explicit limits
+on strict cross-source JSON equality.
 
 | Path | Contents |
 | --- | --- |
@@ -50,28 +58,29 @@ in a browser, or serve `docs/` with any static file server.
 ### 1. Requirements
 
 * Docker with Compose v2.
-* Disk for a full Ethereum run: ~120 GB Parquet input, ~140 GB prepared DuckDB source, ~210 GB
-  bundle, and for publishing a ~39 GB archive. Fast local SSD/NVMe strongly recommended.
+* Historical nine-table run: ~120 GB Parquet input, ~140 GB prepared DuckDB source, ~210 GB
+  bundle, and ~39 GB archive. The expanded payloads and signature tables need new sizing
+  measurements; those historical numbers are not capacity estimates for this format.
 * 12 CPUs and 48 GB memory for the container (the defaults); `prepare` peaks at ~36 GB.
 
 ### 2. Put the Parquet files in place
 
 The pipeline reads `PARQUET_DIR/<table>/*.parquet` (default `./data/parquet`, mounted read-only)
-for these nine tables of the Sourcify v2 export:
+for these eleven tables of the Sourcify v2 export:
 
 ```text
 data/parquet/
   code/  compiled_contracts/  compiled_contracts_metadata/  compiled_contracts_sources/
   contract_deployments/  contracts/  sources/  sourcify_matches/  verified_contracts/
+  compiled_contracts_signatures/  signatures/
 ```
 
-Other tables (e.g. `signatures`, `compiled_contracts_signatures`) may be present and are ignored.
-Download the export (public, no credentials; ~120 GB without the signature tables):
+Both signature tables are required, even if the selected contracts have no signatures.
+Download the export (public, no credentials):
 
 ```sh
 aws s3 sync s3://sourcify-production-parquet-export/v2/ ./data/parquet \
-  --endpoint-url https://storage.googleapis.com --no-sign-request \
-  --exclude 'signatures/*' --exclude 'compiled_contracts_signatures/*'
+  --endpoint-url https://storage.googleapis.com --no-sign-request
 ```
 
 An existing copy elsewhere works too: point `PARQUET_DIR` at the directory that contains the table
@@ -121,14 +130,17 @@ is still imported. Yul and other records with a null ABI retain `abi: null` (not
 The ABI hash is SHA-256 of its JSON value, including `null`. This does not recover metadata absent
 from the export.
 
-Parquet records retain original IDs as `sourcifyIds` in the verified-contract payload:
-`compilationId`, `deploymentId`, `verificationId`, and `contractId` are strings; `matchId` remains
-its existing field. This provenance allows joining back to Sourcify without changing source,
-code, or compilation entity identities.
+Parquet NDJSON lines use `{record: <contract JSON>, sourcifyIds: {...}}`. The wrapper IDs
+`compilationId`, `deploymentId`, `verificationId`, and `contractId` become the string attributes
+`sourcifycompilationid`, `sourcifydeploymentid`, `sourcifyverificationid`, and `sourcifycontractid`.
+They are absent from the decoded contract payload; `matchId` remains an API field. Raw API
+inputs are still accepted and preserved without stripping any user-supplied fields.
 
 **Migration:** all verified-contract payloads now use the complete input record instead of the
 old selected-field envelope, so their entity keys change. Regenerate bundles; do not reuse an
-old bundle or resume old processed output as if it contained the new payloads. The larger
+old bundle or resume old processed output as if it contained the new payloads. Source manifest
+v2 requires re-preparation in a fresh work directory; v1 sources are refused because they lack
+signature coverage. Keep the original Parquet files. The larger
 payloads can increase bundle size and produce additional spill parts. Existing compression
 and spill decoding rules still apply. Byte equality with the old helper output is no longer
 a compatibility guarantee.

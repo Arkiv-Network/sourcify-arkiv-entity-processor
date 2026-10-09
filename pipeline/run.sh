@@ -107,7 +107,7 @@ for number in PREPARE_LIMIT CONTRACT_LIMIT; do
 done
 [[ $ENTITY_OWNER =~ ^0x[0-9a-fA-F]{40}$ ]] || die "ENTITY_OWNER must be a 0x-prefixed 20-byte address"
 if [[ $COMMAND != publish ]]; then
-  for table in code compiled_contracts compiled_contracts_metadata compiled_contracts_sources contract_deployments contracts sources sourcify_matches verified_contracts; do
+  for table in code compiled_contracts compiled_contracts_metadata compiled_contracts_sources compiled_contracts_signatures contract_deployments contracts signatures sources sourcify_matches verified_contracts; do
     compgen -G "$PARQUET_DIR/$table/*.parquet" >/dev/null || die "missing Parquet files: $PARQUET_DIR/$table/*.parquet"
   done
 fi
