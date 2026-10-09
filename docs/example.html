@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>One contract example — Sourcify entity processor</title><link rel="stylesheet" href="styles.css"></head>
+<body><a class="skip-link" href="#main">Skip to content</a><nav aria-label="Documentation pages"><a class="brand" href="index.html">Sourcify → Arkiv</a><p class="subtitle">Entity processor documentation</p><div class="links"><a href="index.html">Start here</a>
+<a href="example.html" aria-current="page">One contract example</a>
+<a href="entities.html">Entity catalog</a>
+<a href="fields.html">Field mapping</a>
+<a href="storage.html">Hashes & storage</a>
+<a href="limitations.html">Parity findings</a>
+<a href="sources.html">Sources</a></div></nav>
+<main id="main"><section><h1>Follow one contract into its entities</h1><p class="lead">A verification record says which contract was checked. Its linked entities hold the compilation, source text and bytecode.</p><p class="note">Synthetic example, with shortened payloads and symbolic hashes. It explains storage relationships; it is not a real verification result or a runnable input record.</p>
+<h2>1. Information in the source record</h2><pre><code>{
+  "chainId": "1",
+  "address": "0x0000000000000000000000000000000000000001",
+  "matchId": "42",
+  "match": "exact_match",
+  "runtimeMatch": "exact_match",
+  "creationMatch": null,
+  "abi": [],
+  "sources": {"Counter.sol": {"content": "contract Counter {}"}},
+  "metadata": null
+}</code></pre><p>The source says the runtime bytecode matches exactly. It reports no creation match and no metadata. An empty ABI is a known empty list, which differs from an unknown ABI (<code>null</code>).</p>
+<h2>2. Where the processor puts it</h2><div class="table-wrap"><table><thead><tr><th>Entity</th><th>Illustrative stored value</th><th>Meaning</th></tr></thead><tbody>
+<tr><td>sourcefile</td><td><code>content: "contract Counter {}"</code><br><code>hash: H_source</code></td><td>Exact UTF-8 source text, inside a JSON envelope.</td></tr>
+<tr><td>compilation</td><td><code>sources: {"Counter.sol": "H_source"}</code><br><code>metadata: null</code></td><td>The file path points to the source content hash. Compiler settings and artifacts live here too.</td></tr>
+<tr><td>code</td><td>Raw bytecode bytes; <code>hash: H_runtime</code></td><td>The hash is computed from the bytes. Identical deployed and recompiled bytes share one entity.</td></tr>
+<tr><td>verified_contract</td><td><code>matchId: "42"</code><br><code>runtimeMatch: "exact_match"</code><br><code>codeRefs.runtimeOnchain: "H_runtime"</code></td><td>Keeps contract identity, results, ABI, deployment details and original Sourcify IDs.</td></tr>
+</tbody></table></div><p>The verified-contract entity also has a typed <code>compilationref</code> attribute pointing to the compilation’s Arkiv key. A content hash such as <code>H_source</code> is a different kind of reference: it identifies shared content, not an Arkiv entity key.</p>
+<h2>3. Compare values, not just entity counts</h2><ul><li>The source text and its file path must still agree.</li><li>Match status and original identifiers must survive unchanged.</li><li><code>metadata: null</code> must stay null; it is not an empty object.</li><li>Each non-null bytecode reference must identify the expected bytes.</li></ul><p>These are comparison criteria, not claims of a completed full-dataset audit. Oversized payloads add <code>blob</code> entities without changing the logical information.</p><p><a href="fields.html">Find the destination of each Sourcify field →</a></p></section><footer>Processor reference · 9 October 2026 · <a href="sources.html">Sources and evidence</a></footer></main></body></html>

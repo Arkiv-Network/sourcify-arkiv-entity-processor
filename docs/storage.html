@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Hashes & storage — Sourcify entity processor</title><link rel="stylesheet" href="styles.css"></head>
+<body><a class="skip-link" href="#main">Skip to content</a><nav aria-label="Documentation pages"><a class="brand" href="index.html">Sourcify → Arkiv</a><p class="subtitle">Entity processor documentation</p><div class="links"><a href="index.html">Start here</a>
+<a href="example.html">One contract example</a>
+<a href="entities.html">Entity catalog</a>
+<a href="fields.html">Field mapping</a>
+<a href="storage.html" aria-current="page">Hashes & storage</a>
+<a href="limitations.html">Parity findings</a>
+<a href="sources.html">Sources</a></div></nav>
+<main id="main"><section>
+<h1>Different hashes answer different questions</h1>
+<p>Content hashes find shared bodies. Staging IDs identify complete semantic entities. Payload checksums protect bytes in transit. They should not be used interchangeably. Arkiv code.hash is Keccak-256 of raw bytecode. Do not substitute upstream relational IDs or code indexes for this content reference.</p>
+<div class="table-wrap">
+<table >
+<thead>
+<tr>
+<th>Value</th>
+<th>Computed from</th>
+<th>Why it matters</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Source hash</td>
+<td>SHA-256 of UTF-8 source content</td>
+<td>Used by compilation.sources path references; independent of gzip and JSON envelope.</td>
+</tr>
+<tr>
+<td>Code hash</td>
+<td>Keccak-256 of raw bytecode</td>
+<td>Used by codeRefs and indexed code hash attributes.</td>
+</tr>
+<tr>
+<td>Compilation indexed hash</td>
+<td>Processor legacy fingerprint of compiler/version/language/FQN/settings, path–source hashes and all four code hashes</td>
+<td>Not a hash of the full compilation payload. Metadata and other artifacts are not all covered by this index.</td>
+</tr>
+<tr>
+<td>Semantic staging ID</td>
+<td>SHA-256 of canonical kind, payload representation, attributes and semantic key references</td>
+<td>Full entity identity protects against dedup collisions from incomplete compilation fingerprints.</td>
+</tr>
+<tr>
+<td>ABI hash</td>
+<td>SHA-256 of serialized ABI JSON, including null</td>
+<td>Queryable attribute; null ABI and empty ABI remain distinct.</td>
+</tr>
+<tr>
+<td>payloadsha256</td>
+<td>SHA-256 of entity payload before optional gzip</td>
+<td>Validates transport-decoded entity bytes. For a spilled parent this hashes the stub, not the full original body.</td>
+</tr>
+<tr>
+<td>$spill.hash</td>
+<td>SHA-256 of complete original payload bytes</td>
+<td>Validates concatenated blob bodies; separate from each chunk’s payloadsha256.</td>
+</tr>
+<tr>
+<td>Processor seed entity key</td>
+<td>0x + SHA-256(UTF-8(&quot;arkiv-prefill.imported-staging.v1:&quot; + lowercase hex staging ID without 0x))</td>
+<td>Deterministic imported seed key. Different from the source/content hash.</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="callout">
+<h3>Compilation hash is not the dedup authority</h3>
+<p>A full canonical compilation-payload hash and the processor’s indexed fingerprint are different definitions. The processor retains its existing fingerprint; it does not claim compatibility with a full-payload hash. Its semantic staging ID includes the represented payload and attributes (a spill stub includes the complete-body hash), so payload differences still distinguish entities.</p>
+</div>
+<h3>Two consequences of the current fingerprint</h3>
+<ul><li><strong>Same index, different entities:</strong> a metadata-only change can leave the indexed compilation hash unchanged. The payload changes, so the semantic staging ID still distinguishes the entities.</li><li><strong>Same payload, extra entities:</strong> the fingerprint includes onchain bytecode hashes, although the compilation payload stores the recompiled hashes. A change only to onchain bytecode can therefore produce different compilation attributes and staging IDs for identical compilation payloads. This can create redundant compilation entities; its prevalence has not been measured.</li></ul>
+<h3>Compression and oversized payloads</h3>
+<ol>
+<li>Build the logical entity payload. Bodies over 122,880 bytes become a small <code>$spill</code> stub plus 100,000-byte blob slices.</li>
+<li>Apply gzip level 6 to each entity payload only when it reduces its size; otherwise use identity. The processor enforces a 120,000-byte wire-payload limit. Preserve original content type and payload checksum.</li>
+</ol><h3>Interpreting a stored payload</h3><p>A consumer needs to reverse these storage layers:</p><ol><li>Decode transport compression and validate the entity checksum.</li>
+<li>If spilled, gather every part, validate indexes, counts and byte lengths, then verify the complete SHA-256.</li>
+<li>Validate source SHA-256 or bytecode Keccak content references before interpreting the contract data.</li>
+</ol>
+<p>Gzip is intentional. It changes stored bytes, not the decoded contract data. A consumer should reject missing or corrupt dependencies. These are decoding requirements, not an HTTP reader implemented by this processor.</p>
+</section><footer>Processor reference · 9 October 2026 · <a href="sources.html">Sources and evidence</a></footer></main></body></html>

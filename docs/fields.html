@@ -1,0 +1,378 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Field mapping — Sourcify entity processor</title><link rel="stylesheet" href="styles.css"><script src="fields.js" defer></script></head>
+<body><a class="skip-link" href="#main">Skip to content</a><nav aria-label="Documentation pages"><a class="brand" href="index.html">Sourcify → Arkiv</a><p class="subtitle">Entity processor documentation</p><div class="links"><a href="index.html">Start here</a>
+<a href="example.html">One contract example</a>
+<a href="entities.html">Entity catalog</a>
+<a href="fields.html" aria-current="page">Field mapping</a>
+<a href="storage.html">Hashes & storage</a>
+<a href="limitations.html">Parity findings</a>
+<a href="sources.html">Sources</a></div></nav>
+<main id="main"><section>
+<h1>Sourcify field → processor entity</h1>
+<p>Sourcify API names are comparison vocabulary here, not processor endpoints. Entity paths describe decoded payloads. “Derivable” identifies information a future consumer could assemble; the processor does not assemble API responses.</p>
+<div class="searchbar">
+<label for="search">Find a field or concept</label>
+<input id="search" type="search" placeholder="Try metadata, sourceMap, Vyper, codeRefs…" autocomplete="off">
+<span id="count" aria-live="polite">
+</span>
+</div>
+<div class="chips">
+<button data-query="" class="active">All fields</button>
+<button data-query="verified_contract">Verified contract</button>
+<button data-query="compilation">Compilation</button>
+<button data-query="Bytecode">Bytecode</button>
+<button data-query="derivable">Derivable</button>
+</div>
+<div class="table-wrap">
+<table id="mapping-table">
+<thead>
+<tr>
+<th>Reference field</th>
+<th>Entity / source</th>
+<th>Decoded payload path</th>
+<th>Preservation / limitation</th>
+<th>Sourcify source</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>match</td>
+<td>verified_contract</td>
+<td>match</td>
+<td>Overall verification result: exact_match, match or null.</td>
+<td>sourcify_matches + verified_contracts + contract_deployments</td>
+</tr>
+<tr>
+<td>creationMatch</td>
+<td>verified_contract</td>
+<td>creationMatch</td>
+<td>Creation-bytecode verification result, independently nullable.</td>
+<td>sourcify_matches + verified_contracts + contract_deployments</td>
+</tr>
+<tr>
+<td>runtimeMatch</td>
+<td>verified_contract</td>
+<td>runtimeMatch</td>
+<td>Runtime-bytecode verification result, independently nullable.</td>
+<td>sourcify_matches + verified_contracts + contract_deployments</td>
+</tr>
+<tr>
+<td>chainId</td>
+<td>verified_contract</td>
+<td>chainId</td>
+<td>Original source network as a decimal string; current imported corpus is Ethereum mainnet, 1.</td>
+<td>sourcify_matches + verified_contracts + contract_deployments</td>
+</tr>
+<tr>
+<td>address</td>
+<td>verified_contract</td>
+<td>address</td>
+<td>Parquet adapter lowercases the payload address; typed address index uses checksum casing.</td>
+<td>sourcify_matches + verified_contracts + contract_deployments</td>
+</tr>
+<tr>
+<td>verifiedAt</td>
+<td>verified_contract</td>
+<td>verifiedAt</td>
+<td>Upstream verification time normalized to UTC seconds; fractional seconds are discarded. Not the Arkiv import time.</td>
+<td>sourcify_matches + verified_contracts + contract_deployments</td>
+</tr>
+<tr>
+<td>matchId</td>
+<td>verified_contract</td>
+<td>matchId</td>
+<td>Upstream match-record identifier as a decimal string.</td>
+<td>sourcify_matches + verified_contracts + contract_deployments</td>
+</tr>
+<tr>
+<td>abi</td>
+<td>verified_contract</td>
+<td>abi</td>
+<td>Preserve array or null. Null is not silently changed to [].</td>
+<td>compiled_contracts.compilation_artifacts.abi</td>
+</tr>
+<tr>
+<td>compilation.language</td>
+<td>verified_contract</td>
+<td>compilation.language</td>
+<td>Compilation summary; the same information also lives on the shared compilation entity.</td>
+<td>compiled_contracts</td>
+</tr>
+<tr>
+<td>compilation.compiler</td>
+<td>verified_contract</td>
+<td>compilation.compiler</td>
+<td>Compilation summary; the same information also lives on the shared compilation entity.</td>
+<td>compiled_contracts</td>
+</tr>
+<tr>
+<td>compilation.compilerVersion</td>
+<td>verified_contract</td>
+<td>compilation.compilerVersion</td>
+<td>Compilation summary; the same information also lives on the shared compilation entity.</td>
+<td>compiled_contracts</td>
+</tr>
+<tr>
+<td>compilation.compilerSettings</td>
+<td>verified_contract</td>
+<td>compilation.compilerSettings</td>
+<td>Compilation summary; the same information also lives on the shared compilation entity.</td>
+<td>compiled_contracts</td>
+</tr>
+<tr>
+<td>compilation.name</td>
+<td>verified_contract</td>
+<td>compilation.name</td>
+<td>Compilation summary; the same information also lives on the shared compilation entity.</td>
+<td>compiled_contracts</td>
+</tr>
+<tr>
+<td>compilation.fullyQualifiedName</td>
+<td>verified_contract</td>
+<td>compilation.fullyQualifiedName</td>
+<td>Compilation summary; the same information also lives on the shared compilation entity.</td>
+<td>compiled_contracts</td>
+</tr>
+<tr>
+<td>deployment.transactionHash</td>
+<td>verified_contract</td>
+<td>deployment.transactionHash</td>
+<td>Preserve missing deployment values as null; numeric source values are represented as strings.</td>
+<td>contract_deployments</td>
+</tr>
+<tr>
+<td>deployment.blockNumber</td>
+<td>verified_contract</td>
+<td>deployment.blockNumber</td>
+<td>Preserve missing deployment values as null; numeric source values are represented as strings.</td>
+<td>contract_deployments</td>
+</tr>
+<tr>
+<td>deployment.transactionIndex</td>
+<td>verified_contract</td>
+<td>deployment.transactionIndex</td>
+<td>Preserve missing deployment values as null; numeric source values are represented as strings.</td>
+<td>contract_deployments</td>
+</tr>
+<tr>
+<td>deployment.deployer</td>
+<td>verified_contract</td>
+<td>deployment.deployer</td>
+<td>Preserve missing deployment values as null; numeric source values are represented as strings.</td>
+<td>contract_deployments</td>
+</tr>
+<tr>
+<td>sources</td>
+<td>compilation → sourcefile</td>
+<td>sources[path] → hash → content</td>
+<td>Path → SHA-256 of UTF-8 text. Source content lives in a separate entity; gzip and spills are storage layers.</td>
+<td>compiled_contracts_sources + sources</td>
+</tr>
+<tr>
+<td>metadata</td>
+<td>compilation</td>
+<td>metadata</td>
+<td>Solidity metadata is retained when available. Missing metadata and non-Solidity metadata become null in the source adapter.</td>
+<td>compiled_contracts_metadata.metadata</td>
+</tr>
+<tr>
+<td>storageLayout</td>
+<td>compilation</td>
+<td>storageLayout</td>
+<td>Compilation artifact, including explicit nulls.</td>
+<td>compiled_contracts.compilation_artifacts.storageLayout</td>
+</tr>
+<tr>
+<td>transientStorageLayout</td>
+<td>compilation</td>
+<td>transientStorageLayout</td>
+<td>Compilation artifact, including explicit nulls.</td>
+<td>compiled_contracts.compilation_artifacts.transientStorageLayout</td>
+</tr>
+<tr>
+<td>userdoc</td>
+<td>compilation</td>
+<td>userdoc</td>
+<td>Compilation artifact, including explicit nulls.</td>
+<td>compiled_contracts.compilation_artifacts.userdoc</td>
+</tr>
+<tr>
+<td>devdoc</td>
+<td>compilation</td>
+<td>devdoc</td>
+<td>Compilation artifact, including explicit nulls.</td>
+<td>compiled_contracts.compilation_artifacts.devdoc</td>
+</tr>
+<tr>
+<td>sourceIds</td>
+<td>compilation</td>
+<td>sourceIds</td>
+<td>Preserve compiler source-file IDs. These are not full ASTs.</td>
+<td>compiled_contracts.compilation_artifacts.sources</td>
+</tr>
+<tr>
+<td>creationBytecode.onchainBytecode</td>
+<td>verified_contract → code</td>
+<td>codeRefs.creationOnchain → hash → bytes</td>
+<td>Raw bytecode stored separately, referenced by Keccak-256. Null and empty 0x both become null references.</td>
+<td>contracts / compiled_contracts → code</td>
+</tr>
+<tr>
+<td>creationBytecode.recompiledBytecode</td>
+<td>compilation → code</td>
+<td>recompiledCreationHash → hash → bytes</td>
+<td>Raw bytecode stored separately, referenced by Keccak-256. Null and empty 0x both become null references.</td>
+<td>contracts / compiled_contracts → code</td>
+</tr>
+<tr>
+<td>creationBytecode.sourceMap</td>
+<td>compilation</td>
+<td>creationCodeArtifacts.sourceMap</td>
+<td>Source maps may be strings (Solidity) or objects (Vyper); preserve null.</td>
+<td>compiled_contracts.creation_code_artifacts</td>
+</tr>
+<tr>
+<td>creationBytecode.linkReferences</td>
+<td>compilation</td>
+<td>creationCodeArtifacts.linkReferences</td>
+<td>Preserve the stored artifact, including explicit null.</td>
+<td>compiled_contracts.creation_code_artifacts</td>
+</tr>
+<tr>
+<td>creationBytecode.cborAuxdata</td>
+<td>compilation</td>
+<td>creationCodeArtifacts.cborAuxdata</td>
+<td>Preserve the stored artifact, including explicit null.</td>
+<td>compiled_contracts.creation_code_artifacts</td>
+</tr>
+<tr>
+<td>creationBytecode.transformations</td>
+<td>verified_contract</td>
+<td>creationTransformations</td>
+<td>Explains the changes between compiled and deployed bytecode.</td>
+<td>verified_contracts.creation_transformations</td>
+</tr>
+<tr>
+<td>creationBytecode.transformationValues</td>
+<td>verified_contract</td>
+<td>creationTransformationValues</td>
+<td>Explains the changes between compiled and deployed bytecode.</td>
+<td>verified_contracts.creation_values</td>
+</tr>
+<tr>
+<td>runtimeBytecode.onchainBytecode</td>
+<td>verified_contract → code</td>
+<td>codeRefs.runtimeOnchain → hash → bytes</td>
+<td>Raw bytecode stored separately, referenced by Keccak-256. Null and empty 0x both become null references.</td>
+<td>contracts / compiled_contracts → code</td>
+</tr>
+<tr>
+<td>runtimeBytecode.recompiledBytecode</td>
+<td>compilation → code</td>
+<td>recompiledRuntimeHash → hash → bytes</td>
+<td>Raw bytecode stored separately, referenced by Keccak-256. Null and empty 0x both become null references.</td>
+<td>contracts / compiled_contracts → code</td>
+</tr>
+<tr>
+<td>runtimeBytecode.sourceMap</td>
+<td>compilation</td>
+<td>runtimeCodeArtifacts.sourceMap</td>
+<td>Source maps may be strings (Solidity) or objects (Vyper); preserve null.</td>
+<td>compiled_contracts.runtime_code_artifacts</td>
+</tr>
+<tr>
+<td>runtimeBytecode.linkReferences</td>
+<td>compilation</td>
+<td>runtimeCodeArtifacts.linkReferences</td>
+<td>Preserve the stored artifact, including explicit null.</td>
+<td>compiled_contracts.runtime_code_artifacts</td>
+</tr>
+<tr>
+<td>runtimeBytecode.cborAuxdata</td>
+<td>compilation</td>
+<td>runtimeCodeArtifacts.cborAuxdata</td>
+<td>Preserve the stored artifact, including explicit null.</td>
+<td>compiled_contracts.runtime_code_artifacts</td>
+</tr>
+<tr>
+<td>runtimeBytecode.immutableReferences</td>
+<td>compilation</td>
+<td>runtimeCodeArtifacts.immutableReferences</td>
+<td>Preserve the stored artifact, including explicit null.</td>
+<td>compiled_contracts.runtime_code_artifacts</td>
+</tr>
+<tr>
+<td>runtimeBytecode.transformations</td>
+<td>verified_contract</td>
+<td>runtimeTransformations</td>
+<td>Explains the changes between compiled and deployed bytecode.</td>
+<td>verified_contracts.runtime_transformations</td>
+</tr>
+<tr>
+<td>runtimeBytecode.transformationValues</td>
+<td>verified_contract</td>
+<td>runtimeTransformationValues</td>
+<td>Explains the changes between compiled and deployed bytecode.</td>
+<td>verified_contracts.runtime_values</td>
+</tr>
+<tr>
+<td>additionalInput</td>
+<td>verified_contract</td>
+<td>additionalInput</td>
+<td>Extra top-level compiler input retained on the verification payload.</td>
+<td>compiled_contracts.additional_input</td>
+</tr>
+<tr>
+<td>stdJsonInput</td>
+<td>derivable, not emitted</td>
+<td>compilation + sources + additionalInput</td>
+<td>Components are retained: language, source text, settings and additional input. No standard JSON input entity is emitted.</td>
+<td>Derived by Sourcify from stored compiler input</td>
+</tr>
+<tr>
+<td>stdJsonOutput</td>
+<td>derivable, not emitted</td>
+<td>compilation artifacts + ABI + recompiled code</td>
+<td>Some components are retained for the target contract. The original complete compiler output is not stored.</td>
+<td>Derived by Sourcify from stored compiler output</td>
+</tr>
+<tr>
+<td>signatures.function</td>
+<td>not imported; ABI retained</td>
+<td>abi</td>
+<td>Signature tables are excluded. ABI can support later derivation, but the processor emits no signature entities or signature lists.</td>
+<td>Sourcify uses compiled_contracts_signatures + signatures</td>
+</tr>
+<tr>
+<td>signatures.event</td>
+<td>not imported; ABI retained</td>
+<td>abi</td>
+<td>Signature tables are excluded. ABI can support later derivation, but the processor emits no signature entities or signature lists.</td>
+<td>Sourcify uses compiled_contracts_signatures + signatures</td>
+</tr>
+<tr>
+<td>signatures.error</td>
+<td>not imported; ABI retained</td>
+<td>abi</td>
+<td>Signature tables are excluded. ABI can support later derivation, but the processor emits no signature entities or signature lists.</td>
+<td>Sourcify uses compiled_contracts_signatures + signatures</td>
+</tr>
+<tr>
+<td>proxyResolution</td>
+<td>verified_contract / unresolved</td>
+<td>proxyResolution</td>
+<td>Parquet adapter supplies no live resolution; processor stores an empty object when absent. This does not mean isProxy:false.</td>
+<td>Upstream resolves dynamically when requested</td>
+</tr>
+<tr>
+<td>sourcifyIds (storage only)</td>
+<td>verified_contract</td>
+<td>sourcifyIds</td>
+<td>compilationId, deploymentId, verificationId, contractId retained as strings. Not an API v2 response field.</td>
+<td>Original exported relational IDs</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p id="empty" hidden>No matching fields. Try a shorter search.</p>
+</section><footer>Processor reference · 9 October 2026 · <a href="sources.html">Sources and evidence</a></footer></main></body></html>

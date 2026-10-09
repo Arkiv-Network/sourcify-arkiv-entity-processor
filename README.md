@@ -28,6 +28,13 @@ and identical to the original `sourcify-arkiv-helper` pipeline (checked in CI on
 | `Dockerfile`, `compose.yaml`, `.env.example` | container deployment |
 | `tests/` | end-to-end test on a small real-data Parquet fixture (`tests/fixture/`) |
 
+## Entity parity documentation
+
+Start with the [overview](docs/index.html) and [one-contract example](docs/example.html).
+The reference covers Sourcify-to-entity field mapping, storage, and known parity gaps.
+It documents the offline processor; no HTTP API server is included. Open `docs/index.html`
+in a browser, or serve `docs/` with any static file server.
+
 ## Run with Docker Compose
 
 ### 1. Requirements
