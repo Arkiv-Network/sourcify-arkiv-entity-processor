@@ -7,9 +7,7 @@
   const source = data.source;
   const entities = data.entities;
   const select = document.querySelector('#entity-select');
-  const showAll = document.querySelector('#show-all-source');
-  const flattenSource = document.querySelector('#flatten-source');
-  let view = 'payload';
+  let mode = 'payload';
   const labels = {verified_contract: 'Verification record', compilation: 'Compilation', sourcefile: 'Source file', code: 'Bytecode', blob: 'Large-payload part'};
   const priority = {verified_contract: 0, compilation: 1, sourcefile: 2, code: 3, blob: 4};
   const attr = (entity, name) => {
@@ -83,6 +81,59 @@
     visit(value, '');
     return Object.fromEntries(entries);
   }
+  function flattenAttributeInputs(inputs) {
+    const entries = [];
+    function visit(value, path) {
+      if (Array.isArray(value) && value.length) {
+        value.forEach((child, index) => visit(child, `${path}[${index}]`));
+      } else if (value !== null && !Array.isArray(value) && typeof value === 'object' && Object.keys(value).length) {
+        for (const [key, child] of Object.entries(value)) {
+          const segment = /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(key) ? `.${key}` : `[${JSON.stringify(key)}]`;
+          visit(child, path + segment);
+        }
+      } else {
+        entries.push([path, value]);
+      }
+    }
+    for (const [path, value] of Object.entries(inputs)) visit(value, path);
+    return Object.fromEntries(entries);
+  }
+  function attributeComparison(entity) {
+    const k = kind(entity);
+    const inputs = {};
+    const rows = [];
+    const flattened = flattenForDisplay(source);
+    function map(name, path, explanation = 'Copied with the attribute’s type prefix.') {
+      if (!Object.hasOwn(entity.attributes, name)) return;
+      if (Object.hasOwn(flattened, path)) inputs[path] = flattened[path];
+      rows.push([name, `${path} — ${Object.hasOwn(flattened, path) ? explanation : 'absent in this response; ' + explanation}`]);
+    }
+    if (k === 'compilation' || k === 'verified_contract') {
+      for (const [attribute, field] of [['compiler','compiler'],['compilerversion','compilerVersion'],['language','language'],['name','name']]) map(attribute, `compilation.${field}`, 'Text index; strings over 128 UTF-8 bytes are shortened.');
+      map('evmversion', 'compilation.compilerSettings.evmVersion', 'Text index; missing value defaults to "default".');
+      map('optimizer', 'compilation.compilerSettings.optimizer.enabled', 'Boolean index; missing value defaults to false.');
+      map('optimizerruns', 'compilation.compilerSettings.optimizer.runs', 'Integer index; missing value defaults to 0.');
+      map('viair', 'compilation.compilerSettings.viaIR', 'Boolean index; missing value defaults to false.');
+    }
+    if (k === 'verified_contract') {
+      for (const [attribute, path, explanation] of [
+        ['chainid','chainId','Decimal chain ID stored as u64.'], ['address','address','Address stored with checksum casing.'], ['match','match','Match status stored as text.'],
+        ['verifiedat','verifiedAt','ISO timestamp converted to Unix seconds.'], ['matchid','matchId','Decimal ID stored as u64.'], ['isproxy','proxyResolution.isProxy','Boolean from this live response.'], ['proxytype','proxyResolution.proxyType','Text proxy type from this live response.'],
+        ['blocknumber','deployment.blockNumber','Decimal block number stored as u64; missing value uses index sentinel 0.'], ['deployer','deployment.deployer','Checksummed address; missing value uses zero-address index sentinel.'],
+        ['abihash','abi','Derived: SHA-256 of serialized ABI JSON.'], ['creationcodehash','creationBytecode.onchainBytecode','Derived: Keccak-256 of bytecode bytes.'], ['runtimecodehash','runtimeBytecode.onchainBytecode','Derived: Keccak-256 of bytecode bytes.']
+      ]) map(attribute,path,explanation);
+      rows.push(['compilationref','Generated reference to the compilation entity key. No direct Sourcify API field.']);
+    }
+    if (k === 'sourcefile' || k === 'code') {
+      Object.assign(inputs, flattenForDisplay(relevant(entity)));
+      rows.push(['hash', k === 'sourcefile' ? 'Derived: SHA-256 of the UTF-8 source content shown on the left.' : 'Derived: Keccak-256 of the bytecode bytes shown on the left.']);
+      rows.push(['size', k === 'sourcefile' ? 'Derived: source content length in UTF-8 bytes.' : 'Derived: bytecode length in bytes, excluding the hex prefix.']);
+    }
+    if (k === 'compilation') rows.push(['hash','Derived fingerprint: compiler/version/language/FQN/settings, source path–hash map and four bytecode hashes. Not a direct Sourcify field or full-payload hash. Left shows compiler index inputs only; payload mode and downloads retain other fingerprint inputs.']);
+    rows.push(['projectid, kind','Generated dataset namespace and entity kind; no direct Sourcify field.']);
+    rows.push(['contentencoding, originalcontenttype, payloadsha256, stagingid, uploadschema','Generated storage/encoding metadata and integrity hashes; no direct Sourcify fields. Included on the right exactly as written to the seed.']);
+    return {inputs, rows};
+  }
   function sortedForDisplay(value) {
     if (Array.isArray(value)) return value.map(sortedForDisplay);
     if (value !== null && typeof value === 'object') {
@@ -117,17 +168,27 @@
     };
     document.querySelector('#relationship').textContent = descriptions[k] || '';
     document.querySelector('#entity-kind').textContent = k;
-    document.querySelector('#entity-key').textContent = `Key: ${entity.key}`;
-    document.querySelector('#source-caption').textContent = showAll.checked ? 'Complete captured response. No fields hidden.' : 'Actual source-field excerpt for this entity. Use “Full response” for every field.';
-    const sourceValue = showAll.checked ? source : relevant(entity);
-    if (flattenSource.checked) document.querySelector('#source-caption').textContent += ' Flattened paths; literal dotted keys use brackets. Arrays stay intact.';
-    showJSON(document.querySelector('#source-json'), flattenSource.checked ? flattenForDisplay(sourceValue) : sourceValue);
-    showJSON(document.querySelector('#entity-json'), view === 'payload' ? entity.payload : view === 'attributes' ? entity.attributes : entity);
-    for (const button of document.querySelectorAll('[data-view]')) button.setAttribute('aria-pressed', String(button.dataset.view === view));
+    document.querySelector('#entity-key').textContent = `Generated entity key: ${entity.key}`;
+    const attributesMode = mode === 'attributes';
+    document.querySelector('#source-heading').textContent = attributesMode ? 'Sourcify · flat attribute inputs' : 'Sourcify · nested fields';
+    document.querySelector('#entity-heading').textContent = attributesMode ? 'Arkiv · attributes' : 'Arkiv · payload';
+    document.querySelector('#source-caption').textContent = attributesMode ? 'Actual source inputs. Derived hashes and processor metadata have no direct field equivalent.' : 'Actual nested source-field excerpt. Download the full response above.';
+    document.querySelector('#entity-caption').textContent = attributesMode ? 'Actual typed index attributes, including generated storage metadata. See mappings below.' : 'Actual decoded payload. Binary bytecode is displayed as hex.';
+    const comparison = attributeComparison(entity);
+    showJSON(document.querySelector('#source-json'), attributesMode ? flattenAttributeInputs(comparison.inputs) : relevant(entity));
+    showJSON(document.querySelector('#entity-json'), attributesMode ? entity.attributes : entity.payload);
+    const mapping = document.querySelector('#attribute-mapping');
+    mapping.hidden = !attributesMode;
+    const rows = document.querySelector('#mapping-rows');
+    rows.replaceChildren();
+    for (const [name, explanation] of comparison.rows) {
+      const row = document.createElement('tr');
+      for (const value of [name, explanation]) {const cell = document.createElement('td'); cell.textContent = value; row.append(cell);}
+      rows.append(row);
+    }
+    for (const button of document.querySelectorAll('[data-mode]')) button.setAttribute('aria-pressed', String(button.dataset.mode === mode));
   }
   select.addEventListener('change', render);
-  showAll.addEventListener('change', render);
-  flattenSource.addEventListener('change', render);
-  for (const button of document.querySelectorAll('[data-view]')) button.addEventListener('click', () => {view = button.dataset.view; render();});
+  for (const button of document.querySelectorAll('[data-mode]')) button.addEventListener('click', () => {mode = button.dataset.mode; render();});
   render();
 })();
