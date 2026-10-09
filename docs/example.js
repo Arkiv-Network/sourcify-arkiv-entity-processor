@@ -8,6 +8,7 @@
   const entities = data.entities;
   const select = document.querySelector('#entity-select');
   let mode = 'payload';
+  const propertyDiff = globalThis.JsonDiffView.mount(document.querySelector('#property-diff'));
   const labels = {verified_contract: 'Verification record', compilation: 'Compilation', sourcefile: 'Source file', code: 'Bytecode', blob: 'Large-payload part'};
   const priority = {verified_contract: 0, compilation: 1, sourcefile: 2, code: 3, blob: 4};
   const attr = (entity, name) => {
@@ -196,7 +197,21 @@
       links.append(button);
     }
     const comparison = attributeComparison(entity);
-    showJSON(document.querySelector('#source-json'), attributesMode ? flattenAttributeInputs(comparison.inputs) : full ? source : relevant(entity));
+    const original = attributesMode ? flattenAttributeInputs(comparison.inputs) : full ? source : relevant(entity);
+    const envelope = !full && !attributesMode && !wire && entity.payload?.data !== undefined && Array.isArray(entity.payload?.references);
+    const compared = full ? data.hydrated : attributesMode ? entity.attributes : wire ? entity.seed : envelope ? entity.payload.data : entity.payload;
+    propertyDiff.update({
+      left: original, right: compared,
+      leftLabel: attributesMode ? 'Source attribute inputs' : 'Original Sourcify values',
+      rightLabel: full ? 'Full hydrated JSON' : attributesMode ? 'Stored attributes' : wire ? 'Literal seed wire entry' : envelope ? 'Stored data only · references separate' : 'Stored payload',
+      references: envelope ? entity.payload.references : [],
+      description: full ? 'All original JSON values are restored; the hydrated comparison should have zero changes.' : envelope ? 'Compares original paths with envelope.data only. Blue Referenced rows are shared values restored during hydration, not lost fields. The raw view below shows schema, data and the full reference manifest.' : 'Compares the two displayed JSON representations literally; Added and Removed describe their different shapes.',
+      onFollowReference: ref => {
+        const target = ref.kind === 'local' ? Number(select.value) : entities.findIndex(candidate => candidate.kind === ref.kind && String(attr(candidate, 'hash')).replace(/^bytes32:/, '') === ref.hash);
+        if (target >= 0) { select.value = String(target); mode = 'payload'; render(); }
+      }
+    });
+    showJSON(document.querySelector('#source-json'), original);
     showJSON(document.querySelector('#entity-json'), full ? data.hydrated : attributesMode ? entity.attributes : wire ? entity.seed : entity.payload);
     const mapping = document.querySelector('#attribute-mapping');
     mapping.hidden = !attributesMode;

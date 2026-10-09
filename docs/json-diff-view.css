@@ -1,0 +1,42 @@
+.property-comparison { margin: 18px 0; border: 1px solid #cbd3e4; border-radius: 7px; overflow: hidden; }
+.diff-controls { display: flex; gap: 12px 18px; align-items: flex-end; flex-wrap: wrap; padding: 16px; background: #f5f7fb; }
+.diff-controls label { font-size: 13px; font-weight: 600; }
+.diff-search-label { display: grid; gap: 5px; flex: 1 1 260px; }
+.diff-search { font: inherit; padding: 9px 10px; border: 1px solid #bbc5d7; border-radius: 4px; width: 100%; }
+.diff-only-label { display: flex; gap: 5px; align-items: center; min-height: 36px; }
+.diff-controls button { font: inherit; font-size: 13px; padding: 8px 11px; border: 1px solid #bbc5d7; border-radius: 4px; background: white; cursor: pointer; }
+.diff-counts { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 16px 0; }
+.diff-count, .diff-badge { display: inline-block; border-radius: 4px; padding: 3px 7px; font: 12px/1.4 system-ui, sans-serif; border: 1px solid transparent; }
+.diff-note { font-size: 13px; margin: 10px 16px 14px; max-width: none; color: #536079; }
+.diff-headings, .diff-row { display: grid; grid-template-columns: minmax(180px, 29%) minmax(0, 1fr) minmax(0, 1fr); }
+.diff-headings { background: #eaf0f8; font-size: 13px; font-weight: 650; }
+.diff-headings > div { padding: 12px; }
+.diff-tree { max-height: 70vh; min-height: 160px; overflow: auto; }
+.diff-row { border-top: 1px solid #e3e8f0; }
+.diff-property-label { padding: 11px 10px 11px calc(8px + var(--depth) * 10px); display: flex; align-items: flex-start; gap: 7px; min-width: 0; }
+.diff-property-names { min-width: 0; }
+.diff-property-names strong { display: block; font: 600 13px/1.5 ui-monospace, monospace; overflow-wrap: anywhere; }
+.diff-path { display: block; font: 11px/1.5 ui-monospace, monospace; color: #627089; overflow-wrap: anywhere; margin: 3px 0 5px; }
+.diff-expand { flex: 0 0 22px; width: 22px; height: 23px; padding: 0; border: 1px solid #aab8ce; border-radius: 4px; background: white; font-size: 16px; cursor: pointer; }
+.diff-expand:disabled { opacity: .6; cursor: default; }
+.diff-leaf-marker { width: 22px; flex: 0 0 22px; text-align: center; color: #a3afbf; }
+.diff-value { min-width: 0; padding: 11px 13px; border-left: 1px solid #e0e6ef; font: 12px/1.6 ui-monospace, monospace; overflow-wrap: anywhere; }
+.diff-value-type { font: 11px system-ui, sans-serif; display: block; color: #65728a; margin-bottom: 5px; }
+.diff-value-text { white-space: pre-wrap; }
+.diff-value-full { max-height: 400px; overflow: auto; }
+.diff-value-toggle, .diff-reference-target { display: block; font: 12px/1.5 system-ui, sans-serif; text-align: left; padding: 4px 6px; margin-top: 7px; background: white; border: 1px solid #bcc8dc; border-radius: 4px; color: #234880; cursor: pointer; max-width: 100%; overflow-wrap: anywhere; }
+.diff-reference-note { display: block; font-family: system-ui, sans-serif; color: #385a8b; }
+.diff-missing { font-family: system-ui, sans-serif; font-style: italic; color: #697286; }
+.diff-added { background: #f0faf3; }.diff-removed { background: #fff3f3; }.diff-changed { background: #fff9e9; }.diff-referenced { background: #f0f5ff; }.diff-unchanged { background: white; }
+.diff-badge-added { color: #21623a; background: #e1f4e7; border-color: #a2cbb1; }.diff-badge-removed { color: #97363b; background: #ffe5e6; border-color: #e8acaf; }.diff-badge-changed { color: #805817; background: #fff0bd; border-color: #dfc880; }.diff-badge-referenced { color: #2b5288; background: #e2ecff; border-color: #afc5e9; }.diff-badge-unchanged { color: #596678; background: #eef1f5; border-color: #d3dae4; }
+.diff-empty { padding: 24px; color: #536079; }
+.raw-json-view { margin: 16px 0; }
+.raw-json-view > summary { font-weight: 650; cursor: pointer; padding: 10px 0; }
+@media(max-width:760px) {
+ .diff-headings, .diff-row { grid-template-columns: minmax(115px, 29%) minmax(0,1fr) minmax(0,1fr); }
+ .diff-value { padding: 9px 7px; font-size: 11px; }
+ .diff-property-label { padding-left: calc(4px + var(--depth) * 3px); gap: 3px; }
+ .diff-property-names strong { font-size: 11px; }.diff-path { font-size: 10px; }
+ .diff-headings > div { padding: 9px 6px; font-size: 11px; }
+ .diff-expand,.diff-leaf-marker { width: 18px; flex-basis: 18px; }
+}
