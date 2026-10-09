@@ -65,8 +65,15 @@
     }
     return source;
   }
+  function sortedForDisplay(value) {
+    if (Array.isArray(value)) return value.map(sortedForDisplay);
+    if (value !== null && typeof value === 'object') {
+      return Object.fromEntries(Object.keys(value).sort().map(key => [key, sortedForDisplay(value[key])]));
+    }
+    return value;
+  }
   function showJSON(node, value) {
-    const json = JSON.stringify(value, null, 2);
+    const json = JSON.stringify(sortedForDisplay(value), null, 2);
     const pattern = /"(?:\\.|[^"\\])*"\s*:|"(?:\\.|[^"\\])*"|\b(?:true|false|null|-?\d+(?:\.\d+)?)\b/g;
     node.replaceChildren();
     let last = 0;
