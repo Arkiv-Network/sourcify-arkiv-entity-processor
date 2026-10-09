@@ -46,3 +46,9 @@
 .reference-list { display: flex; gap: 6px; flex-wrap: wrap; margin: 10px 0; max-height: 130px; overflow: auto; }
 .reference-list button { text-align: left; font: 12px/1.4 ui-monospace, monospace; overflow-wrap: anywhere; max-width: 100%; background: #f2f5fb; border: 1px solid #cbd3e4; padding: 6px 9px; border-radius: 4px; cursor: pointer; }
 .reference-list[hidden] { display: none; }
+
+.permalink-controls { display: flex; align-items: center; gap: 10px 16px; flex-wrap: wrap; margin: 12px 0; font-size: 13px; }
+.permalink-controls button { font: inherit; padding: 7px 11px; border: 1px solid #bbc5d7; border-radius: 4px; background: white; cursor: pointer; }
+#permalink-status { color: #536079; }
+#permalink-fallback { flex-basis: 100%; min-width: 0; width: 100%; padding: 9px; border: 1px solid #bbc5d7; border-radius: 4px; font: 12px ui-monospace, monospace; }
+#permalink-fallback[hidden] { display: none; }

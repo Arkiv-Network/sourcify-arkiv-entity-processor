@@ -32,6 +32,50 @@
     option.textContent = k === 'code' ? `${codeRoles(entity).map(({group, field}) => `${group === 'creationBytecode' ? 'Creation' : 'Runtime'} ${field === 'onchainBytecode' ? 'onchain' : 'recompiled'}`).join(' + ')} · code` : `${labels[k] || k} · ${k}${entities.filter(e => kind(e) === k).length > 1 ? ` ${counts[k]}` : ''}`;
     select.append(option);
   }
+  const validModes = new Set(['payload', 'hydrated', 'wire', 'attributes']);
+  const defaultEntity = String(sorted[0].index);
+  const permalink = document.querySelector('#view-permalink');
+  const permalinkStatus = document.querySelector('#permalink-status');
+  const permalinkFallback = document.querySelector('#permalink-fallback');
+  function readViewURL() {
+    const params = new URL(window.location.href).searchParams;
+    mode = validModes.has(params.get('mode')) ? params.get('mode') : 'payload';
+    const index = entities.findIndex(entity => entity.key === params.get('entity'));
+    select.value = index >= 0 ? String(index) : defaultEntity;
+  }
+  function viewURL() {
+    const url = new URL(window.location.href);
+    url.searchParams.set('mode', mode);
+    // Hydrated JSON represents the whole contract, independently of entity selection.
+    if (mode === 'hydrated') url.searchParams.delete('entity');
+    else url.searchParams.set('entity', entities[Number(select.value)].key);
+    return url;
+  }
+  function updatePermalink() {
+    permalink.href = viewURL().href;
+    permalinkStatus.textContent = '';
+    permalinkFallback.hidden = true;
+  }
+  function navigateView() {
+    const url = viewURL();
+    if (url.href !== window.location.href) window.history.pushState(null, '', url.href);
+    render();
+  }
+  document.querySelector('#copy-permalink').addEventListener('click', async () => {
+    const url = viewURL().href;
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('Clipboard unavailable');
+      await navigator.clipboard.writeText(url);
+      permalinkStatus.textContent = 'Link copied.';
+    } catch {
+      permalinkFallback.value = url;
+      permalinkFallback.hidden = false;
+      permalinkFallback.focus();
+      permalinkFallback.select();
+      permalinkStatus.textContent = 'Select and copy the URL below, or use the Permalink link.';
+    }
+  });
+  window.addEventListener('popstate', () => { readViewURL(); render(); });
   const name = source.compilation?.name || 'Verified contract';
   document.querySelector('#contract-identity').textContent = `${name} · Ethereum mainnet · ${data.address || source.address} · match ${source.matchId}`;
   document.querySelector('#source-download').href = data.files.source;
@@ -193,7 +237,7 @@
       button.textContent = `${ref.path || '/'} → ${ref.kind}${ref.pointer ? ' ' + ref.pointer : ''}`;
       button.title = ref.kind === 'local' ? `Same compilation: ${ref.pointer}` : ref.hash;
       button.disabled = target < 0;
-      button.addEventListener('click', () => { select.value = String(target); mode = 'payload'; render(); });
+      button.addEventListener('click', () => { select.value = String(target); mode = 'payload'; navigateView(); });
       links.append(button);
     }
     const comparison = attributeComparison(entity);
@@ -208,7 +252,7 @@
       description: full ? 'All original JSON values are restored; the hydrated comparison should have zero changes.' : envelope ? 'Compares original paths with envelope.data only. Blue Referenced rows are shared values restored during hydration, not lost fields. The raw view below shows schema, data and the full reference manifest.' : 'Compares the two displayed JSON representations literally; Added and Removed describe their different shapes.',
       onFollowReference: ref => {
         const target = ref.kind === 'local' ? Number(select.value) : entities.findIndex(candidate => candidate.kind === ref.kind && String(attr(candidate, 'hash')).replace(/^bytes32:/, '') === ref.hash);
-        if (target >= 0) { select.value = String(target); mode = 'payload'; render(); }
+        if (target >= 0) { select.value = String(target); mode = 'payload'; navigateView(); }
       }
     });
     showJSON(document.querySelector('#source-json'), original);
@@ -223,8 +267,10 @@
       rows.append(row);
     }
     for (const button of document.querySelectorAll('[data-mode]')) button.setAttribute('aria-pressed', String(button.dataset.mode === mode));
+    updatePermalink();
   }
-  select.addEventListener('change', render);
-  for (const button of document.querySelectorAll('[data-mode]')) button.addEventListener('click', () => {mode = button.dataset.mode; render();});
+  select.addEventListener('change', navigateView);
+  for (const button of document.querySelectorAll('[data-mode]')) button.addEventListener('click', () => {mode = button.dataset.mode; navigateView();});
+  readViewURL();
   render();
 })();
