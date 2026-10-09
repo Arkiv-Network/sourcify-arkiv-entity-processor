@@ -94,10 +94,22 @@ and rerun. `docker compose stop pipeline` interrupts cleanly and records the fai
 | `logs/` | `prepare.log`, `source.log` (incl. skipped records), `process.log`, `verify.log`, … |
 | `timings.json` | per-phase status, durations, CPU seconds, peak memory, counts, configuration, build hashes |
 
-Records whose referenced rows are missing from the export (e.g. old Solidity compilations without
-metadata) or that the transform cannot take (Yul without an ABI) are skipped with
+Records missing required referenced rows (for example deployed contracts or bytecode), or with
+malformed ABI values other than an array or null, are skipped with
 `SKIP_MISSING_REFERENCES=1` (default), listed in `bundle/report.json` (`sourceSkipped`) and counted
 in `timings.json`; more than `MAX_SKIPPED` aborts. With `0`, any such record aborts the run.
+
+A missing Solidity metadata row is represented as `metadata: null`; the available contract data
+is still imported. Yul and other records with a null ABI retain `abi: null` (not an empty array).
+The ABI hash is SHA-256 of its JSON value, including `null`. This does not recover metadata absent
+from the export.
+
+Parquet records retain original IDs as `sourcifyIds` in the verified-contract payload:
+`compilationId`, `deploymentId`, `verificationId`, and `contractId` are strings; `matchId` remains
+its existing field. This provenance allows joining back to Sourcify without changing source,
+code, or compilation entity identities. Newly enriched verified-contract entities get new keys
+because their payload changed. Existing NDJSON without `sourcifyIds` produces the same keys.
+Compilation fingerprinting, gzip/chunk handling, and the single-run processing model are unchanged.
 
 ### 5. Publish to R2
 

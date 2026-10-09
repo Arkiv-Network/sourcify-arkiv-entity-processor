@@ -287,7 +287,11 @@ fn convert(r: &Value) -> Result<Vec<Entity>> {
         r["chainId"] == "1" || r["chainId"] == 1,
         "Ethereum mainnet only"
     );
-    ensure!(r["abi"].is_array(), "ABI must be an array");
+    ensure!(
+        r.get("abi")
+            .is_some_and(|abi| abi.is_array() || abi.is_null()),
+        "ABI must be an array or null"
+    );
     for name in [
         "compilation",
         "sources",
@@ -459,7 +463,11 @@ fn convert(r: &Value) -> Result<Vec<Entity>> {
             va.insert(name.into(), attr("bytes32", refs[rname].clone()));
         }
     }
-    let vp = json!({"schema":"sourcify.verifiedContract.v2","match":r["match"],"creationMatch":r["creationMatch"],"runtimeMatch":r["runtimeMatch"],"chainId":"1","address":address,"verifiedAt":r["verifiedAt"],"matchId":r["matchId"],"abi":abi,"compilation":c,"deployment":deployment,"proxyResolution":proxy,"additionalInput":r["additionalInput"],"creationTransformations":creation["transformations"],"creationTransformationValues":creation["transformationValues"],"runtimeTransformations":runtime["transformations"],"runtimeTransformationValues":runtime["transformationValues"],"codeRefs":refs});
+    let mut vp = json!({"schema":"sourcify.verifiedContract.v2","match":r["match"],"creationMatch":r["creationMatch"],"runtimeMatch":r["runtimeMatch"],"chainId":"1","address":address,"verifiedAt":r["verifiedAt"],"matchId":r["matchId"],"abi":abi,"compilation":c,"deployment":deployment,"proxyResolution":proxy,"additionalInput":r["additionalInput"],"creationTransformations":creation["transformations"],"creationTransformationValues":creation["transformationValues"],"runtimeTransformations":runtime["transformations"],"runtimeTransformationValues":runtime["transformationValues"],"codeRefs":refs});
+    // Export provenance is optional: old NDJSON keeps its exact entity identities.
+    if let Some(ids) = r.get("sourcifyIds") {
+        vp["sourcifyIds"] = ids.clone();
+    }
     let e = fit(
         "verified_contract",
         bytes(&vp),
@@ -523,8 +531,48 @@ mod tests {
         r["chainId"] = json!(2);
         assert!(transform(&r).is_err());
         r["chainId"] = json!(1);
-        r["abi"] = Value::Null;
+        r["abi"] = json!({});
         assert!(transform(&r).is_err());
+        r.as_object_mut().unwrap().remove("abi");
+        assert!(transform(&r).is_err());
+    }
+    #[test]
+    fn nullable_abi_and_missing_metadata_are_preserved() {
+        let mut r = fixture();
+        r["abi"] = Value::Null;
+        r["compilation"]["language"] = json!("Yul");
+        let es = transform(&r).unwrap();
+        let verified = es.iter().find(|e| e.kind == "verified_contract").unwrap();
+        let payload: Value = serde_json::from_slice(&verified.payload).unwrap();
+        assert!(payload["abi"].is_null());
+        assert_eq!(verified.attributes["abihash"]["value"], hx(sha(b"null")));
+        let compilation = es.iter().find(|e| e.kind == "compilation").unwrap();
+        let payload: Value = serde_json::from_slice(&compilation.payload).unwrap();
+        assert!(payload["metadata"].is_null());
+        r["abi"] = json!([]);
+        let with_array = transform(&r).unwrap();
+        assert_ne!(verified.id, with_array.last().unwrap().id);
+    }
+    #[test]
+    fn source_provenance_does_not_change_shared_entities() {
+        let mut r = fixture();
+        let baseline = transform(&r).unwrap();
+        r["sourcifyIds"] = json!({"compilationId":"c", "deploymentId":"d", "verificationId":"9007199254740993", "contractId":"k"});
+        let with_ids = transform(&r).unwrap();
+        assert_eq!(baseline.len(), with_ids.len());
+        for (before, after) in baseline.iter().zip(&with_ids) {
+            if before.kind == "verified_contract" {
+                let payload: Value = serde_json::from_slice(&after.payload).unwrap();
+                assert_eq!(payload["sourcifyIds"], r["sourcifyIds"]);
+                assert_ne!(before.id, after.id);
+                assert_eq!(
+                    before.attributes["compilationref"],
+                    after.attributes["compilationref"]
+                );
+            } else {
+                assert_eq!(before.id, after.id);
+            }
+        }
     }
     #[test]
     fn sdk_address_checksum() {

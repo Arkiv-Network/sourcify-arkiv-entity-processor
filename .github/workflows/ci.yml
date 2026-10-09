@@ -83,7 +83,7 @@ jobs:
       - name: Build release
         run: cargo build --release --locked
 
-      # Byte-identical NDJSON and bundle against tests/fixture/expected.json, plus resume/refusal behaviour.
+      # Legacy byte parity, recovered nullable records, provenance, and pipeline reuse/refusal.
       - name: End-to-end tests
         run: bun run test
 
@@ -106,6 +106,10 @@ jobs:
             -e ENTITY_OWNER="$(jq -r .owner tests/fixture/expected.json)" \
             -e PREPARE_MEMORY_LIMIT=2GB -e SOURCE_MEMORY_LIMIT=1GB \
             arkiv-entity-processor:ci run
-          diff <(grep -v '  report.json$' "$work/bundle/SHA256SUMS" | sort) \
-            <(jq -r '.bundleSha256sums | to_entries[] | "\(.value)  \(.key)"' tests/fixture/expected.json | sort)
+          # The current bundle adds provenance and two previously skipped records.
+          # The pipeline tests separately check the unchanged legacy bundle byte-for-byte.
+          docker run --rm --network none --entrypoint arkiv-entity-processor \
+            -v "$work:/work:ro" arkiv-entity-processor:ci verify /work/bundle
+          (cd "$work/bundle" && sha256sum -c SHA256SUMS)
+          jq -e '.status == "completed" and .records.contracts == 16 and .records.sourceSkipped == 2' "$work/timings.json"
           jq '{status, records, phases: (.phases | map_values(.status))}' "$work/timings.json"

@@ -95,7 +95,6 @@ export async function* iterateRecords(source: Source, options: { batchSize?: num
           const compilation = required(compilations, verification.compilation_id, 'compilation');
           const deployed = required(contracts, deployment.contract_id, 'deployed contract');
           const meta = metadata.get(String(compilation.id)) ?? [];
-          if (compilation.language.toLowerCase() === 'solidity' && !meta.length) throw new Error('Referenced Solidity metadata missing from local export');
           const sources = Object.fromEntries((paths.get(String(compilation.id)) ?? []).map(path => [path.path, { content: required(bodies, path.hash, `source ${path.path}`).content }]));
           const code = (hash: string | null) => hash ? required(codes, hash, 'bytecode').bytecode : null;
           yield { matchId, record: assembleContract({ match, verification, deployment, compilation, deployed, metadataRows: meta, sources, code }) };
@@ -141,5 +140,6 @@ export function assembleContract({ match, verification, deployment, compilation,
     abi: artifacts.abi ?? null, userdoc: artifacts.userdoc ?? null, devdoc: artifacts.devdoc ?? null,
     storageLayout: artifacts.storageLayout ?? null, transientStorageLayout: artifacts.transientStorageLayout ?? null,
     sourceIds: artifacts.sources ?? null, additionalInput: json(compilation.additional_input),
+    sourcifyIds: { compilationId: String(compilation.id), deploymentId: String(deployment.id), verificationId: String(verification.id), contractId: String(deployed.id) },
   };
 }
