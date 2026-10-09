@@ -1,0 +1,43 @@
+.example-page main { max-width: none; padding: 24px 28px; }
+.example-section { padding: 24px; }
+.example-header h1 { max-width: none; font-size: 32px; margin: 0 0 6px; }
+.example-header p { max-width: none; margin: 4px 0; }
+.identity { color: #536079; font-size: 14px; overflow-wrap: anywhere; }
+.example-controls { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin: 18px 0 8px; }
+.example-controls label { font-weight: 650; }
+.example-controls select { padding: 9px 12px; border: 1px solid #bbc5d7; border-radius: 5px; font: inherit; min-width: 240px; max-width: 100%; background: white; }
+.downloads { display: flex; gap: 18px; margin-left: auto; font-size: 14px; }
+.relationship { max-width: none; min-height: 48px; margin: 8px 0 12px; font-size: 15px; color: #3e4d68; }
+.comparison { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; }
+.json-panel { min-width: 0; border: 1px solid #dce2ec; border-radius: 7px; overflow: hidden; }
+.panel-heading { padding: 12px 16px 0; display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+.panel-heading h2 { margin: 0; font-size: 21px; }
+.panel-heading label, .panel-heading span { font-size: 13px; color: #536079; }
+.json-panel > p { font-size: 13px; margin: 4px 16px 10px; }
+.json-panel pre { height: clamp(320px, 52vh, 650px); margin: 0; border: 0; border-top: 1px solid #dce2ec; border-radius: 0; padding: 16px; font-size: 13px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 2; }
+.example-evidence { font-size: 14px; margin-top: 16px; }
+.example-evidence summary { cursor: pointer; font-weight: 650; }
+.example-evidence p { max-width: 120ch; margin: 10px 0; }
+@media (max-width: 1100px) { .example-page main { padding: 18px; } .example-section { padding: 18px; } .comparison { grid-template-columns: 1fr; } .downloads { margin-left: 0; } }
+@media (max-width: 760px) { .example-page main { padding: 12px; } .example-section { padding: 16px; } .example-header h1 { font-size: 28px; } .example-controls { align-items: stretch; } .example-controls select { width: 100%; min-width: 0; } .downloads { flex-wrap: wrap; gap: 8px 16px; } .relationship { min-height: 0; } }
+
+.entity-view { display: flex; gap: 6px; margin: 8px 16px; }
+.entity-view button { font: inherit; font-size: 13px; padding: 4px 9px; background: white; border: 1px solid #cbd3e4; border-radius: 5px; cursor: pointer; }
+.entity-view button[aria-pressed="true"] { background: #edf0fc; color: #233a9c; border-color: #798cff; }
+.json-panel .entity-key { font-family: ui-monospace, monospace; font-size: 11px; overflow-wrap: anywhere; }
+@media (min-width: 1101px) { .json-panel { display: grid; grid-template-rows: 43px 38px 48px minmax(0, 1fr); } .json-panel:first-child > p { grid-row: 3; } .json-panel pre { grid-row: 4; } }
+.json-panel pre { font-size: 15px; }
+.json-panel .entity-key { font-size: 13px; }
+.json-key { color: #65329a; }
+.json-string { color: #1b6550; }
+.json-literal { color: #a34516; }
+
+.source-options { display: flex; flex-wrap: wrap; gap: 6px 14px; justify-content: flex-end; }
+.source-options label { white-space: nowrap; }
+@media (max-width: 600px) { .json-panel:first-child .panel-heading { align-items: flex-start; flex-wrap: wrap; } .source-options { justify-content: flex-start; } }
+
+.comparison-modes { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.comparison-modes button { font: inherit; font-size: 15px; padding: 9px 14px; border: 1px solid #bbc5d7; border-radius: 6px; background: white; cursor: pointer; }
+.comparison-modes button[aria-pressed="true"] { background: #293d9c; color: white; border-color: #293d9c; }
+.example-section > .entity-key { font: 13px/1.4 ui-monospace, monospace; overflow-wrap: anywhere; max-width: none; margin: 0 0 12px; color: #536079; }
+@media (min-width: 1101px) { .json-panel { grid-template-rows: 43px 48px minmax(0, 1fr); } .json-panel:first-child > p, .json-panel > p { grid-row: 2; } .json-panel pre { grid-row: 3; height: clamp(320px, 49vh, 610px); } }

@@ -83,7 +83,7 @@ jobs:
       - name: Build release
         run: cargo build --release --locked
 
-      # Legacy byte parity, recovered nullable records, provenance, and pipeline reuse/refusal.
+      # Adapter NDJSON compatibility, decoded payload parity, and build-aware pipeline reuse/refusal.
       - name: End-to-end tests
         run: bun run test
 
@@ -106,8 +106,8 @@ jobs:
             -e ENTITY_OWNER="$(jq -r .owner tests/fixture/expected.json)" \
             -e PREPARE_MEMORY_LIMIT=2GB -e SOURCE_MEMORY_LIMIT=1GB \
             arkiv-entity-processor:ci run
-          # The current bundle adds provenance and two previously skipped records.
-          # The pipeline tests separately check the unchanged legacy bundle byte-for-byte.
+          # The current bundle retains complete input contract payloads and nullable records.
+          # Pipeline tests decode gzip/spill entities and compare every adapter input.
           docker run --rm --network none --entrypoint arkiv-entity-processor \
             -v "$work:/work:ro" arkiv-entity-processor:ci verify /work/bundle
           (cd "$work/bundle" && sha256sum -c SHA256SUMS)

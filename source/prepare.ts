@@ -13,17 +13,17 @@ import { parseArgs } from 'node:util';
 import { Database, literal } from './database';
 
 export interface SourceManifest {
-  schema: 'sourcify-arkiv.import-source.v1'; status: 'preparing' | 'completed' | 'failed';
+  schema: 'sourcify-arkiv.import-source.v2'; status: 'preparing' | 'completed' | 'failed';
   dataDir: string; limit: number; all?: boolean; selectedCount?: number; firstMatchId?: string; lastMatchId?: string;
   startedAt: string; finishedAt?: string; databaseBytes?: number; error?: string;
-  /** Signature tables are never materialized; records omit `signatures` and `stdJsonInput`. */
-  signatures?: false;
+  /** Both exported signature tables are required for complete stored-field reconstruction. */
+  signatures: true;
   steps: { name: string; seconds: number; sql: string }[];
   counts?: Record<string, string>;
 }
 
 /** Parquet tables read by the preparation, each a directory of *.parquet files below the Parquet directory. */
-export const tableNames = ['contract_deployments', 'verified_contracts', 'sourcify_matches', 'compiled_contracts', 'compiled_contracts_metadata', 'contracts', 'compiled_contracts_sources', 'sources', 'code'];
+export const tableNames = ['contract_deployments', 'verified_contracts', 'sourcify_matches', 'compiled_contracts', 'compiled_contracts_metadata', 'contracts', 'compiled_contracts_sources', 'sources', 'code', 'compiled_contracts_signatures', 'signatures'];
 const latestOrder = 'updated_at DESC NULLS LAST, created_at DESC NULLS LAST, verified_contract_id DESC';
 
 /** Materialize a bounded sample or all current Ethereum matches; reconstruction stays batched (records.ts). */
@@ -43,10 +43,11 @@ export async function prepareSource(options: {
   let existing: SourceManifest | undefined;
   try { existing = JSON.parse(await readFile(manifestPath, 'utf8')); } catch (error: any) { if (error.code !== 'ENOENT') throw error; }
   if (existing) {
+    if (existing.schema !== 'sourcify-arkiv.import-source.v2' || existing.signatures !== true) throw new Error('Prepared source format is outdated; regenerate in a fresh source directory with all 11 Parquet tables');
     if (Boolean(existing.all) !== Boolean(options.all) || (!options.all && existing.limit !== limit) || existing.dataDir !== dataDir) throw new Error('Source directory holds a different selection; use a fresh directory');
     if (existing.status === 'completed') return existing;
   }
-  const manifest: SourceManifest = existing ?? { schema: 'sourcify-arkiv.import-source.v1', status: 'preparing', dataDir, limit: limit ?? 0, ...(options.all ? {all: true} : {}), signatures: false, startedAt: new Date().toISOString(), steps: [] };
+  const manifest: SourceManifest = existing ?? { schema: 'sourcify-arkiv.import-source.v2', status: 'preparing', dataDir, limit: limit ?? 0, ...(options.all ? {all: true} : {}), signatures: true, startedAt: new Date().toISOString(), steps: [] };
   manifest.status = 'preparing'; delete manifest.error; delete manifest.finishedAt;
   const save = async () => { await writeFile(`${manifestPath}.tmp`, JSON.stringify(manifest, null, 2) + '\n'); await rename(`${manifestPath}.tmp`, manifestPath); };
   await save();
@@ -79,6 +80,8 @@ export async function prepareSource(options: {
     await run('Selected verification rows', 'CREATE TABLE verifications AS SELECT * FROM raw_verified_contracts WHERE id IN (SELECT verified_contract_id FROM matches)');
     await run('Selected deployments', `CREATE TABLE deployments AS SELECT * EXCLUDE(address,transaction_hash,deployer), '0x'||lower(hex(address)) AS address, '0x'||lower(hex(transaction_hash)) AS transaction_hex, '0x'||lower(hex(deployer)) AS deployer_hex FROM raw_contract_deployments WHERE id IN (SELECT deployment_id FROM verifications)`);
     await run('Selected compilations', 'CREATE TABLE compilations AS SELECT * EXCLUDE(creation_code_hash,runtime_code_hash),hex(creation_code_hash) AS creation_hash,hex(runtime_code_hash) AS runtime_hash FROM raw_compiled_contracts WHERE id IN (SELECT compilation_id FROM verifications)');
+    await run('Selected signature references', 'CREATE TABLE signature_refs AS SELECT DISTINCT compilation_id,hex(signature_hash_32) AS hash,signature_type FROM raw_compiled_contracts_signatures WHERE compilation_id IN (SELECT id FROM compilations)');
+    await run('Selected signature bodies', "CREATE TABLE signatures AS SELECT hex(signature_hash_32) AS hash,signature,'0x'||lower(hex(signature_hash_32)) AS hash32,'0x'||lower(hex(signature_hash_4)) AS hash4 FROM raw_signatures WHERE signature_hash_32 IN (SELECT from_hex(hash) FROM signature_refs)");
     await run('Selected deployed contracts', 'CREATE TABLE contracts AS SELECT id,hex(creation_code_hash) AS creation_hash,hex(runtime_code_hash) AS runtime_hash FROM raw_contracts WHERE id IN (SELECT contract_id FROM deployments)');
     // compilation_id is unique in the export; the latest-row window (which must buffer every metadata body)
     // is only needed, and only run, when the selected rows actually contain duplicates.
@@ -92,13 +95,13 @@ export async function prepareSource(options: {
     await run('Selected code hashes', 'CREATE TEMP TABLE code_hashes AS SELECT creation_hash AS hash FROM compilations UNION SELECT runtime_hash FROM compilations UNION SELECT creation_hash FROM contracts UNION SELECT runtime_hash FROM contracts');
     await run('Selected bytecode bodies', `CREATE TABLE codes AS SELECT hex(code_hash) AS hash,'0x'||lower(hex(code)) AS bytecode FROM raw_code WHERE code_hash IN (SELECT from_hex(hash) FROM code_hashes WHERE hash IS NOT NULL)`);
     for (const name of ['ethereum_deployments', 'ethereum_verifications', 'candidate_ids', 'code_hashes']) await db.connection.run(`DROP TABLE ${name}`);
-    for (const [table, key] of [['matches','id'],['verifications','id'],['deployments','id'],['compilations','id'],['contracts','id'],['metadata','compilation_id'],['source_refs','compilation_id'],['sources','hash'],['codes','hash']]) {
+    for (const [table, key] of [['matches','id'],['verifications','id'],['deployments','id'],['compilations','id'],['contracts','id'],['metadata','compilation_id'],['source_refs','compilation_id'],['sources','hash'],['codes','hash'],['signature_refs','compilation_id'],['signatures','hash']]) {
       await run(`Index ${table}`, `CREATE INDEX ${table}_lookup ON ${table}(${key})`);
     }
     // The derived database is self-contained; it has no view of unrelated chains.
     for (const name of tableNames) await db.connection.run(`DROP VIEW raw_${name}`);
     manifest.counts = {};
-    for (const name of ['matches', 'verifications', 'deployments', 'compilations', 'contracts', 'metadata', 'source_refs', 'sources', 'codes']) {
+    for (const name of ['matches', 'verifications', 'deployments', 'compilations', 'contracts', 'metadata', 'source_refs', 'sources', 'codes', 'signature_refs', 'signatures']) {
       manifest.counts[name] = String((await db.one(`SELECT count(*) AS count FROM ${name}`)).count);
     }
     await run('Checkpoint derived database', 'CHECKPOINT');

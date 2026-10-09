@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Database, literal, type Row } from './database';
 import type { SourceManifest } from './prepare';
+import { buildStandardJson } from './standard-json';
+import { checksumAddress } from './api-values';
 
 export interface Source { db: Database; manifest: SourceManifest; close(): Promise<void> }
 
@@ -15,7 +17,7 @@ const indexScans = 'SET index_scan_max_count=1000000';
 export async function openSource(sourceDir: string, memoryLimit: string): Promise<Source> {
   if (!/^[1-9][0-9]*(MB|GB)$/i.test(memoryLimit)) throw new Error('Memory limit must be a positive whole MB or GB value');
   const manifest: SourceManifest = JSON.parse(await readFile(join(sourceDir, 'source-manifest.json'), 'utf8'));
-  if (manifest.schema !== 'sourcify-arkiv.import-source.v1' || manifest.status !== 'completed') throw new Error('Source must have a completed source-manifest.json; run prepare.ts first');
+  if (manifest.schema !== 'sourcify-arkiv.import-source.v2' || manifest.signatures !== true || manifest.status !== 'completed') throw new Error('Source must have a completed v2 source-manifest.json with signatures; regenerate with all 11 Parquet tables');
   const db = await Database.open(join(sourceDir, 'subset.duckdb'), { access_mode: 'READ_ONLY', threads: '1', memory_limit: memoryLimit }, tmpdir(), 'sourcify-source-');
   try { await db.connection.run(indexScans); } catch (error) { await db.close(); throw error; }
   return { db, manifest, close: () => db.close() };
@@ -42,7 +44,7 @@ function required(map: Map<string, Row>, key: unknown, label: string): Row {
 
 /** Yields every selected match in ID order: an assembled record, or the error that prevented it.
  * Shared bodies are read once per batch; the next batch is queried while the current one is consumed. */
-export async function* iterateRecords(source: Source, options: { batchSize?: number; afterMatchId?: string } = {}): AsyncGenerator<{ matchId: string; record?: Row; error?: string }> {
+export async function* iterateRecords(source: Source, options: { batchSize?: number; afterMatchId?: string } = {}): AsyncGenerator<{ matchId: string; record?: Row; sourcifyIds?: Row; error?: string }> {
   const batchSize = options.batchSize ?? 250;
   if (!Number.isSafeInteger(batchSize) || batchSize < 1 || batchSize > 1000) throw new Error('Source batch size must be between 1 and 1000');
   const cursor = options.afterMatchId ?? '-1';
@@ -66,13 +68,15 @@ export async function* iterateRecords(source: Source, options: { batchSize?: num
     const compilationRows = verificationRows.length ? await rows(`SELECT ${columns.compilations} FROM compilations WHERE id IN (${values(verificationRows, 'compilation_id')})`) : [];
     const contractRows = deploymentRows.length ? await rows(`SELECT * FROM contracts WHERE id IN (${values(deploymentRows, 'contract_id')})`) : [];
     const compilationIds = values(compilationRows, 'id');
+    const signatureRefs = compilationIds ? await rows(`SELECT * FROM signature_refs WHERE compilation_id IN (${compilationIds}) ORDER BY signature_type,hash`) : [];
+    const signatureRows = signatureRefs.length ? await rows(`SELECT * FROM signatures WHERE hash IN (${values(signatureRefs, 'hash')})`) : [];
     const metadataRows = compilationIds ? await rows(`SELECT * FROM metadata WHERE compilation_id IN (${compilationIds})`) : [];
     const sourceRefs = compilationIds ? await rows(`SELECT * FROM source_refs WHERE compilation_id IN (${compilationIds}) ORDER BY path`) : [];
     const sourceRows = sourceRefs.length ? await rows(`SELECT * FROM sources WHERE hash IN (${values(sourceRefs, 'hash')})`) : [];
     const hashes = [...new Set([...compilationRows, ...contractRows].flatMap(row => [row.creation_hash, row.runtime_hash]).filter(Boolean))];
     const codeRows = hashes.length ? await rows(`SELECT * FROM codes WHERE hash IN (${hashes.map(literal).join(',')})`) : [];
     return { matches, verifications: keyed(verificationRows, 'id'), deployments: keyed(deploymentRows, 'id'), compilations: keyed(compilationRows, 'id'), contracts: keyed(contractRows, 'id'),
-      metadata: grouped(metadataRows, 'compilation_id'), paths: grouped(sourceRefs, 'compilation_id'), bodies: keyed(sourceRows, 'hash'), codes: keyed(codeRows, 'hash') };
+      signatureRefs: grouped(signatureRefs, 'compilation_id'), signatures: keyed(signatureRows, 'hash'), metadata: grouped(metadataRows, 'compilation_id'), paths: grouped(sourceRefs, 'compilation_id'), bodies: keyed(sourceRows, 'hash'), codes: keyed(codeRows, 'hash') };
   };
   let pending: ReturnType<typeof load> | undefined = load(cursor);
   try {
@@ -80,7 +84,7 @@ export async function* iterateRecords(source: Source, options: { batchSize?: num
       const batch = await pending;
       pending = undefined;
       if (!batch) return;
-      const { matches, verifications, deployments, compilations, contracts, metadata, paths, bodies, codes } = batch;
+      const { matches, verifications, deployments, compilations, contracts, signatureRefs, signatures, metadata, paths, bodies, codes } = batch;
       // The next batch's queries run on DuckDB's thread while this batch is assembled and consumed.
       pending = load(String(matches.at(-1)!.id));
       pending.catch(() => {});
@@ -95,9 +99,20 @@ export async function* iterateRecords(source: Source, options: { batchSize?: num
           const compilation = required(compilations, verification.compilation_id, 'compilation');
           const deployed = required(contracts, deployment.contract_id, 'deployed contract');
           const meta = metadata.get(String(compilation.id)) ?? [];
-          const sources = Object.fromEntries((paths.get(String(compilation.id)) ?? []).map(path => [path.path, { content: required(bodies, path.hash, `source ${path.path}`).content }]));
+          const sourcePaths = paths.get(String(compilation.id)) ?? [];
+          const sources = sourcePaths.length ? Object.fromEntries(sourcePaths.map(path => [path.path, { content: required(bodies, path.hash, `source ${path.path}`).content }])) : null;
+          const signatureGroups: Row = { function: [], event: [], error: [] };
+          for (const ref of signatureRefs.get(String(compilation.id)) ?? []) {
+            if (!Object.hasOwn(signatureGroups, ref.signature_type)) throw new Error(`Unknown signature type: ${ref.signature_type}`);
+            const signature = required(signatures, ref.hash, 'signature');
+            signatureGroups[ref.signature_type].push({ signature: signature.signature, signatureHash32: signature.hash32, signatureHash4: signature.hash4 });
+          }
+          // Production Sourcify orders each signature group by signature text.
+          for (const group of Object.values(signatureGroups) as Row[][]) {
+            group.sort((a, b) => Buffer.compare(Buffer.from(a.signature), Buffer.from(b.signature)));
+          }
           const code = (hash: string | null) => hash ? required(codes, hash, 'bytecode').bytecode : null;
-          yield { matchId, record: assembleContract({ match, verification, deployment, compilation, deployed, metadataRows: meta, sources, code }) };
+          yield { matchId, sourcifyIds: { compilationId: String(compilation.id), deploymentId: String(deployment.id), verificationId: String(verification.id), contractId: String(deployed.id) }, record: assembleContract({ match, verification, deployment, compilation, deployed, metadataRows: meta, sources, code, signatures: signatureGroups }) };
         } catch (error) {
           yield { matchId, error: error instanceof Error ? error.message : String(error) };
         }
@@ -116,30 +131,38 @@ const status = (value: any) => value === 'perfect' ? 'exact_match' : value === '
 const languages: Row = { solidity: 'Solidity', vyper: 'Vyper', yul: 'Yul', fe: 'Fe' };
 
 /** One Ethereum mainnet contract record in the shape the processor reads (Sourcify API v2 field names).
- * Omits `signatures`, `stdJsonInput` and `stdJsonOutput`: no entity is built from them. Key order is part of the
- * byte-identical NDJSON contract with the processor. */
-export function assembleContract({ match, verification, deployment, compilation, deployed, metadataRows, sources, code }: {
-  match: Row; verification: Row; deployment: Row; compilation: Row; deployed: Row; metadataRows: Row[]; sources: Row;
-  code: (hash: string | null) => string | null;
+ * Signature groups come from the exported tables, including empty groups. */
+export function assembleContract({ match, verification, deployment, compilation, deployed, metadataRows, sources, code, signatures }: {
+  match: Row; verification: Row; deployment: Row; compilation: Row; deployed: Row; metadataRows: Row[]; sources: Row | null;
+  code: (hash: string | null) => string | null; signatures: Row;
 }) {
   const artifacts = json(compilation.compilation_artifacts, {});
   const creationMatch = status(match.creation_match), runtimeMatch = status(match.runtime_match);
-  const bytecode = (kind: 'creation' | 'runtime') => ({
-    onchainBytecode: code(deployed[`${kind}_hash`]), recompiledBytecode: code(compilation[`${kind}_hash`]),
-    ...json(compilation[`${kind}_code_artifacts`], {}),
-    transformations: json(verification[`${kind}_transformations`]), transformationValues: json(verification[`${kind}_values`]),
-  });
+  const nonempty = (value: string | null) => value === '0x' ? null : value;
+  const bytecode = (kind: 'creation' | 'runtime') => {
+    const artifacts = json(compilation[`${kind}_code_artifacts`], {});
+    return {
+      onchainBytecode: nonempty(code(deployed[`${kind}_hash`])), recompiledBytecode: nonempty(code(compilation[`${kind}_hash`])),
+      sourceMap: artifacts.sourceMap ?? null, linkReferences: artifacts.linkReferences ?? null, cborAuxdata: artifacts.cborAuxdata ?? null,
+      ...(kind === 'runtime' ? { immutableReferences: artifacts.immutableReferences ?? null } : {}),
+      transformations: json(verification[`${kind}_transformations`]), transformationValues: json(verification[`${kind}_values`]),
+    };
+  };
+  const apiCompilation = { language: languages[compilation.language.toLowerCase()] ?? compilation.language, compiler: compilation.compiler, compilerVersion: compilation.version, compilerSettings: json(compilation.compiler_settings), name: compilation.name, fullyQualifiedName: compilation.fully_qualified_name };
+  const creationBytecode = bytecode('creation'), runtimeBytecode = bytecode('runtime');
+  const additionalInput = json(compilation.additional_input);
   return {
-    chainId: '1', address: deployment.address.toLowerCase(), matchId: String(match.id), creationMatch, runtimeMatch,
+    chainId: '1', address: checksumAddress(deployment.address), matchId: String(match.id), creationMatch, runtimeMatch,
     match: [creationMatch, runtimeMatch].includes('exact_match') ? 'exact_match' : [creationMatch, runtimeMatch].includes('match') ? 'match' : null,
     verifiedAt: String(match.created_at).replace(' ', 'T').slice(0, 19) + 'Z',
-    compilation: { language: languages[compilation.language.toLowerCase()] ?? compilation.language, compiler: compilation.compiler, compilerVersion: compilation.version, compilerSettings: json(compilation.compiler_settings), name: compilation.name, fullyQualifiedName: compilation.fully_qualified_name },
-    deployment: { transactionHash: deployment.transaction_hex, blockNumber: integer(deployment.block_number), transactionIndex: integer(deployment.transaction_index), deployer: deployment.deployer_hex },
-    sources, creationBytecode: bytecode('creation'), runtimeBytecode: bytecode('runtime'),
+    compilation: apiCompilation,
+    deployment: { transactionHash: nonempty(deployment.transaction_hex), blockNumber: integer(deployment.block_number), transactionIndex: integer(deployment.transaction_index), deployer: checksumAddress(nonempty(deployment.deployer_hex)) },
+    sources, creationBytecode, runtimeBytecode,
     metadata: compilation.language.toLowerCase() === 'solidity' ? json(metadataRows[0]?.metadata) : null,
     abi: artifacts.abi ?? null, userdoc: artifacts.userdoc ?? null, devdoc: artifacts.devdoc ?? null,
     storageLayout: artifacts.storageLayout ?? null, transientStorageLayout: artifacts.transientStorageLayout ?? null,
-    sourceIds: artifacts.sources ?? null, additionalInput: json(compilation.additional_input),
-    sourcifyIds: { compilationId: String(compilation.id), deploymentId: String(deployment.id), verificationId: String(verification.id), contractId: String(deployed.id) },
+    sourceIds: artifacts.sources ?? null, additionalInput,
+    ...buildStandardJson({ compilation: apiCompilation, sources, metadata: metadataRows[0]?.metadata ?? null, creationBytecode, runtimeBytecode, artifacts, additionalInput }),
+    signatures,
   };
 }

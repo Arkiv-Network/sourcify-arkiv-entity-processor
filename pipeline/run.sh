@@ -107,7 +107,7 @@ for number in PREPARE_LIMIT CONTRACT_LIMIT; do
 done
 [[ $ENTITY_OWNER =~ ^0x[0-9a-fA-F]{40}$ ]] || die "ENTITY_OWNER must be a 0x-prefixed 20-byte address"
 if [[ $COMMAND != publish ]]; then
-  for table in code compiled_contracts compiled_contracts_metadata compiled_contracts_sources contract_deployments contracts sources sourcify_matches verified_contracts; do
+  for table in code compiled_contracts compiled_contracts_metadata compiled_contracts_sources compiled_contracts_signatures contract_deployments contracts signatures sources sourcify_matches verified_contracts; do
     compgen -G "$PARQUET_DIR/$table/*.parquet" >/dev/null || die "missing Parquet files: $PARQUET_DIR/$table/*.parquet"
   done
 fi
@@ -145,7 +145,7 @@ phase_process() {
   state start process
   local total args codes
   if [[ -f $BUNDLE/seed.json ]]; then
-    state process-reusable || die "refusing to reuse $BUNDLE: it is not a recorded completed bundle with the current settings. Move it aside to reprocess, or use a fresh WORK_DIR."
+    state process-reusable || die "refusing to reuse $BUNDLE: it is not a recorded completed bundle with the current settings and processor/source build. Move it aside to reprocess, or use a fresh WORK_DIR."
     state end process reused "completed bundle exists"
     current_phase=
     return

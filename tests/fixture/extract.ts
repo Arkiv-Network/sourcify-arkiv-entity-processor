@@ -40,6 +40,8 @@ const tables: [string, string][] = [
   ['contract_deployments', `SELECT * FROM ${raw('contract_deployments')} WHERE id IN (SELECT deployment_id FROM verified_contracts)`],
   ['compiled_contracts', `SELECT * FROM ${raw('compiled_contracts')} WHERE id IN (SELECT compilation_id FROM verified_contracts)`],
   ['compiled_contracts_metadata', `SELECT * FROM ${raw('compiled_contracts_metadata')} WHERE compilation_id IN (SELECT id FROM compiled_contracts)`],
+  ['compiled_contracts_signatures', `SELECT * FROM ${raw('compiled_contracts_signatures')} WHERE compilation_id IN (SELECT id FROM compiled_contracts)`],
+  ['signatures', `SELECT * FROM ${raw('signatures')} WHERE signature_hash_32 IN (SELECT signature_hash_32 FROM compiled_contracts_signatures)`],
   ['contracts', `SELECT * FROM ${raw('contracts')} WHERE id IN (SELECT contract_id FROM contract_deployments)`],
   ['compiled_contracts_sources', `SELECT * FROM ${raw('compiled_contracts_sources')} WHERE compilation_id IN (SELECT id FROM compiled_contracts)`],
   ['sources', `SELECT * FROM ${raw('sources')} WHERE source_hash IN (SELECT source_hash FROM compiled_contracts_sources)`],
