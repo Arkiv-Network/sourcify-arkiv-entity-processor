@@ -20,11 +20,10 @@ clap = { version = "4", features = ["derive"] }
 flate2 = "1"
 hex = "0.4"
 hmac = "0.12"
-serde_json = { version = "1", features = ["preserve_order"] }
+serde_json = { version = "1", features = ["preserve_order", "arbitrary_precision"] }
 sha2 = "0.10"
 sha3 = "0.10"
 signal-hook = { version = "0.4", default-features = false }
-ryu-js = "1"
 ureq = { version = "3", default-features = false, features = ["rustls"] }
 zstd = { version = "0.14", default-features = false, features = ["zstdmt"] }
 

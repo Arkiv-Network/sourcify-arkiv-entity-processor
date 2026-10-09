@@ -4,7 +4,8 @@ use anyhow::{bail, ensure, Context, Result};
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 use sha3::Keccak256;
-use std::collections::HashSet;
+pub mod hydrate;
+mod split;
 pub const BUDGET: usize = 122880;
 pub const CHUNK: usize = 100000;
 pub fn sha(data: impl AsRef<[u8]>) -> [u8; 32] {
@@ -117,9 +118,7 @@ fn serialize(v: &Value, canonical_order: bool) -> String {
                 .collect::<Vec<_>>()
                 .join(",")
         ),
-        Value::Number(n) => ryu_js::Buffer::new()
-            .format(n.as_f64().expect("finite JSON number"))
-            .to_owned(),
+        Value::Number(n) => n.to_string(),
         _ => serde_json::to_string(v).unwrap(),
     }
 }
@@ -343,112 +342,7 @@ fn convert_with_provenance(r: &Value, ids: Option<&Value>) -> Result<Vec<Entity>
         address.starts_with("0x") && address.len() == 42 && hex::decode(&address[2..]).is_ok(),
         "invalid address"
     );
-    let mut out = Vec::new();
-    let mut sources = Map::new();
-    let mut seen = HashSet::new();
-    for (path, source) in r["sources"].as_object().into_iter().flatten() {
-        let content = source["content"].as_str().context("missing source body")?;
-        let hash = hx(sha(content));
-        sources.insert(path.clone(), Value::String(hash.clone()));
-        if seen.insert(hash.clone()) {
-            let e = fit(
-                "sourcefile",
-                bytes(&json!({"schema":"sourcify.sourcefile.v1","content":content})),
-                "application/json",
-                attrs(json!({"hash":attr("bytes32",hash),"size":attr("i32",content.len())})),
-                &mut out,
-            );
-            out.push(e);
-        }
-    }
-    let mut refs = Map::new();
-    let mut codes = HashSet::new();
-    for (name, kind, field) in [
-        ("creationOnchain", "creationBytecode", "onchainBytecode"),
-        (
-            "creationRecompiled",
-            "creationBytecode",
-            "recompiledBytecode",
-        ),
-        ("runtimeOnchain", "runtimeBytecode", "onchainBytecode"),
-        ("runtimeRecompiled", "runtimeBytecode", "recompiledBytecode"),
-    ] {
-        let raw = r[kind].get(field).context("missing bytecode field")?;
-        let hash = if raw.is_null() || raw == "0x" {
-            Value::Null
-        } else {
-            let s = raw.as_str().context("bytecode must be hex or null")?;
-            ensure!(s.starts_with("0x"), "bytecode needs 0x");
-            let data = hex::decode(&s[2..])?;
-            let hash = hx(Keccak256::digest(&data));
-            if codes.insert(hash.clone()) {
-                let n = data.len();
-                let e = fit(
-                    "code",
-                    data,
-                    "application/octet-stream",
-                    attrs(json!({"hash":attr("bytes32",hash.clone()),"size":attr("i32",n)})),
-                    &mut out,
-                );
-                out.push(e);
-            }
-            Value::String(hash)
-        };
-        refs.insert(name.into(), hash);
-    }
-    let c = &r["compilation"];
-    let creation = &r["creationBytecode"];
-    let runtime = &r["runtimeBytecode"];
-    let entries: Vec<_> = sources.iter().map(|(k, v)| json!([k, v])).collect();
-    let fingerprint = hx(sha(bytes(&json!([
-        c["compiler"],
-        c["compilerVersion"],
-        c["language"],
-        c["fullyQualifiedName"],
-        object(&c["compilerSettings"]),
-        entries,
-        refs["creationOnchain"],
-        refs["creationRecompiled"],
-        refs["runtimeOnchain"],
-        refs["runtimeRecompiled"]
-    ]))));
-    let mut cp = Map::new();
-    cp.insert("schema".into(), json!("sourcify.compilation.v2"));
-    for (k, v) in c.as_object().unwrap() {
-        cp.insert(k.clone(), v.clone());
-    }
-    cp.insert("sources".into(), Value::Object(sources));
-    for name in [
-        "metadata",
-        "storageLayout",
-        "transientStorageLayout",
-        "userdoc",
-        "devdoc",
-        "sourceIds",
-    ] {
-        cp.insert(name.into(), r[name].clone());
-    }
-    cp.insert("creationCodeArtifacts".into(),json!({"sourceMap":creation["sourceMap"],"linkReferences":creation["linkReferences"],"cborAuxdata":creation["cborAuxdata"]}));
-    cp.insert("runtimeCodeArtifacts".into(),json!({"sourceMap":runtime["sourceMap"],"linkReferences":runtime["linkReferences"],"immutableReferences":runtime["immutableReferences"],"cborAuxdata":runtime["cborAuxdata"]}));
-    cp.insert(
-        "recompiledCreationHash".into(),
-        refs["creationRecompiled"].clone(),
-    );
-    cp.insert(
-        "recompiledRuntimeHash".into(),
-        refs["runtimeRecompiled"].clone(),
-    );
-    let mut ca = compiler_attrs(r, true);
-    ca.insert("hash".into(), attr("bytes32", fingerprint));
-    let compilation = fit(
-        "compilation",
-        bytes(&Value::Object(cp)),
-        "application/json",
-        ca,
-        &mut out,
-    );
-    let compilation_id = hex::encode(compilation.id);
-    out.push(compilation);
+    let (mut out, contract_payload, compilation_id, refs) = split::split(r)?;
     let proxy = object(&r["proxyResolution"]);
     let deployment = object(&r["deployment"]);
     let abi = &r["abi"];
@@ -471,7 +365,10 @@ fn convert_with_provenance(r: &Value, ids: Option<&Value>) -> Result<Vec<Entity>
             attr("str", trunc(string(&proxy["proxyType"], "none"))),
         );
     }
-    va.insert("abihash".into(), attr("bytes32", hx(sha(bytes(abi)))));
+    va.insert(
+        "abihash".into(),
+        attr("bytes32", hx(sha(split::json_bytes(abi)))),
+    );
     va.insert(
         "blocknumber".into(),
         attr(
@@ -502,13 +399,9 @@ fn convert_with_provenance(r: &Value, ids: Option<&Value>) -> Result<Vec<Entity>
             va.insert(name.into(), attr("bytes32", refs[rname].clone()));
         }
     }
-    // The contract payload is the complete source record. Storage metadata and
-    // relationships belong in attributes or shared entities, never in this JSON.
-    // Do not use the legacy JS-compatible serializer here: it rounds integers
-    // above 2^53 through f64, which would change values in the source record.
     let e = fit(
         "verified_contract",
-        serde_json::to_vec(r)?,
+        contract_payload,
         "application/json",
         va,
         &mut out,
@@ -613,7 +506,7 @@ mod tests {
         for (before, after) in baseline.iter().zip(&with_ids) {
             if before.kind == "verified_contract" {
                 let payload: Value = serde_json::from_slice(&after.payload).unwrap();
-                assert_eq!(payload["sourcifyIds"], r["sourcifyIds"]);
+                assert_eq!(payload["data"]["sourcifyIds"], r["sourcifyIds"]);
                 assert_ne!(before.id, after.id);
                 assert_eq!(
                     before.attributes["compilationref"],
@@ -625,33 +518,7 @@ mod tests {
         }
     }
     fn restored_contract(entities: &[Entity]) -> Value {
-        let contract = entities
-            .iter()
-            .find(|entity| entity.kind == "verified_contract")
-            .unwrap();
-        let stored: Value = serde_json::from_slice(&contract.payload).unwrap();
-        let Some(spill) = stored
-            .as_object()
-            .filter(|object| object.len() == 1)
-            .and_then(|object| object.get("$spill"))
-        else {
-            return stored;
-        };
-        let mut parts: Vec<_> = entities
-            .iter()
-            .filter(|entity| {
-                entity.kind == "blob" && entity.attributes["hash"]["value"] == spill["hash"]
-            })
-            .collect();
-        parts.sort_by_key(|entity| entity.attributes["part"]["value"].as_u64().unwrap());
-        assert_eq!(parts.len() as u64, spill["parts"].as_u64().unwrap());
-        let payload: Vec<_> = parts
-            .iter()
-            .flat_map(|entity| entity.payload.clone())
-            .collect();
-        assert_eq!(payload.len() as u64, spill["bytes"].as_u64().unwrap());
-        assert_eq!(hx(sha(&payload)), spill["hash"]);
-        serde_json::from_slice(&payload).unwrap()
+        hydrate::hydrate(entities.last().unwrap(), entities).unwrap()
     }
 
     #[test]
@@ -843,6 +710,126 @@ mod tests {
         ));
         assert!(transform_line(b"{\"chainId\":\"1\"".to_vec()).is_err());
         assert!(transform_line(b"{\"chainId\":\"\xff\"}".to_vec()).is_err());
+    }
+    #[test]
+    fn shared_compilation_excludes_deployment_and_hashes_complete_payload() {
+        let mut a = fixture();
+        a["metadata"] = json!("  { \"a\": 1 }\n");
+        a["compilation"]["future"] = json!("0xaabb");
+        a["runtimeBytecode"]["onchainBytecode"] = json!("0xaabb");
+        let first = transform(&a).unwrap();
+        let compilation = |es: &[Entity]| es.iter().find(|e| e.kind == "compilation").unwrap().id;
+        let mut b = a.clone();
+        b["runtimeBytecode"]["onchainBytecode"] = json!("0xccdd");
+        b["address"] = json!("0x2222222222222222222222222222222222222222");
+        b["matchId"] = json!("2");
+        let second = transform(&b).unwrap();
+        assert_eq!(compilation(&first), compilation(&second));
+        assert_eq!(restored_contract(&second), canonical(&b));
+        b["metadata"] = json!("{\"a\":1}");
+        assert_ne!(compilation(&first), compilation(&transform(&b).unwrap()));
+        b = a.clone();
+        b["compilation"]["large"] = json!(9007199254740993u64);
+        let third = transform(&b).unwrap();
+        b["compilation"]["large"] = json!(9007199254740992u64);
+        assert_ne!(compilation(&third), compilation(&transform(&b).unwrap()));
+    }
+    #[test]
+    fn references_preserve_literals_hex_null_empty_and_standard_json() {
+        let mut r = fixture();
+        r["sources"]["~odd/path.sol"] = json!({"content":"contract A {}","$ref":{"literal":true}});
+        r["runtimeBytecode"]["recompiledBytecode"] = json!("0xaBcD");
+        r["runtimeBytecode"]["onchainBytecode"] = json!("0xABcd");
+        r["creationBytecode"]["onchainBytecode"] = json!("0x");
+        r["metadata"] = json!("  { \"exact\": true }\n");
+        r["abi"] = json!([{"type":"function","name":"hello_this_function_name_is_deliberately_long_to_exceed_reference_manifest_size","inputs":[],"outputs":[]}]);
+        r["stdJsonInput"] = json!({"sources":{"A.sol":{"content":"contract A {}"}}});
+        r["stdJsonOutput"] = json!({"contracts":{"A.sol":{"A":{"abi":r["abi"],"evm":{"bytecode":{"object":"aBcD"}}}}}});
+        r["literal"] = json!({"$ref":"literal","$spill":{"parts":1},"schema":"sourcify.compilation.v3","references":[]});
+        let es = transform(&r).unwrap();
+        assert_eq!(restored_contract(&es), canonical(&r));
+        let cp: Value =
+            serde_json::from_slice(&es.iter().find(|e| e.kind == "compilation").unwrap().payload)
+                .unwrap();
+        assert!(cp["references"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|r| r["kind"] == "local"));
+        let stripped: Value = serde_json::from_slice(&es.last().unwrap().payload).unwrap();
+        assert!(stripped["data"].get("abi").is_none());
+        assert!(stripped["data"]["runtimeBytecode"]
+            .get("onchainBytecode")
+            .is_none());
+    }
+    #[test]
+    fn hydration_rejects_missing_tampered_and_invalid_references() {
+        let es = transform(&fixture()).unwrap();
+        let contract = es.last().unwrap();
+        assert!(hydrate::hydrate(contract, &es[1..]).is_err());
+        let mut tampered = es.clone();
+        tampered[0].payload.push(b' ');
+        assert!(hydrate::hydrate(contract, &tampered).is_err());
+        let mut tampered = es.clone();
+        let source = &mut tampered[0];
+        source.payload =
+            serde_json::to_vec(&json!({"schema":"sourcify.sourcefile.v1","content":"changed"}))
+                .unwrap();
+        source.identify();
+        assert!(hydrate::hydrate(contract, &tampered).is_err());
+        for invalid in [
+            json!({"path":"/address","kind":"sourcefile","hash":es[0].attributes["hash"]["value"]}),
+            json!({"path":"/missing/child","kind":"sourcefile","hash":es[0].attributes["hash"]["value"]}),
+            json!({"path":"/stdJsonInput","kind":"local","pointer":"/stdJsonOutput"}),
+        ] {
+            let mut bad = contract.clone();
+            let mut v: Value = serde_json::from_slice(&bad.payload).unwrap();
+            v["references"].as_array_mut().unwrap().push(invalid);
+            bad.payload = serde_json::to_vec(&v).unwrap();
+            bad.identify();
+            assert!(hydrate::hydrate(&bad, &es).is_err());
+        }
+        let mut bad = contract.clone();
+        let mut v: Value = serde_json::from_slice(&bad.payload).unwrap();
+        let duplicate = v["references"][0].clone();
+        v["references"].as_array_mut().unwrap().push(duplicate);
+        bad.payload = serde_json::to_vec(&v).unwrap();
+        bad.identify();
+        assert!(hydrate::hydrate(&bad, &es).is_err());
+    }
+    #[test]
+    fn shared_spilled_code_and_compilation_roundtrip() {
+        let mut r = fixture();
+        r["runtimeBytecode"]["recompiledBytecode"] = json!(format!("0x{}", "aB".repeat(BUDGET)));
+        r["metadata"] = json!("🌍".repeat(BUDGET));
+        let es = transform(&r).unwrap();
+        assert_eq!(restored_contract(&es), canonical(&r));
+        let mut missing = es.clone();
+        let i = missing.iter().position(|e| e.kind == "blob").unwrap();
+        missing.remove(i);
+        assert!(hydrate::hydrate(es.last().unwrap(), &missing).is_err());
+    }
+    #[test]
+    fn arbitrary_precision_numbers_survive_without_rounding_or_panics() {
+        let mut r = fixture();
+        let numbers:Value=serde_json::from_str("[184467440737095516160001,0.12345678901234567890123456789,1e400,-184467440737095516160001]").unwrap();
+        r["compilation"]["future"] = numbers.clone();
+        r["abi"] = json!([{"future":numbers.clone()}]);
+        r["unknown"] = numbers.clone();
+        let input = serde_json::to_vec(&r).unwrap();
+        let Line::Record(es) = transform_line(input).unwrap() else {
+            panic!("expected record")
+        };
+        let hydrated = restored_contract(&es);
+        assert_eq!(hydrated, canonical(&r));
+        assert_eq!(hydrated["unknown"].to_string(), numbers.to_string());
+        let before = es.iter().find(|e| e.kind == "compilation").unwrap().id;
+        r["compilation"]["future"][0] = serde_json::from_str("184467440737095516160002").unwrap();
+        let after = transform(&r).unwrap();
+        assert_ne!(
+            before,
+            after.iter().find(|e| e.kind == "compilation").unwrap().id
+        );
     }
     #[test]
     fn js_key_order() {
