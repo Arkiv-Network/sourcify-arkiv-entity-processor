@@ -145,7 +145,7 @@ phase_process() {
   state start process
   local total args codes
   if [[ -f $BUNDLE/seed.json ]]; then
-    state process-reusable || die "refusing to reuse $BUNDLE: it is not a recorded completed bundle with the current settings. Move it aside to reprocess, or use a fresh WORK_DIR."
+    state process-reusable || die "refusing to reuse $BUNDLE: it is not a recorded completed bundle with the current settings and processor/source build. Move it aside to reprocess, or use a fresh WORK_DIR."
     state end process reused "completed bundle exists"
     current_phase=
     return

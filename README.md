@@ -17,8 +17,18 @@ Sourcify Parquet export (read-only)
 Each contract becomes `sourcefile`, `code`, `compilation` and `verified_contract` entities (large
 payloads spill into `blob` parts) with permanent expiry. Entities are deduplicated globally by
 semantic staging ID, raw payload bytes are stored once by SHA-256, and output is written in match
-ID order with dependencies first. The output is deterministic: byte-identical for any worker count,
-and identical to the original `sourcify-arkiv-helper` pipeline (checked in CI on real export rows).
+ID order with dependencies first. The output is deterministic across worker counts.
+
+The decoded `verified_contract` payload equals the **complete original input record as JSON**.
+Nested objects, extra fields, nulls, source text and bytecode remain in their original locations;
+the processor adds no schema marker, `codeRefs`, renamed fields or defaults to this payload.
+This is JSON-value equality, not preservation of the input file’s whitespace or key order.
+Shared source, code and compilation entities and query attributes remain available.
+
+This guarantee starts at the processor input. A captured full API response retains every supplied
+field, including standard compiler JSON and signatures. The Parquet adapter builds a narrower
+record: it omits `stdJsonInput`, `stdJsonOutput` and `signatures`, and adds `sourcifyIds`.
+Preserving that record exactly does **not** establish complete Sourcify API parity.
 
 | Path | Contents |
 | --- | --- |
@@ -114,9 +124,14 @@ from the export.
 Parquet records retain original IDs as `sourcifyIds` in the verified-contract payload:
 `compilationId`, `deploymentId`, `verificationId`, and `contractId` are strings; `matchId` remains
 its existing field. This provenance allows joining back to Sourcify without changing source,
-code, or compilation entity identities. Newly enriched verified-contract entities get new keys
-because their payload changed. Existing NDJSON without `sourcifyIds` produces the same keys.
-Compilation fingerprinting, gzip/chunk handling, and the single-run processing model are unchanged.
+code, or compilation entity identities.
+
+**Migration:** all verified-contract payloads now use the complete input record instead of the
+old selected-field envelope, so their entity keys change. Regenerate bundles; do not reuse an
+old bundle or resume old processed output as if it contained the new payloads. The larger
+payloads can increase bundle size and produce additional spill parts. Existing compression
+and spill decoding rules still apply. Byte equality with the old helper output is no longer
+a compatibility guarantee.
 
 ### 5. Publish to R2
 
@@ -180,9 +195,8 @@ arkiv-entity-processor verify work/bundle
 # The `arkiv-entity-processor` CLI
 
 `process` turns Sourcify Ethereum contract records (NDJSON) into the seed bundle; `verify` checks
-a finished bundle; `pack` and `upload` publish it. `process` is the former
-`sourcify-offline-importer` (rust-importer in sourcify-arkiv-helper); its output is byte-identical
-for the same input and settings.
+a finished bundle; `pack` and `upload` publish it. `process` derives from the former
+`sourcify-offline-importer`; the complete-input payload format changes its output.
 
 ## Input
 
@@ -362,9 +376,9 @@ x86_64-unknown-linux-musl && cargo build --release --locked --target x86_64-unkn
 
 `tests/fixture/parquet` holds every row behind 19 real matches (Solidity, Vyper, Fe, a large
 source with blob entities, a two-revision match, a non-Ethereum match and one per skip reason),
-extracted from the export by `tests/fixture/extract.ts`. `tests/fixture/expected.json` is the
-output of the original helper pipeline for it; `bun run test` requires byte-identical NDJSON and
-bundle files.
+extracted from the export by `tests/fixture/extract.ts`. `tests/fixture/expected.json` retains
+the original source-stream baseline. The pipeline tests check full verified-contract payload
+equality with each input record and deterministic bundles across worker counts.
 
 ## CI and releases
 

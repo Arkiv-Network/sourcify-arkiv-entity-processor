@@ -42,7 +42,8 @@ function config(): Json {
 }
 /** Settings that change the published bundle; a completed bundle is only reused under the same ones. */
 const outputConfig = (c: Json) => ({ prepareLimit: c.prepareLimit, contractLimit: c.contractLimit, skipMissingReferences: c.skipMissingReferences,
-  entityOwner: String(c.entityOwner).toLowerCase(), destinationChainId: c.destinationChainId });
+  entityOwner: String(c.entityOwner).toLowerCase(), destinationChainId: c.destinationChainId,
+  processorSha256: state.build.processorSha256, scriptsSha256: state.build.scriptsSha256 });
 function build(): Json {
   const root = env.APP_DIR!;
   const scripts = ['source', 'pipeline'].flatMap(dir => readdirSync(join(root, dir)).filter(name => /\.(ts|sh)$/.test(name)).map(name => `${dir}/${name}`)).sort();

@@ -1,14 +1,16 @@
 /**
  * End-to-end tests on tests/fixture/parquet (real export rows, see tests/fixture/extract.ts). expected.json holds the
  * output of the original sourcify-arkiv-helper pipeline: legacy records must stay byte-identical,
- * while nullable records and source provenance are tested as deliberate extensions.
+ * while complete decoded contract payloads now equal each adapter input. Contract identities and bundle hashes
+ * deliberately change; the historical whole-bundle checksums are not a payload-parity oracle.
  *
  * Needs a built processor: `cargo build --release` (or PROCESSOR_BIN=/path/to/arkiv-entity-processor).
  */
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { gunzipSync } from 'node:zlib';
 import { dirname, join, resolve } from 'node:path';
 import { prepareSource } from '../source/prepare';
 
@@ -29,6 +31,41 @@ const run = (args: string[], env: Record<string, string> = {}) => {
 };
 const bundleSums = (bundle: string) => Object.fromEntries(readFileSync(join(bundle, 'SHA256SUMS'), 'utf8').trim().split('\n')
   .map(line => line.split('  ')).filter(([, path]) => path !== 'report.json').map(([digest, path]) => [path, digest]));
+
+// Read the actual import wire format, not the auxiliary uncompressed payload file.
+function decodeBundle(bundle: string) {
+  const entities = readdirSync(join(bundle, 'entities')).sort().flatMap(name =>
+    readFileSync(join(bundle, 'entities', name), 'utf8').trim().split('\n').map(line => JSON.parse(line)));
+  const decoded = entities.map(entity => {
+    const wire = Buffer.from(entity.$payload, 'base64');
+    expect(['str:gzip', 'str:identity']).toContain(entity.contentencoding);
+    const payload = entity.contentencoding === 'str:gzip' ? gunzipSync(wire) : wire;
+    expect(`bytes32:0x${sha256(payload)}`).toBe(entity.payloadsha256);
+    return { entity, payload };
+  });
+  let spills = 0;
+  const contracts = decoded.filter(({ entity }) => entity.kind === 'str:verified_contract').map(({ payload }) => {
+    let record = JSON.parse(payload.toString());
+    if (Object.keys(record).length === 1 && record.$spill) {
+      spills++;
+      const stub = record.$spill;
+      const parts = decoded.filter(({ entity }) => entity.kind === 'str:blob' && entity.hash === `bytes32:${stub.hash}`)
+        .sort((a, b) => Number(a.entity.part.slice(4)) - Number(b.entity.part.slice(4)));
+      expect(parts.length).toBe(stub.parts);
+      for (const [index, part] of parts.entries()) {
+        expect(part.entity.part).toBe(`i32:${index}`);
+        expect(part.entity.parts).toBe(`i32:${stub.parts}`);
+        expect(part.entity.size).toBe(`i32:${part.payload.length}`);
+      }
+      const body = Buffer.concat(parts.map(part => part.payload));
+      expect(body.length).toBe(stub.bytes);
+      expect(`0x${sha256(body)}`).toBe(stub.hash);
+      record = JSON.parse(body.toString());
+    }
+    return record;
+  });
+  return { entities, contracts, spills };
+}
 
 beforeAll(() => {
   if (!existsSync(processor)) throw new Error(`Processor binary not found at ${processor}: run cargo build --release or set PROCESSOR_BIN`);
@@ -59,7 +96,7 @@ describe('source stage', () => {
     expect(manifest).toMatchObject({ selectedCount: 3, firstMatchId: '1', lastMatchId: '235' });
   });
 
-  test('real Parquet preserves nullable records and provenance while legacy output stays identical', () => {
+  test('every real Parquet adapter record equals its decoded wire contract payload', () => {
     const result = run(['bun', 'source/stream.ts', '--source-dir', sourceDir, '--skip-missing-references']);
     expect(result.code).toBe(0);
     const lines = result.stdout.trim().split('\n').map(line => JSON.parse(line));
@@ -80,7 +117,19 @@ describe('source stage', () => {
     writeFileSync(input, legacyStream);
     const processed = run([processor, 'process', '-i', input, '-o', bundle, '--owner', expected.owner, '--require-source-complete']);
     expect(processed.code).toBe(0);
-    expect(bundleSums(bundle)).toEqual(expected.bundleSha256sums);
+    expect(decodeBundle(bundle).contracts.sort((a, b) => a.matchId.localeCompare(b.matchId)))
+      .toEqual(legacy.slice(0, -1).sort((a, b) => a.matchId.localeCompare(b.matchId)));
+    const fullInput = join(scratch, 'complete.ndjson'), fullBundle = join(scratch, 'complete-bundle');
+    writeFileSync(fullInput, result.stdout);
+    expect(run([processor, 'process', '-i', fullInput, '-o', fullBundle, '--owner', expected.owner, '--require-source-complete']).code).toBe(0);
+    const decoded = decodeBundle(fullBundle);
+    expect(decoded.contracts.sort((a, b) => a.matchId.localeCompare(b.matchId)))
+      .toEqual([...lines].sort((a, b) => a.matchId.localeCompare(b.matchId)));
+    expect(decoded.spills).toBeGreaterThan(0); // Large real contracts exercise gzip plus blob reconstruction.
+    // Provenance must not change shared entities for the same legacy inputs.
+    const shared = (entities: any[]) => entities.filter(entity => ['str:sourcefile', 'str:code', 'str:compilation'].includes(entity.kind));
+    const currentShared = new Map(shared(decoded.entities).map(entity => [entity.$key, entity]));
+    for (const entity of shared(decodeBundle(bundle).entities)) expect(currentShared.get(entity.$key)).toEqual(entity);
   }, 30_000);
 
   test('stream fails closed on a missing reference unless skipping', () => {
@@ -114,8 +163,7 @@ describe('pipeline/run.sh', () => {
     const bundle = join(workDir, 'bundle');
     const sums = bundleSums(bundle);
     const metadata = readFileSync(join(bundle, 'metadata.jsonl'), 'utf8').trim().split('\n').map(line => JSON.parse(line));
-    const payloads = readFileSync(join(bundle, 'payloads.bin'));
-    const contracts = metadata.filter(entity => entity.kind === 'verified_contract').map(entity => JSON.parse(payloads.subarray(entity.payloadOffset, entity.payloadOffset + entity.payloadBytes).toString()));
+    const { contracts } = decodeBundle(bundle);
     const yul = contracts.find(record => record.matchId === '28759260');
     expect(yul.abi).toBeNull();
     expect(yul.sourcifyIds.compilationId).toBeTruthy();
@@ -130,6 +178,24 @@ describe('pipeline/run.sh', () => {
     expect(bundleSums(bundle)).toEqual(sums);
     const phases = JSON.parse(readFileSync(join(workDir, 'timings.json'), 'utf8')).phases;
     expect([phases.prepare.status, phases.process.status, phases.verify.status]).toEqual(['reused', 'reused', 'completed']);
+
+    // Old runs either omit build identity or name a different processor/source build.
+    const timingPath = join(workDir, 'timings.json');
+    const reusable = readFileSync(timingPath, 'utf8');
+    for (const field of ['processorSha256', 'scriptsSha256']) {
+      for (const mismatch of [undefined, 'different-build']) {
+        const stale = JSON.parse(reusable);
+        stale.phases.process.outputConfig[field] = mismatch;
+        if (stale.phases.process.completedEarlier) stale.phases.process.completedEarlier.outputConfig[field] = mismatch;
+        writeFileSync(timingPath, JSON.stringify(stale));
+        const refused = run(['bash', 'pipeline/run.sh', 'run'], env(workDir));
+        expect(refused.code).toBe(1);
+        expect(refused.stderr).toContain('refusing to reuse');
+        expect(bundleSums(bundle)).toEqual(sums);
+      }
+    }
+    writeFileSync(timingPath, reusable);
+    expect(run(['bash', 'pipeline/run.sh', 'run'], env(workDir)).code).toBe(0);
 
     // A bundle made for another owner is never silently reused.
     const other = run(['bash', 'pipeline/run.sh', 'run'], env(workDir, { ENTITY_OWNER: '0x2222222222222222222222222222222222222222' }));

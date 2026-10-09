@@ -463,14 +463,13 @@ fn convert(r: &Value) -> Result<Vec<Entity>> {
             va.insert(name.into(), attr("bytes32", refs[rname].clone()));
         }
     }
-    let mut vp = json!({"schema":"sourcify.verifiedContract.v2","match":r["match"],"creationMatch":r["creationMatch"],"runtimeMatch":r["runtimeMatch"],"chainId":"1","address":address,"verifiedAt":r["verifiedAt"],"matchId":r["matchId"],"abi":abi,"compilation":c,"deployment":deployment,"proxyResolution":proxy,"additionalInput":r["additionalInput"],"creationTransformations":creation["transformations"],"creationTransformationValues":creation["transformationValues"],"runtimeTransformations":runtime["transformations"],"runtimeTransformationValues":runtime["transformationValues"],"codeRefs":refs});
-    // Export provenance is optional: old NDJSON keeps its exact entity identities.
-    if let Some(ids) = r.get("sourcifyIds") {
-        vp["sourcifyIds"] = ids.clone();
-    }
+    // The contract payload is the complete source record. Storage metadata and
+    // relationships belong in attributes or shared entities, never in this JSON.
+    // Do not use the legacy JS-compatible serializer here: it rounds integers
+    // above 2^53 through f64, which would change values in the source record.
     let e = fit(
         "verified_contract",
-        bytes(&vp),
+        serde_json::to_vec(r)?,
         "application/json",
         va,
         &mut out,
@@ -574,6 +573,96 @@ mod tests {
             }
         }
     }
+    fn restored_contract(entities: &[Entity]) -> Value {
+        let contract = entities
+            .iter()
+            .find(|entity| entity.kind == "verified_contract")
+            .unwrap();
+        let stored: Value = serde_json::from_slice(&contract.payload).unwrap();
+        let Some(spill) = stored
+            .as_object()
+            .filter(|object| object.len() == 1)
+            .and_then(|object| object.get("$spill"))
+        else {
+            return stored;
+        };
+        let mut parts: Vec<_> = entities
+            .iter()
+            .filter(|entity| {
+                entity.kind == "blob" && entity.attributes["hash"]["value"] == spill["hash"]
+            })
+            .collect();
+        parts.sort_by_key(|entity| entity.attributes["part"]["value"].as_u64().unwrap());
+        assert_eq!(parts.len() as u64, spill["parts"].as_u64().unwrap());
+        let payload: Vec<_> = parts
+            .iter()
+            .flat_map(|entity| entity.payload.clone())
+            .collect();
+        assert_eq!(payload.len() as u64, spill["bytes"].as_u64().unwrap());
+        assert_eq!(hx(sha(&payload)), spill["hash"]);
+        serde_json::from_slice(&payload).unwrap()
+    }
+
+    #[test]
+    fn complete_contract_payload_preserves_source_record() {
+        let mut r = fixture();
+        // Numeric chain ID, nulls, unknown fields, arrays and large integers must
+        // survive without adopting a new schema or normalizing their values.
+        r["chainId"] = json!(1);
+        r["matchId"] = json!(9007199254740993u64);
+        r["deployment"] = Value::Null;
+        r["proxyResolution"] = Value::Null;
+        r["metadata"] = json!({"nullable":null, "nested":[{"future":true}]});
+        r["signatures"] = json!({"function":[{"signature":"f()"}], "error":[]});
+        r["stdJsonInput"] = json!({"sources":{"A.sol":{"content":"contract A {}"}}});
+        r["stdJsonOutput"] = json!({"future":{"values":[null,false,0,"",[]]}});
+        r["futureField"] = json!({"unsigned":u64::MAX, "signed":i64::MIN, "fraction":0.125});
+        r["$spill"] = json!({"hash":"source-owned-value", "parts":1, "bytes":7});
+        let entities = transform(&r).unwrap();
+        let restored = restored_contract(&entities);
+        assert_eq!(restored, canonical(&r));
+        for absent in [
+            "schema",
+            "codeRefs",
+            "creationTransformations",
+            "sourcifyIds",
+        ] {
+            assert!(!restored.as_object().unwrap().contains_key(absent));
+        }
+        let contract = entities.last().unwrap();
+        assert_eq!(contract.attributes["chainid"]["value"], "1");
+        assert_eq!(contract.attributes["matchid"]["value"], "9007199254740993");
+        assert!(contract.attributes.contains_key("compilationref"));
+        // The owned streaming parser must have the same lossless behavior.
+        let Line::Record(streamed) = transform_line(serde_json::to_vec(&r).unwrap()).unwrap()
+        else {
+            panic!("record expected");
+        };
+        assert_eq!(restored_contract(&streamed), restored);
+    }
+
+    #[test]
+    fn complete_contract_payload_survives_spill_and_key_order() {
+        let mut r = fixture();
+        r["futureField"] = json!({"content":"🌍".repeat(BUDGET), "empty":{}, "null":null});
+        let entities = transform(&r).unwrap();
+        let contract = entities.last().unwrap();
+        let stored: Value = serde_json::from_slice(&contract.payload).unwrap();
+        assert!(stored.get("$spill").is_some());
+        assert_eq!(restored_contract(&entities), canonical(&r));
+        let mut reordered = r.as_object().unwrap().iter().collect::<Vec<_>>();
+        reordered.reverse();
+        let reordered = Value::Object(
+            reordered
+                .into_iter()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect(),
+        );
+        let repeated = transform(&reordered).unwrap();
+        assert_eq!(contract.id, repeated.last().unwrap().id);
+        assert_eq!(restored_contract(&repeated), canonical(&r));
+    }
+
     #[test]
     fn sdk_address_checksum() {
         assert_eq!(
