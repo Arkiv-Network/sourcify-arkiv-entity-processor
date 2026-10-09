@@ -8,6 +8,7 @@
   const entities = data.entities;
   const select = document.querySelector('#entity-select');
   const showAll = document.querySelector('#show-all-source');
+  const flattenSource = document.querySelector('#flatten-source');
   let view = 'payload';
   const labels = {verified_contract: 'Verification record', compilation: 'Compilation', sourcefile: 'Source file', code: 'Bytecode', blob: 'Large-payload part'};
   const priority = {verified_contract: 0, compilation: 1, sourcefile: 2, code: 3, blob: 4};
@@ -65,6 +66,23 @@
     }
     return source;
   }
+  function flattenForDisplay(value) {
+    const entries = [];
+    function visit(current, path) {
+      if (current !== null && !Array.isArray(current) && typeof current === 'object' && Object.keys(current).length) {
+        for (const [key, child] of Object.entries(current)) {
+          const segment = /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(key)
+            ? `${path ? '.' : ''}${key}` : `[${JSON.stringify(key)}]`;
+          visit(child, path + segment);
+        }
+      } else {
+        entries.push([path, current]);
+      }
+    }
+    if (Object.keys(value).length === 0) return {};
+    visit(value, '');
+    return Object.fromEntries(entries);
+  }
   function sortedForDisplay(value) {
     if (Array.isArray(value)) return value.map(sortedForDisplay);
     if (value !== null && typeof value === 'object') {
@@ -101,12 +119,15 @@
     document.querySelector('#entity-kind').textContent = k;
     document.querySelector('#entity-key').textContent = `Key: ${entity.key}`;
     document.querySelector('#source-caption').textContent = showAll.checked ? 'Complete captured response. No fields hidden.' : 'Actual source-field excerpt for this entity. Use “Full response” for every field.';
-    showJSON(document.querySelector('#source-json'), showAll.checked ? source : relevant(entity));
+    const sourceValue = showAll.checked ? source : relevant(entity);
+    if (flattenSource.checked) document.querySelector('#source-caption').textContent += ' Flattened paths; literal dotted keys use brackets. Arrays stay intact.';
+    showJSON(document.querySelector('#source-json'), flattenSource.checked ? flattenForDisplay(sourceValue) : sourceValue);
     showJSON(document.querySelector('#entity-json'), view === 'payload' ? entity.payload : view === 'attributes' ? entity.attributes : entity);
     for (const button of document.querySelectorAll('[data-view]')) button.setAttribute('aria-pressed', String(button.dataset.view === view));
   }
   select.addEventListener('change', render);
   showAll.addEventListener('change', render);
+  flattenSource.addEventListener('change', render);
   for (const button of document.querySelectorAll('[data-view]')) button.addEventListener('click', () => {view = button.dataset.view; render();});
   render();
 })();

@@ -31,3 +31,7 @@
 .json-key { color: #65329a; }
 .json-string { color: #1b6550; }
 .json-literal { color: #a34516; }
+
+.source-options { display: flex; flex-wrap: wrap; gap: 6px 14px; justify-content: flex-end; }
+.source-options label { white-space: nowrap; }
+@media (max-width: 600px) { .json-panel:first-child .panel-heading { align-items: flex-start; flex-wrap: wrap; } .source-options { justify-content: flex-start; } }
