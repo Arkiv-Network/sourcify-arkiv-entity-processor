@@ -18,16 +18,16 @@ export interface Options {
 export interface Skipped { matchId: string; reason: string }
 
 /** Only reconstruction failures caused by referenced data absent from the local export (see `required()` in records.ts). */
-export const isMissingReference = (error: string) => error.startsWith('Missing ') || error === 'Referenced Solidity metadata missing from local export';
-/** Records the entity transform rejects by design (it requires an ABI array); e.g. Yul compilations with a null ABI. */
+export const isMissingReference = (error: string) => error.startsWith('Missing ');
+/** Reject malformed ABI values while preserving valid null ABIs (e.g. Yul). */
 export const unsupportedRecord = (record: Record<string, any>) =>
-  Array.isArray(record.abi) ? undefined : `ABI is not an array (${record.compilation?.language ?? 'unknown'} compilation); the entity transform requires one`;
+  record.abi === null || Array.isArray(record.abi) ? undefined : `ABI is neither an array nor null (${record.compilation?.language ?? 'unknown'} compilation)`;
 
 const usage = `bun source/stream.ts --source-dir DIR [--limit N] [--after-match-id ID] [--batch-size 250] [--memory-limit 6GB]
                      [--skip-missing-references [--max-skipped 10000]]
 Writes the prepared Ethereum mainnet records of DIR (see prepare.ts) as NDJSON to stdout in match ID order, then a
 source-complete marker. Any reconstruction error aborts, unless --skip-missing-references: records whose referenced
-rows are absent from the export (or whose ABI is not an array) are then skipped, logged to stderr and listed in the
+rows are absent from the export (or whose ABI is neither an array nor null) are then skipped, logged to stderr and listed in the
 marker, at most --max-skipped of them.`;
 
 export function parseOptions(args: string[]): Options | undefined {

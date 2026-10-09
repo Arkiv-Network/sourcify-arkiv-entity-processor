@@ -19,9 +19,10 @@ const fixtureMatches = {
   vyper: [5888028],
   fe: [28469961],
   nonEthereum: [100], // chain 35443: never selected
-  // Skipped with --skip-missing-references:
+  // Nullable records retain their available fields:
   yulWithoutAbi: [28759260],
   solidityWithoutMetadata: [23813307],
+  // Skipped with --skip-missing-references:
   missingBytecode: [15040941],
   missingDeployedContract: [54163146],
 };

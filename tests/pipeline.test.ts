@@ -1,12 +1,13 @@
 /**
  * End-to-end tests on tests/fixture/parquet (real export rows, see tests/fixture/extract.ts). expected.json holds the
- * output of the original sourcify-arkiv-helper pipeline for the same input: this pipeline must stay byte-identical.
+ * output of the original sourcify-arkiv-helper pipeline: legacy records must stay byte-identical,
+ * while nullable records and source provenance are tested as deliberate extensions.
  *
  * Needs a built processor: `cargo build --release` (or PROCESSOR_BIN=/path/to/arkiv-entity-processor).
  */
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdtempSync, readFileSync, renameSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { prepareSource } from '../source/prepare';
@@ -14,6 +15,8 @@ import { prepareSource } from '../source/prepare';
 const root = resolve(import.meta.dir, '..');
 const parquetDir = join(root, 'tests/fixture/parquet');
 const expected = JSON.parse(readFileSync(join(root, 'tests/fixture/expected.json'), 'utf8'));
+const recoveredIds = ['23813307', '28759260'];
+const remainingSkipped = expected.skipped.filter((item: { matchId: string }) => !recoveredIds.includes(item.matchId));
 const processor = resolve(process.env.PROCESSOR_BIN ?? join(root, 'target/release/arkiv-entity-processor'));
 let scratch: string;
 
@@ -56,13 +59,29 @@ describe('source stage', () => {
     expect(manifest).toMatchObject({ selectedCount: 3, firstMatchId: '1', lastMatchId: '235' });
   });
 
-  test('stream output is byte-identical to the original helper', () => {
+  test('real Parquet preserves nullable records and provenance while legacy output stays identical', () => {
     const result = run(['bun', 'source/stream.ts', '--source-dir', sourceDir, '--skip-missing-references']);
     expect(result.code).toBe(0);
-    expect(sha256(result.stdout)).toBe(expected.ndjsonSha256);
-    const marker = JSON.parse(result.stdout.trim().split('\n').at(-1)!);
-    expect(marker).toEqual({ type: 'source-complete', records: expected.records, lastMatchId: expected.lastMatchId, skipped: expected.skipped });
-  });
+    const lines = result.stdout.trim().split('\n').map(line => JSON.parse(line));
+    expect(lines.pop()).toEqual({ type: 'source-complete', records: expected.records + 2, lastMatchId: '28759260', skipped: remainingSkipped });
+    expect(lines.find(record => record.matchId === '23813307').metadata).toBeNull();
+    const yul = lines.find(record => record.matchId === '28759260');
+    expect(yul.compilation.language).toBe('Yul');
+    expect(yul.abi).toBeNull();
+    for (const record of lines) {
+      expect(Object.keys(record.sourcifyIds).sort()).toEqual(['compilationId', 'contractId', 'deploymentId', 'verificationId']);
+      for (const id of Object.values(record.sourcifyIds)) expect(typeof id).toBe('string');
+    }
+    const legacy = lines.filter(record => !recoveredIds.includes(record.matchId)).map(({ sourcifyIds, ...record }) => record);
+    legacy.push({ type: 'source-complete', records: expected.records, lastMatchId: expected.lastMatchId, skipped: expected.skipped });
+    const legacyStream = legacy.map(record => JSON.stringify(record) + '\n').join('');
+    expect(sha256(legacyStream)).toBe(expected.ndjsonSha256);
+    const input = join(scratch, 'legacy.ndjson'), bundle = join(scratch, 'legacy-bundle');
+    writeFileSync(input, legacyStream);
+    const processed = run([processor, 'process', '-i', input, '-o', bundle, '--owner', expected.owner, '--require-source-complete']);
+    expect(processed.code).toBe(0);
+    expect(bundleSums(bundle)).toEqual(expected.bundleSha256sums);
+  }, 30_000);
 
   test('stream fails closed on a missing reference unless skipping', () => {
     const result = run(['bun', 'source/stream.ts', '--source-dir', sourceDir]);
@@ -75,9 +94,9 @@ describe('source stage', () => {
     const limited = run(['bun', 'source/stream.ts', '--source-dir', sourceDir, '--limit', '2']);
     expect(limited.code).toBe(0);
     expect(limited.stdout.trim().split('\n').map(line => JSON.parse(line).matchId ?? JSON.parse(line).records)).toEqual(['1', '32', 2]);
-    const capped = run(['bun', 'source/stream.ts', '--source-dir', sourceDir, '--skip-missing-references', '--max-skipped', '3']);
+    const capped = run(['bun', 'source/stream.ts', '--source-dir', sourceDir, '--skip-missing-references', '--max-skipped', '1']);
     expect(capped.code).toBe(1);
-    expect(capped.stderr).toContain('More than 3 records skipped');
+    expect(capped.stderr).toContain('More than 1 records skipped');
   }, 30_000);
 });
 
@@ -87,18 +106,28 @@ describe('pipeline/run.sh', () => {
     ENTITY_OWNER: expected.owner, PREPARE_THREADS: '2', PREPARE_MEMORY_LIMIT: '1GB', SOURCE_MEMORY_LIMIT: '1GB', ...extra,
   });
 
-  test('run produces the reference bundle, then reuses it', () => {
+  test('run imports nullable records, then reuses the verified bundle', () => {
     const workDir = join(scratch, 'work');
     Bun.spawnSync(['mkdir', '-p', workDir]);
     const first = run(['bash', 'pipeline/run.sh', 'run'], env(workDir));
     expect(first.code).toBe(0);
-    expect(bundleSums(join(workDir, 'bundle'))).toEqual(expected.bundleSha256sums);
+    const bundle = join(workDir, 'bundle');
+    const sums = bundleSums(bundle);
+    const metadata = readFileSync(join(bundle, 'metadata.jsonl'), 'utf8').trim().split('\n').map(line => JSON.parse(line));
+    const payloads = readFileSync(join(bundle, 'payloads.bin'));
+    const contracts = metadata.filter(entity => entity.kind === 'verified_contract').map(entity => JSON.parse(payloads.subarray(entity.payloadOffset, entity.payloadOffset + entity.payloadBytes).toString()));
+    const yul = contracts.find(record => record.matchId === '28759260');
+    expect(yul.abi).toBeNull();
+    expect(yul.sourcifyIds.compilationId).toBeTruthy();
+    expect(contracts.some(record => record.matchId === '23813307')).toBe(true);
+    expect(run([processor, 'verify', bundle]).code).toBe(0);
     const timings = JSON.parse(readFileSync(join(workDir, 'timings.json'), 'utf8'));
-    expect(timings).toMatchObject({ status: 'completed', records: { contracts: expected.records, sourceSkipped: expected.skipped.length, entities: expected.entities } });
+    expect(timings).toMatchObject({ status: 'completed', records: { contracts: expected.records + 2, sourceSkipped: remainingSkipped.length, entities: metadata.length } });
     expect(Object.keys(timings.phases)).toEqual(['prepare', 'process', 'verify']);
 
     const second = run(['bash', 'pipeline/run.sh', 'run'], env(workDir));
     expect(second.code).toBe(0);
+    expect(bundleSums(bundle)).toEqual(sums);
     const phases = JSON.parse(readFileSync(join(workDir, 'timings.json'), 'utf8')).phases;
     expect([phases.prepare.status, phases.process.status, phases.verify.status]).toEqual(['reused', 'reused', 'completed']);
 
