@@ -2,6 +2,7 @@
 pub mod api;
 pub mod backend;
 pub mod backends;
+mod compression;
 pub mod fields;
 mod projection;
 mod reader;
@@ -99,6 +100,10 @@ impl Application {
             })
             .method_not_allowed_fallback(method_not_allowed)
             .with_state(self.state.clone())
+            .layer(
+                tower_http::compression::CompressionLayer::new().compress_when(compression::Json),
+            )
+            .layer(axum::middleware::from_fn(compression::negotiate))
     }
     /// Called before draining accepted requests on SIGINT/SIGTERM.
     pub fn shutdown(&self) {

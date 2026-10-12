@@ -83,6 +83,49 @@ known exported-signature mismatches, and exact upstream selector/error compatibi
 remain separate acceptance work. The `fixture-v1` behavior above is intentional and
 tested, not a claim that upstream Sourcify rejects or formats requests identically.
 
+## Response compression
+
+Nonempty JSON responses support `zstd`, `gzip`, and uncompressed (`identity`)
+representations through Tower HTTP's streaming compression middleware. This applies
+to contract, error and operational JSON. No compression is imposed on clients that
+reject it. Requests without `Accept-Encoding`, or with an empty header, receive
+identity. For example:
+
+```sh
+# curl advertises and decodes the encodings supported by its own build:
+curl --compressed 'http://127.0.0.1:3000/v2/contract/1/0x000000000034065b3a94C2118CFe5B4C0067B615?fields=all'
+# Explicitly request an uncompressed response:
+curl -H 'Accept-Encoding: identity' 'http://127.0.0.1:3000/_ops/ready'
+```
+
+Quality values are honored among supported codings and explicitly listed identity.
+Equal quality prefers zstd, then gzip, then identity. Unlisted identity is a fallback
+when no accepted supported coding remains. `*` applies to codings not explicitly
+listed; an explicit `gzip;q=0` or `zstd;q=0` overrides the wildcard. Identity is
+unacceptable with `identity;q=0`, or `*;q=0` unless identity has an explicit nonzero
+override. Multiple header lines are combined. Conflicting duplicate coding entries
+use the lowest quality so explicit rejection wins; coding names are case-insensitive.
+
+When all available representations are forbidden, the server returns an empty
+`406 Not Acceptable` before reading the backend. Malformed quality values produce
+an empty `400`. These two negotiation errors have no JSON body because an acceptable
+content coding cannot be established. Valid quality values are `0` through `1`
+with at most three decimal places.
+
+Responses include `Vary: Accept-Encoding`, including identity and negotiation errors.
+Compressed responses have the selected `Content-Encoding`; streaming removes the
+original `Content-Length` instead of sending an incorrect uncompressed byte count.
+HTTP/1.1 frames such responses using chunked transfer. Identity responses retain
+their correct length. HEAD responses have no body.
+
+The pinned codecs use their defaults: zstd level 3 and gzip level 6. Zstd's default
+window stays within the HTTP 8 MiB window requirement; regression decoding enforces
+that bound. Compression changes only transport bytes, not the reconstructed JSON
+or supported response size. Encoding runs as the body is consumed, after hydration,
+and is outside the hydration deadline/concurrency limit. The response-byte metric
+continues to count uncompressed serialized JSON bytes. Production throughput and
+compression CPU costs still require representative deployment measurements.
+
 ## Errors and operations
 
 Error bodies have the stable shape:
@@ -96,6 +139,7 @@ Error bodies have the stable shape:
 | `400` | `invalid_request`: invalid path, chain, query, or unsupported selector |
 | `404` | `contract_not_found`: valid lookup absent from this fixture; `route_not_found`: unknown endpoint |
 | `405` | `method_not_allowed`: only GET is supported on the contract route |
+| `406` | Empty response: no available content coding is acceptable to the client |
 | `502` | `missing_dependency`, `corrupt_data`, `unsupported_schema`, `ambiguous_record` |
 | `503` | `backend_unavailable`, `overloaded`, or configured `work_limit` exceeded |
 | `504` | `deadline_exceeded` |
@@ -145,7 +189,7 @@ and slow-client socket buffers are outside this hydration concurrency limit.
 Responses and logical payloads are currently buffered in memory. Provision RAM and
 the reverse proxy for actual largest responses and reduce concurrency if needed;
 there is no published Mainnet capacity envelope yet. No cross-request payload cache,
-automatic retry, response compression, or public historical query is implemented.
+automatic retry, or public historical query is implemented.
 The future Arkiv adapter needs an asynchronous transport driver with a pinned read
 view, dataset/owner scope, actual-node wire tests and deletion-aware behavior.
 

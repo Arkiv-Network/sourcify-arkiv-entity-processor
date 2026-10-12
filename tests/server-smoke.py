@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Exercise actual process -> verify -> hydrate -> HTTP -> graceful shutdown."""
 import json
+import gzip
 import os
 from pathlib import Path
 import signal
@@ -54,6 +55,14 @@ with tempfile.TemporaryDirectory(prefix="processor-server-smoke-") as temporary:
         status, body = get(route + "?fields=all")
         expected = {k: v for k, v in record.items() if k != "proxyResolution"}
         assert status == 200 and body == expected, body
+        compressed_request = urllib.request.Request(base + route + "?fields=all",
+                                                    headers={"Accept-Encoding": "gzip"})
+        with urllib.request.urlopen(compressed_request, timeout=3) as compressed:
+            assert compressed.headers["Content-Encoding"] == "gzip"
+            assert "accept-encoding" in compressed.headers["Vary"].lower()
+            assert compressed.headers["Content-Length"] is None
+            assert compressed.headers["Transfer-Encoding"] == "chunked"
+            assert json.loads(gzip.decompress(compressed.read())) == expected
         status, hot = get(route.lower() + "?fields=abi,compilation")
         assert status == 200 and hot["abi"] == record["abi"]
         assert hot["compilation"] == record["compilation"] and "sources" not in hot

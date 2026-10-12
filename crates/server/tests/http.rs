@@ -6,11 +6,12 @@ use arkiv_sourcify_server::{
 };
 use axum::{
     body::{to_bytes, Body},
-    http::{Request, StatusCode},
+    http::{header, HeaderMap, Request, StatusCode},
     Router,
 };
 use serde_json::{json, Value};
 use std::{
+    io::Read,
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc, Mutex,
@@ -120,6 +121,82 @@ async fn request(router: Router, uri: &str) -> (StatusCode, Value) {
     let status = response.status();
     let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
     (status, serde_json::from_slice(&bytes).unwrap())
+}
+
+async fn raw_request(
+    router: Router,
+    uri: &str,
+    method: &str,
+    accept_encoding: &[&str],
+) -> (StatusCode, HeaderMap, Vec<u8>) {
+    let mut request = Request::builder().method(method).uri(uri);
+    for value in accept_encoding {
+        request = request.header(header::ACCEPT_ENCODING, *value);
+    }
+    let response = router
+        .oneshot(request.body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    let status = response.status();
+    let headers = response.headers().clone();
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap()
+        .to_vec();
+    (status, headers, bytes)
+}
+
+fn assert_encoding(headers: &HeaderMap, encoding: Option<&str>, bytes: &[u8]) {
+    assert_eq!(
+        headers
+            .get(header::CONTENT_ENCODING)
+            .map(|value| value.to_str().unwrap()),
+        encoding
+    );
+    assert!(
+        headers.get_all(header::VARY).iter().any(|value| {
+            value
+                .to_str()
+                .unwrap()
+                .split(',')
+                .any(|token| token.trim().eq_ignore_ascii_case("accept-encoding"))
+        }),
+        "missing Vary: Accept-Encoding in {headers:?}"
+    );
+    if encoding.is_some() {
+        assert!(
+            !headers.contains_key(header::CONTENT_LENGTH),
+            "compressed streaming body retained Content-Length"
+        );
+    } else if let Some(length) = headers.get(header::CONTENT_LENGTH) {
+        assert_eq!(
+            length.to_str().unwrap().parse::<usize>().unwrap(),
+            bytes.len()
+        );
+    }
+}
+
+fn decode_body(encoding: Option<&str>, bytes: &[u8]) -> Vec<u8> {
+    match encoding {
+        None => bytes.to_vec(),
+        Some("gzip") => {
+            let mut decoded = Vec::new();
+            flate2::read::GzDecoder::new(bytes)
+                .read_to_end(&mut decoded)
+                .unwrap();
+            decoded
+        }
+        Some("zstd") => {
+            let mut decoder = zstd::stream::read::Decoder::new(bytes).unwrap();
+            // HTTP zstd frames must be decodable with an 8 MiB window, even
+            // when the uncompressed response is larger than that window.
+            decoder.window_log_max(23).unwrap();
+            let mut decoded = Vec::new();
+            decoder.read_to_end(&mut decoded).unwrap();
+            decoded
+        }
+        Some(other) => panic!("unexpected encoding {other}"),
+    }
 }
 fn projection(record: &Value, selected: &[&str]) -> Value {
     Value::Object(
@@ -371,7 +448,173 @@ async fn a_large_single_selected_field_is_returned_completely() {
     // A 9 MiB source exceeds common middleware response caps; it is one selector.
     record["sources"] = json!({"large/~source.sol":{"content":"x".repeat(9 * 1024 * 1024)}});
     let backend = Memory::new(&record, Fault::None);
-    let (status, body) = request(app(backend).router(), &uri("?fields=sources")).await;
+    let router = app(backend).router();
+    for encoding in [None, Some("gzip"), Some("zstd")] {
+        let accepted = encoding.into_iter().collect::<Vec<_>>();
+        let (status, headers, bytes) =
+            raw_request(router.clone(), &uri("?fields=sources"), "GET", &accepted).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_encoding(&headers, encoding, &bytes);
+        let body: Value = serde_json::from_slice(&decode_body(encoding, &bytes)).unwrap();
+        assert_eq!(body["sources"], record["sources"]);
+    }
+}
+
+#[tokio::test]
+async fn gzip_and_zstd_preserve_complete_fixture_response_bytes() {
+    let record = captured();
+    let router = app(Memory::new(&record, Fault::None)).router();
+    let (status, headers, identity) =
+        raw_request(router.clone(), &uri("?fields=all"), "GET", &[]).await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(body["sources"], record["sources"]);
+    assert_encoding(&headers, None, &identity);
+    let body: Value = serde_json::from_slice(&identity).unwrap();
+    assert_eq!(
+        body,
+        projection(&record, &fields::parse(Some("fields=all")).unwrap())
+    );
+    for encoding in ["gzip", "zstd"] {
+        let (status, headers, encoded) =
+            raw_request(router.clone(), &uri("?fields=all"), "GET", &[encoding]).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_encoding(&headers, Some(encoding), &encoded);
+        assert_eq!(headers[header::CONTENT_TYPE], "application/json");
+        assert_eq!(headers[header::CACHE_CONTROL], "no-store");
+        assert_eq!(decode_body(Some(encoding), &encoded), identity);
+        assert!(encoded.len() < identity.len());
+        eprintln!(
+            "fixture fields=all: identity={} bytes, {encoding}={} bytes",
+            identity.len(),
+            encoded.len()
+        );
+    }
+}
+
+#[tokio::test]
+async fn accept_encoding_negotiates_quality_wildcards_and_repeated_headers() {
+    let router = app(Memory::new(&captured(), Fault::None)).router();
+    let cases: &[(&[&str], Option<&str>)] = &[
+        (&[], None),
+        (&[""], None),
+        (&["identity"], None),
+        (&["br"], None),
+        (&["gzip"], Some("gzip")),
+        (&["x-gzip"], Some("gzip")),
+        (&["zstd"], Some("zstd")),
+        (&["gzip, zstd"], Some("zstd")),
+        (&["zstd, gzip"], Some("zstd")),
+        (&["identity;q=1, gzip;q=1, zstd;q=1"], Some("zstd")),
+        (&["identity;q=1, gzip;q=1"], Some("gzip")),
+        (&["*"], Some("zstd")),
+        (&["gzip;q=0"], None),
+        (&["gzip;q=0, *;q=1"], Some("zstd")),
+        (&["zstd;q=0, *;q=1"], Some("gzip")),
+        (&["gzip;q=0.8, zstd;q=0.4, identity;q=0.9"], None),
+        (&["gzip;q=0.8, zstd;q=0.4, identity;q=0.3"], Some("gzip")),
+        (&["gzip;q=0.4, zstd;q=0.8, identity;q=0.3"], Some("zstd")),
+        (&["gzip;q=0.1, identity;q=0"], Some("gzip")),
+        (&["GZIP;q=1, ZSTD;q=0"], Some("gzip")),
+        (&["gzip;q=0.6", "zstd;q=0.8"], Some("zstd")),
+        (&["gzip;q=1", "gzip;q=0"], None),
+        (&["gzip;q=1, gzip;q=0, zstd;q=0.5"], Some("zstd")),
+        (&["zstd;q=0", "zstd;q=1", "gzip;q=0.5"], Some("gzip")),
+    ];
+    for (accepted, expected) in cases {
+        let (status, headers, bytes) =
+            raw_request(router.clone(), "/_ops/health", "GET", accepted).await;
+        assert_eq!(status, StatusCode::OK, "{accepted:?}");
+        assert_encoding(&headers, *expected, &bytes);
+        let body: Value = serde_json::from_slice(&decode_body(*expected, &bytes)).unwrap();
+        assert_eq!(body, json!({"status":"ok"}), "{accepted:?}");
+    }
+}
+
+#[tokio::test]
+async fn unacceptable_or_malformed_encodings_fail_before_backend_work() {
+    let backend = Memory::new(&captured(), Fault::None);
+    let router = app(backend.clone()).router();
+    let rejected: &[(&[&str], StatusCode)] = &[
+        (&["*;q=0"], StatusCode::NOT_ACCEPTABLE),
+        (&["br, identity;q=0"], StatusCode::NOT_ACCEPTABLE),
+        (
+            &["gzip;q=0, zstd;q=0, identity;q=0"],
+            StatusCode::NOT_ACCEPTABLE,
+        ),
+        (
+            &["gzip;q=1", "gzip;q=0", "identity;q=0"],
+            StatusCode::NOT_ACCEPTABLE,
+        ),
+        (
+            &["identity;q=1", "identity;q=0"],
+            StatusCode::NOT_ACCEPTABLE,
+        ),
+        (&["gzip;q=banana"], StatusCode::BAD_REQUEST),
+        (&["gzip;q=2"], StatusCode::BAD_REQUEST),
+        (&["zstd;q=-0.1"], StatusCode::BAD_REQUEST),
+        (&["gzip;q=0.0001"], StatusCode::BAD_REQUEST),
+        (&["zstd;q="], StatusCode::BAD_REQUEST),
+        (&["gzip;q=0.5;q=0.8"], StatusCode::BAD_REQUEST),
+        (&["br;q=banana"], StatusCode::BAD_REQUEST),
+    ];
+    for (accepted, expected) in rejected {
+        let (status, headers, bytes) =
+            raw_request(router.clone(), &uri("?fields=all"), "GET", accepted).await;
+        assert_eq!(status, *expected, "{accepted:?}");
+        assert!(
+            bytes.is_empty(),
+            "negotiation error returned a body for {accepted:?}"
+        );
+        assert_encoding(&headers, None, &bytes);
+    }
+    assert_eq!(backend.counts.lookups.load(Ordering::Relaxed), 0);
+    assert!(backend.counts.dependencies.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn compression_preserves_json_error_status_and_head_has_no_body() {
+    let backend = Memory::new(&captured(), Fault::None);
+    let router = app(backend.clone()).router();
+    for encoding in ["gzip", "zstd"] {
+        for (path, expected, code) in [
+            (
+                uri("?fields=unknown"),
+                StatusCode::BAD_REQUEST,
+                "invalid_request",
+            ),
+            (
+                "/v2/contract/1/0x1111111111111111111111111111111111111111".into(),
+                StatusCode::NOT_FOUND,
+                "contract_not_found",
+            ),
+        ] {
+            let (status, headers, bytes) =
+                raw_request(router.clone(), &path, "GET", &[encoding]).await;
+            assert_eq!(status, expected);
+            assert_encoding(&headers, Some(encoding), &bytes);
+            let body: Value = serde_json::from_slice(&decode_body(Some(encoding), &bytes)).unwrap();
+            assert_eq!(body["error"]["code"], code);
+        }
+        for (path, expected) in [
+            ("/_ops/health".to_owned(), StatusCode::OK),
+            (uri(""), StatusCode::METHOD_NOT_ALLOWED),
+        ] {
+            let (status, headers, bytes) =
+                raw_request(router.clone(), &path, "HEAD", &[encoding]).await;
+            assert_eq!(status, expected);
+            assert!(bytes.is_empty());
+            // HEAD may describe the negotiated GET representation, but must
+            // never emit its body or retain an uncompressed Content-Length.
+            if let Some(actual) = headers.get(header::CONTENT_ENCODING) {
+                assert_eq!(actual, encoding);
+                assert!(!headers.contains_key(header::CONTENT_LENGTH));
+            }
+            assert!(headers.get_all(header::VARY).iter().any(|value| value
+                .to_str()
+                .unwrap()
+                .split(',')
+                .any(|token| token.trim().eq_ignore_ascii_case("accept-encoding"))));
+        }
+    }
+    assert_eq!(backend.counts.lookups.load(Ordering::Relaxed), 2);
+    assert!(backend.counts.dependencies.lock().unwrap().is_empty());
 }
