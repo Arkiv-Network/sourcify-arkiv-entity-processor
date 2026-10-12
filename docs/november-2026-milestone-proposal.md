@@ -7,7 +7,7 @@ The proof of concept proved the following:
 
 ***Note:*** *Arkiv's architecture is changing ahead of the November testnet. The Devcon deliverable will be a fresh build on the new stack rather than a continuation of the current code. We prefer to state this now rather than have it be a surprise in October.*
 
-**We will deliver a publicly queryable one-off snapshot of Sourcify's Ethereum Mainnet verified-contract database, loaded onto a dedicated Arkiv test network.**
+**We will deliver a publicly queryable one-off snapshot of Sourcify's Ethereum Mainnet verified-contract database, loaded onto a dedicated Arkiv test network, with a publicly hosted, read-only HTTP API.**
 
 ## In scope
 
@@ -18,6 +18,29 @@ The proof of concept proved the following:
 **Data:** the ten tables Sourcify publishes in its Parquet export, including `compiled_contracts_signatures`, stored as Arkiv entities (verified contract, compilation, source file, code, signature, blob) and composed on read into the same 24 fields `GET /v2/contract/{chainId}/{address}?fields=all` returns.
 
 **Target fidelity:** byte-identical JSON on 23 of the 24 fields. proxyResolution is the exception: Sourcify computes it per request, the mirror freezes it at index time, so it is compared by value rather than by byte. The Unichain proof of concept reached identical field values on 3,136 of 3,144 contracts; reaching byte identity needs two changes we have scoped, JSON key ordering and copying the signatures table.
+
+### Public read API
+
+The supported route is `GET /v2/contract/{chainId}/{address}`, with `chainId=1` only. It reads the published snapshot from Arkiv entities on the dedicated testnet. We will publish the API base URL, API documentation, supported field names, error responses, and runnable request examples.
+
+- With no `fields` parameter, return Sourcify's minimal lookup response.
+- Support `fields=abi,compilation` and comma-separated selection of the supported lookup fields, using Sourcify's response shape and field-selection semantics.
+- Support `fields=all`, composing all 24 fields subject to the `proxyResolution` snapshot exception above.
+- Return `200` for a contract present in the snapshot and `404` for a valid Ethereum Mainnet address absent from it. A snapshot miss does not mean that the contract is unverified globally or absent from today's Sourcify database.
+- Reject malformed chain IDs, invalid addresses, unsupported chains, and invalid field selections with `400` and a documented JSON error response. Backend failures return a `5xx` response, not a misleading `404`.
+- Never silently fall back to live Sourcify. Responses describe the published snapshot; `proxyResolution` is the value captured at index time.
+
+For example, after setting `API_BASE_URL` to the published URL and `ADDRESS` to an Ethereum Mainnet contract address:
+
+```sh
+curl "$API_BASE_URL/v2/contract/1/$ADDRESS"
+curl "$API_BASE_URL/v2/contract/1/$ADDRESS?fields=abi,compilation"
+curl "$API_BASE_URL/v2/contract/1/$ADDRESS?fields=all"
+```
+
+The read path starts with an indexed chain-and-address lookup, then hydrates only the entity dependencies needed for the requested fields, all from the same published snapshot. An absent contract can stop at the lookup. Selected responses may still require blob reads, including when compilation data is stored in blobs.
+
+The supplied *Sourcify Query Profile*, pages 2–3, reports seven days of traffic across all chains: 81.4% of requests were single-contract lookups; approximately 154 million of 190.8 million single-contract lookups requested `fields=abi,compilation`; and negative lookups outnumbered positive lookups by nearly 3:1. This makes selected-field reads and fast snapshot misses performance priorities alongside full-field parity. These figures describe Sourcify's observed all-chain workload, not a measured Mainnet workload for this mirror or a throughput commitment.
 
 ### Signatures
 
@@ -30,6 +53,7 @@ The following API endpoints will not be supported:
 - `POST /v2/verify` — not support to verify smart contract on Arkiv
 - `GET /v2/contracts/{chain}` — listing, sort and afterMatchId pagination, blocked on Arkiv server-side ordering and on the absence of cursor or offset
 - `GET /v2/contract/all-chains/{address}` — the mirror holds one chain, so it would answer a narrower question than yours
+- Verification-job polling and legacy file/check endpoints
 - stats / COUNT
 
 Other features not supported:
@@ -40,10 +64,10 @@ Other features not supported:
 
 ## Done means all of the following:
 
-1. Our deliverable will have feature parity with the specified endpoints above, verified by a reproducible test suite both sides can run.
+1. The publicly hosted read API supports `GET /v2/contract/1/{address}` as specified above, with its base URL, documentation, and examples published. A reproducible test suite both sides can run verifies successful minimal, selected-field (including `abi,compilation`), and all-field responses, plus snapshot misses and invalid requests. Response parity uses references captured for the same snapshot, with the stated field fidelity and frozen `proxyResolution` exception; the excluded endpoints are not part of the parity claim.
 2. The replication is a one-off load of everything verified before 30 September 2026, run across several days, with cutoff and load timestamps published.
-3. Read latency published at P50 and P95 against the same query set as the Sourcify API, so the comparison is honest in both directions.
-4. The replication code and the test suite are open source under MIT License, in the Arkiv GitHub organisation, so any third party can rebuild the mirror and compare it against Sourcify themselves.
+3. Read latency published at P50 and P95 for the mirror and Sourcify API, using the same client and query set. Results separate successful reads from negative lookups and distinguish minimal, selected-field (including `abi,compilation`), and all-field requests. We publish the query set, response-status differences, measurement window, client location, concurrency, and cache conditions so the comparison is reproducible and honest in both directions.
+4. The replication code, read API code, and test suite are open source under MIT License, in the Arkiv GitHub organisation, so any third party can rebuild the mirror, serve the API, and compare it against Sourcify themselves.
 5. A written answer on deletion that your team is comfortable defending to a takedown requester.
 
 If we cannot hit all five, we would rather show a smaller scope honestly at Devcon than a demo that overstates what is running.
