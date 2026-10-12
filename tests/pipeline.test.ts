@@ -44,27 +44,12 @@ function decodeBundle(bundle: string) {
     expect(`bytes32:0x${sha256(payload)}`).toBe(entity.payloadsha256);
     return { entity, payload };
   });
-  let spills = 0;
-  const contracts = decoded.filter(({ entity }) => entity.kind === 'str:verified_contract').map(({ payload }) => {
-    let record = JSON.parse(payload.toString());
-    if (Object.keys(record).length === 1 && record.$spill) {
-      spills++;
-      const stub = record.$spill;
-      const parts = decoded.filter(({ entity }) => entity.kind === 'str:blob' && entity.hash === `bytes32:${stub.hash}`)
-        .sort((a, b) => Number(a.entity.part.slice(4)) - Number(b.entity.part.slice(4)));
-      expect(parts.length).toBe(stub.parts);
-      for (const [index, part] of parts.entries()) {
-        expect(part.entity.part).toBe(`i32:${index}`);
-        expect(part.entity.parts).toBe(`i32:${stub.parts}`);
-        expect(part.entity.size).toBe(`i32:${part.payload.length}`);
-      }
-      const body = Buffer.concat(parts.map(part => part.payload));
-      expect(body.length).toBe(stub.bytes);
-      expect(`0x${sha256(body)}`).toBe(stub.hash);
-      record = JSON.parse(body.toString());
-    }
-    return record;
-  });
+  const spills = decoded.filter(({ payload }) => {
+    try { return Boolean(JSON.parse(payload.toString()).$spill); } catch { return false; }
+  }).length;
+  const hydrated = run([processor, 'hydrate', bundle]);
+  if (hydrated.code !== 0) throw new Error(hydrated.stderr);
+  const contracts = hydrated.stdout.trim().split('\n').filter(Boolean).map(line => JSON.parse(line));
   return { entities, contracts, spills };
 }
 
@@ -182,8 +167,8 @@ describe('source stage', () => {
     expect(decoded.contracts.sort((a, b) => a.matchId.localeCompare(b.matchId)))
       .toEqual([...lines].sort((a, b) => a.matchId.localeCompare(b.matchId)));
     expect(decoded.spills).toBeGreaterThan(0); // Large real contracts exercise gzip plus blob reconstruction.
-    // Provenance must not change shared entities for the same legacy inputs.
-    const shared = (entities: any[]) => entities.filter(entity => ['str:sourcefile', 'str:code', 'str:compilation'].includes(entity.kind));
+    // Additional compilation fields change compilation identity, but sources/code remain shared.
+    const shared = (entities: any[]) => entities.filter(entity => ['str:sourcefile', 'str:code'].includes(entity.kind));
     const currentShared = new Map(shared(decoded.entities).map(entity => [entity.$key, entity]));
     for (const entity of shared(decodeBundle(bundle).entities)) expect(currentShared.get(entity.$key)).toEqual(entity);
   }, 30_000);
@@ -285,4 +270,43 @@ describe('pipeline/run.sh', () => {
     expect(result.code).toBe(1);
     expect(result.stderr).toContain('publish needs R2_BUCKET and R2_KEY');
   }, 30_000);
+});
+
+describe('lossless sharing on actual wire entities', () => {
+  test('different deployments share compilation and preserve unknown fields, exact text and nulls', () => {
+    const envelope = JSON.parse(readFileSync(join(root, 'docs/data/processor-input.ndjson'), 'utf8').trim().split('\n')[0]);
+    const first = envelope.record ?? envelope;
+    first.futureField = { nullValue: null, literalReference: { $ref: 'leave me alone' }, ordered: [3, 1, 2] };
+    const second = structuredClone(first);
+    second.matchId = '999999999';
+    second.address = '0x2222222222222222222222222222222222222222';
+    second.runtimeBytecode.onchainBytecode = '0x60026000';
+    const input = join(scratch, 'shared.ndjson'), bundle = join(scratch, 'shared-bundle');
+    writeFileSync(input, [first, second].map(v => JSON.stringify(v)).join('\n'));
+    const result = run([processor, 'process', '-i', input, '-o', bundle, '--part-size', '2']);
+    expect(result.code).toBe(0);
+    const decoded = decodeBundle(bundle);
+    expect(decoded.contracts).toEqual([first, second]);
+    expect(decoded.entities.filter(e => e.kind === 'str:compilation')).toHaveLength(1);
+    expect(decoded.entities.filter(e => e.kind === 'str:verified_contract')).toHaveLength(2);
+    // Hydration must use imported wire data, not the auxiliary debugging payload pack.
+    rmSync(join(bundle, 'metadata.jsonl'));
+    rmSync(join(bundle, 'payloads.bin'));
+    expect(decodeBundle(bundle).contracts).toEqual([first, second]);
+    const paths = readdirSync(join(bundle, 'entities')).sort().map(name => join(bundle, 'entities', name));
+    const sourcePath = paths.find(path => readFileSync(path, 'utf8').split('\n').some(line => line && JSON.parse(line).kind === 'str:sourcefile'))!;
+    const original = readFileSync(sourcePath, 'utf8');
+    const entries = original.trim().split('\n').map(line => JSON.parse(line));
+    const source = entries.find(e => e.kind === 'str:sourcefile');
+    source.$payload = Buffer.from('corrupted source').toString('base64');
+    source.contentencoding = 'str:identity';
+    writeFileSync(sourcePath, entries.map(e => JSON.stringify(e)).join('\n') + '\n');
+    const corrupted = run([processor, 'hydrate', bundle]);
+    expect(corrupted.code).not.toBe(0);
+    expect(corrupted.stderr).toContain('checksum mismatch');
+    writeFileSync(sourcePath, original.trim().split('\n').filter(line => JSON.parse(line).kind !== 'str:sourcefile').join('\n') + '\n');
+    const missing = run([processor, 'hydrate', bundle]);
+    expect(missing.code).not.toBe(0);
+    expect(missing.stderr).toContain('missing');
+  });
 });

@@ -9,7 +9,7 @@
 <a href="sources.html">Sources</a></div></nav>
 <main id="main"><section>
 <h1>Sourcify field → processor entity</h1>
-<p>Sourcify API names are comparison vocabulary here, not processor endpoints. Entity paths describe decoded payloads. Every supplied input field is preserved at the same path in verified_contract. Shared entities provide additional representations. Parquet adapter limitations below apply before processing; an API input preserves those fields when supplied.</p>
+<p>Sourcify API names are comparison vocabulary here, not processor endpoints. The paths below describe hydrated JSON, not direct offsets into the stripped stored envelope. Every supplied input field is restored at its original path. In stored v3 envelopes, data contains local values and references names the JSON Pointer destinations of shared values. Use the example explorer to inspect actual stored payloads. Parquet adapter limitations below apply before processing; an API input preserves those fields when supplied.</p>
 <div class="searchbar">
 <label for="search">Find a field or concept</label>
 <input id="search" type="search" placeholder="Try metadata, sourceMap, Vyper, signatures…" autocomplete="off">
@@ -29,7 +29,7 @@
 <tr>
 <th>Reference field</th>
 <th>Entity / source</th>
-<th>Decoded payload path</th>
+<th>Hydrated field path</th>
 <th>Preservation / limitation</th>
 <th>Sourcify source</th>
 </tr>
@@ -67,7 +67,7 @@
 <td>address</td>
 <td>verified_contract</td>
 <td>address</td>
-<td>Parquet adapter lowercases the payload address; typed address index uses checksum casing.</td>
+<td>Parquet adapter and typed address index use checksum casing.</td>
 <td>sourcify_matches + verified_contracts + contract_deployments</td>
 </tr>
 <tr>
@@ -86,51 +86,51 @@
 </tr>
 <tr>
 <td>abi</td>
-<td>verified_contract</td>
+<td>compilation → verified_contract</td>
 <td>abi</td>
 <td>Preserve array or null. Null is not silently changed to [].</td>
 <td>compiled_contracts.compilation_artifacts.abi</td>
 </tr>
 <tr>
 <td>compilation.language</td>
-<td>verified_contract</td>
+<td>compilation → verified_contract</td>
 <td>compilation.language</td>
-<td>Compilation summary; the same information also lives on the shared compilation entity.</td>
+<td>Restored from the shared compilation by the verification reference manifest.</td>
 <td>compiled_contracts</td>
 </tr>
 <tr>
 <td>compilation.compiler</td>
-<td>verified_contract</td>
+<td>compilation → verified_contract</td>
 <td>compilation.compiler</td>
-<td>Compilation summary; the same information also lives on the shared compilation entity.</td>
+<td>Restored from the shared compilation by the verification reference manifest.</td>
 <td>compiled_contracts</td>
 </tr>
 <tr>
 <td>compilation.compilerVersion</td>
-<td>verified_contract</td>
+<td>compilation → verified_contract</td>
 <td>compilation.compilerVersion</td>
-<td>Compilation summary; the same information also lives on the shared compilation entity.</td>
+<td>Restored from the shared compilation by the verification reference manifest.</td>
 <td>compiled_contracts</td>
 </tr>
 <tr>
 <td>compilation.compilerSettings</td>
-<td>verified_contract</td>
+<td>compilation → verified_contract</td>
 <td>compilation.compilerSettings</td>
-<td>Compilation summary; the same information also lives on the shared compilation entity.</td>
+<td>Restored from the shared compilation by the verification reference manifest.</td>
 <td>compiled_contracts</td>
 </tr>
 <tr>
 <td>compilation.name</td>
-<td>verified_contract</td>
+<td>compilation → verified_contract</td>
 <td>compilation.name</td>
-<td>Compilation summary; the same information also lives on the shared compilation entity.</td>
+<td>Restored from the shared compilation by the verification reference manifest.</td>
 <td>compiled_contracts</td>
 </tr>
 <tr>
 <td>compilation.fullyQualifiedName</td>
-<td>verified_contract</td>
+<td>compilation → verified_contract</td>
 <td>compilation.fullyQualifiedName</td>
-<td>Compilation summary; the same information also lives on the shared compilation entity.</td>
+<td>Restored from the shared compilation by the verification reference manifest.</td>
 <td>compiled_contracts</td>
 </tr>
 <tr>
@@ -163,84 +163,84 @@
 </tr>
 <tr>
 <td>sources</td>
-<td>verified_contract</td>
+<td>compilation → verified_contract</td>
 <td>sources</td>
-<td>Complete sources object preserved, including content and extra fields. Shared sourcefile entities also store source text.</td>
+<td>Complete sources object restored, including content and extra fields. Exact source text is shared through sourcefile references.</td>
 <td>compiled_contracts_sources + sources</td>
 </tr>
 <tr>
 <td>metadata</td>
-<td>verified_contract</td>
+<td>compilation → verified_contract</td>
 <td>metadata</td>
-<td>Exact input value preserved; also represented in the shared compilation. Parquet supplies only available export artifacts; missing/non-Solidity metadata becomes null.</td>
+<td>Exact input value restored from the shared compilation. Parquet supplies only available export artifacts; missing/non-Solidity metadata becomes null.</td>
 <td>compiled_contracts_metadata.metadata</td>
 </tr>
 <tr>
 <td>storageLayout</td>
-<td>verified_contract</td>
+<td>compilation → verified_contract</td>
 <td>storageLayout</td>
-<td>Exact input value preserved; also represented in the shared compilation. Parquet supplies only available export artifacts; missing/non-Solidity metadata becomes null.</td>
+<td>Exact input value restored from the shared compilation. Parquet supplies only available export artifacts; missing/non-Solidity metadata becomes null.</td>
 <td>compiled_contracts.compilation_artifacts.storageLayout</td>
 </tr>
 <tr>
 <td>transientStorageLayout</td>
-<td>verified_contract</td>
+<td>compilation → verified_contract</td>
 <td>transientStorageLayout</td>
-<td>Exact input value preserved; also represented in the shared compilation. Parquet supplies only available export artifacts; missing/non-Solidity metadata becomes null.</td>
+<td>Exact input value restored from the shared compilation. Parquet supplies only available export artifacts; missing/non-Solidity metadata becomes null.</td>
 <td>compiled_contracts.compilation_artifacts.transientStorageLayout</td>
 </tr>
 <tr>
 <td>userdoc</td>
-<td>verified_contract</td>
+<td>compilation → verified_contract</td>
 <td>userdoc</td>
-<td>Exact input value preserved; also represented in the shared compilation. Parquet supplies only available export artifacts; missing/non-Solidity metadata becomes null.</td>
+<td>Exact input value restored from the shared compilation. Parquet supplies only available export artifacts; missing/non-Solidity metadata becomes null.</td>
 <td>compiled_contracts.compilation_artifacts.userdoc</td>
 </tr>
 <tr>
 <td>devdoc</td>
-<td>verified_contract</td>
+<td>compilation → verified_contract</td>
 <td>devdoc</td>
-<td>Exact input value preserved; also represented in the shared compilation. Parquet supplies only available export artifacts; missing/non-Solidity metadata becomes null.</td>
+<td>Exact input value restored from the shared compilation. Parquet supplies only available export artifacts; missing/non-Solidity metadata becomes null.</td>
 <td>compiled_contracts.compilation_artifacts.devdoc</td>
 </tr>
 <tr>
 <td>sourceIds</td>
-<td>verified_contract</td>
+<td>compilation → verified_contract</td>
 <td>sourceIds</td>
-<td>Exact input value preserved; also represented in the shared compilation. Parquet supplies only available export artifacts; missing/non-Solidity metadata becomes null.</td>
+<td>Exact input value restored from the shared compilation. Parquet supplies only available export artifacts; missing/non-Solidity metadata becomes null.</td>
 <td>compiled_contracts.compilation_artifacts.sources</td>
 </tr>
 <tr>
 <td>creationBytecode.onchainBytecode</td>
 <td>verified_contract</td>
 <td>creationBytecode.onchainBytecode</td>
-<td>Exact input value preserved: null and 0x remain distinct. Supplementary shared code references collapse null and empty bytecode.</td>
+<td>Hydrated null and 0x remain distinct. References preserve original nonempty hex presentation; empty values remain inline.</td>
 <td>contracts / compiled_contracts → code</td>
 </tr>
 <tr>
 <td>creationBytecode.recompiledBytecode</td>
-<td>verified_contract</td>
+<td>compilation → verified_contract</td>
 <td>creationBytecode.recompiledBytecode</td>
-<td>Exact input value preserved: null and 0x remain distinct. Supplementary shared code references collapse null and empty bytecode.</td>
+<td>Hydrated null and 0x remain distinct. References preserve original nonempty hex presentation; empty values remain inline.</td>
 <td>contracts / compiled_contracts → code</td>
 </tr>
 <tr>
 <td>creationBytecode.sourceMap</td>
-<td>verified_contract</td>
+<td>compilation → verified_contract</td>
 <td>creationBytecode.sourceMap</td>
 <td>Source maps may be strings (Solidity) or objects (Vyper); preserve null.</td>
 <td>compiled_contracts.creation_code_artifacts</td>
 </tr>
 <tr>
 <td>creationBytecode.linkReferences</td>
-<td>verified_contract</td>
+<td>compilation → verified_contract</td>
 <td>creationBytecode.linkReferences</td>
 <td>Preserve the stored artifact, including explicit null.</td>
 <td>compiled_contracts.creation_code_artifacts</td>
 </tr>
 <tr>
 <td>creationBytecode.cborAuxdata</td>
-<td>verified_contract</td>
+<td>compilation → verified_contract</td>
 <td>creationBytecode.cborAuxdata</td>
 <td>Preserve the stored artifact, including explicit null.</td>
 <td>compiled_contracts.creation_code_artifacts</td>
@@ -263,40 +263,40 @@
 <td>runtimeBytecode.onchainBytecode</td>
 <td>verified_contract</td>
 <td>runtimeBytecode.onchainBytecode</td>
-<td>Exact input value preserved: null and 0x remain distinct. Supplementary shared code references collapse null and empty bytecode.</td>
+<td>Hydrated null and 0x remain distinct. References preserve original nonempty hex presentation; empty values remain inline.</td>
 <td>contracts / compiled_contracts → code</td>
 </tr>
 <tr>
 <td>runtimeBytecode.recompiledBytecode</td>
-<td>verified_contract</td>
+<td>compilation → verified_contract</td>
 <td>runtimeBytecode.recompiledBytecode</td>
-<td>Exact input value preserved: null and 0x remain distinct. Supplementary shared code references collapse null and empty bytecode.</td>
+<td>Hydrated null and 0x remain distinct. References preserve original nonempty hex presentation; empty values remain inline.</td>
 <td>contracts / compiled_contracts → code</td>
 </tr>
 <tr>
 <td>runtimeBytecode.sourceMap</td>
-<td>verified_contract</td>
+<td>compilation → verified_contract</td>
 <td>runtimeBytecode.sourceMap</td>
 <td>Source maps may be strings (Solidity) or objects (Vyper); preserve null.</td>
 <td>compiled_contracts.runtime_code_artifacts</td>
 </tr>
 <tr>
 <td>runtimeBytecode.linkReferences</td>
-<td>verified_contract</td>
+<td>compilation → verified_contract</td>
 <td>runtimeBytecode.linkReferences</td>
 <td>Preserve the stored artifact, including explicit null.</td>
 <td>compiled_contracts.runtime_code_artifacts</td>
 </tr>
 <tr>
 <td>runtimeBytecode.cborAuxdata</td>
-<td>verified_contract</td>
+<td>compilation → verified_contract</td>
 <td>runtimeBytecode.cborAuxdata</td>
 <td>Preserve the stored artifact, including explicit null.</td>
 <td>compiled_contracts.runtime_code_artifacts</td>
 </tr>
 <tr>
 <td>runtimeBytecode.immutableReferences</td>
-<td>verified_contract</td>
+<td>compilation → verified_contract</td>
 <td>runtimeBytecode.immutableReferences</td>
 <td>Preserve the stored artifact, including explicit null.</td>
 <td>compiled_contracts.runtime_code_artifacts</td>
@@ -317,21 +317,21 @@
 </tr>
 <tr>
 <td>additionalInput</td>
-<td>verified_contract</td>
+<td>compilation → verified_contract</td>
 <td>additionalInput</td>
-<td>Extra top-level compiler input retained on the verification payload.</td>
+<td>Extra top-level compiler input restored in the hydrated verification JSON.</td>
 <td>compiled_contracts.additional_input</td>
 </tr>
 <tr>
 <td>stdJsonInput</td>
-<td>verified_contract</td>
+<td>compilation → verified_contract</td>
 <td>stdJsonInput</td>
 <td>Reconstructed from exported language, sources, compiler settings and additional input using Sourcify’s mapping.</td>
 <td>Derived by Sourcify from stored compiler input</td>
 </tr>
 <tr>
 <td>stdJsonOutput</td>
-<td>verified_contract</td>
+<td>compilation → verified_contract</td>
 <td>stdJsonOutput</td>
 <td>Reconstructed from exported compiler artifacts and bytecode using Sourcify’s mapping; metadata retains its exported JSON text.</td>
 <td>Derived by Sourcify from stored compiler output</td>

@@ -24,16 +24,16 @@
 <tr>
 <td>verified_contract</td>
 <td>One verification/deployment record</td>
-<td>Original input JSON; no processor schema marker</td>
-<td>Complete original input JSON, with all nested fields and no injected schema marker or renamed fields.</td>
-<td>Original database IDs are supplementary sourcifycompilationid, sourcifydeploymentid, sourcifyverificationid and sourcifycontractid string attributes. compilationref is a typed key attribute; code-hash attributes index bytecode. The payload retains the original bytecode and source content.</td>
+<td>sourcify.verified-contract.v3</td>
+<td>Envelope {schema, data, references}: contract-specific data and explicit references to shared values. Hydration restores the full original JSON.</td>
+<td>Original database IDs are supplementary sourcifycompilationid, sourcifydeploymentid, sourcifyverificationid and sourcifycontractid string attributes. compilationref is a typed key attribute; code-hash attributes index bytecode. The references manifest identifies shared data by kind and content hash, with exact destination JSON Pointer paths.</td>
 </tr>
 <tr>
 <td>compilation</td>
 <td>Reusable compilation data</td>
-<td>sourcify.compilation.v2</td>
-<td>JSON: compiler settings, path→source hash map, metadata, layouts, docs, source IDs, code artifacts, recompiled hashes.</td>
-<td>Sources and code are addressed by hashes. The full semantic staging ID governs deduplication.</td>
+<td>sourcify.compilation.v3</td>
+<td>Envelope {schema, data, references}: compiler settings, ABI, signatures, standard JSON, metadata, layouts, docs, source IDs and compiler-owned bytecode artifacts. Repeated source strings and bytecode are referenced.</td>
+<td>Sources and code are addressed by hashes. Compilation hash covers the complete canonical v3 envelope before spill. Deployment-specific bytecode does not belong in compilation identity.</td>
 </tr>
 <tr>
 <td>sourcefile</td>
@@ -60,7 +60,7 @@
 </table>
 </div>
 <h3>Indexed attributes and transport metadata</h3>
-<p>Attributes help locate entities; payloads carry the complete data. A sentinel index value is not evidence that the source field was present. For example, unknown deployment block numbers have index value 0 while the payload retains null.</p>
+<p>Attributes help locate entities; the hydrated record carries the complete data. A sentinel index value is not evidence that the source field was present. For example, unknown deployment block numbers have index value 0 while the payload retains null.</p>
 <div class="table-wrap">
 <table >
 <thead>
@@ -84,7 +84,7 @@
 <tr>
 <td>chainid / matchid / verifiedat</td>
 <td>u64</td>
-<td>Query indexes; payload verifiedAt remains an ISO timestamp.</td>
+<td>Query indexes; hydrated verifiedAt remains an ISO timestamp.</td>
 </tr>
 <tr>
 <td>address / deployer</td>
@@ -99,7 +99,7 @@
 <tr>
 <td>hash / creationcodehash / runtimecodehash</td>
 <td>bytes32</td>
-<td>Content/fingerprint indexes.</td>
+<td>Content hashes and query indexes.</td>
 </tr>
 <tr>
 <td>contentencoding</td>

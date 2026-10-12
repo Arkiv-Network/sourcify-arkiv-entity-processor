@@ -19,11 +19,19 @@ payloads spill into `blob` parts) with permanent expiry. Entities are deduplicat
 semantic staging ID, raw payload bytes are stored once by SHA-256, and output is written in match
 ID order with dependencies first. The output is deterministic across worker counts.
 
-The decoded `verified_contract` payload equals the **complete original input record as JSON**.
-Nested objects, extra fields, nulls, source text and bytecode remain in their original locations;
-the processor adds no schema marker, `codeRefs`, renamed fields or defaults to this payload.
-This is JSON-value equality, not preservation of the input file’s whitespace or key order.
-Shared source, code and compilation entities and query attributes remain available.
+The stored `verified_contract` payload is a **stripped, versioned JSON envelope**:
+`sourcify.verified-contract.v3` contains `data` plus an explicit `references` manifest.
+Shared `sourcify.compilation.v3` envelopes hold compiler-owned fields; `sourcefile` and `code`
+entities store repeated source text and bytecode. References identify content by hash and place
+it back at exact JSON Pointer paths. They are not fabricated fields inside the original JSON.
+
+`arkiv-entity-processor hydrate BUNDLE_DIR` reconstructs the **complete original input JSON**
+from the import-ready seed entities. It verifies dependencies and content hashes, decodes gzip
+and spill parts, and restores shared values. String contents, absent fields, nulls, arrays, hex
+casing and unknown fields are preserved. JSON whitespace and object-key order need not match.
+The hydrated response is a reader result; the full response is not stored a second time.
+Canonical JSON here sorts object keys while preserving exact number representations; it does
+not claim RFC 8785 normalization.
 
 This guarantee starts at the processor input. A captured full API response retains every supplied
 field, including standard compiler JSON and signatures. The Parquet adapter reconstructs
@@ -40,7 +48,7 @@ on strict cross-source JSON equality.
 
 | Path | Contents |
 | --- | --- |
-| `src/` | `arkiv-entity-processor` (Rust): `process`, `verify`, `pack`, `upload` |
+| `src/` | `arkiv-entity-processor` (Rust): `process`, `verify`, `hydrate`, `pack`, `upload` |
 | `source/` | Bun + DuckDB source stage: `prepare.ts` (Parquet → DuckDB), `stream.ts` (DuckDB → NDJSON records) |
 | `pipeline/` | `run.sh` (resumable phases, progress, `timings.json`), `state.ts` (its bookkeeping) |
 | `Dockerfile`, `compose.yaml`, `.env.example` | container deployment |
@@ -127,23 +135,23 @@ in `timings.json`; more than `MAX_SKIPPED` aborts. With `0`, any such record abo
 
 A missing Solidity metadata row is represented as `metadata: null`; the available contract data
 is still imported. Yul and other records with a null ABI retain `abi: null` (not an empty array).
-The ABI hash is SHA-256 of its JSON value, including `null`. This does not recover metadata absent
+The ABI hash is SHA-256 of its canonical exact JSON value, including `null` and lossless numbers. This does not recover metadata absent
 from the export.
 
 Parquet NDJSON lines use `{record: <contract JSON>, sourcifyIds: {...}}`. The wrapper IDs
 `compilationId`, `deploymentId`, `verificationId`, and `contractId` become the string attributes
 `sourcifycompilationid`, `sourcifydeploymentid`, `sourcifyverificationid`, and `sourcifycontractid`.
-They are absent from the decoded contract payload; `matchId` remains an API field. Raw API
+They are absent from the hydrated contract JSON; `matchId` remains an API field. Raw API
 inputs are still accepted and preserved without stripping any user-supplied fields.
 
-**Migration:** all verified-contract payloads now use the complete input record instead of the
-old selected-field envelope, so their entity keys change. Regenerate bundles; do not reuse an
-old bundle or resume old processed output as if it contained the new payloads. Source manifest
-v2 requires re-preparation in a fresh work directory; v1 sources are refused because they lack
-signature coverage. Keep the original Parquet files. The larger
-payloads can increase bundle size and produce additional spill parts. Existing compression
-and spill decoding rules still apply. Byte equality with the old helper output is no longer
-a compatibility guarantee.
+**Migration:** v3 changes verification and compilation payload schemas, content hashes and
+entity keys. Regenerate bundles in a fresh output directory; never treat older full-record
+bundles as v3 or resume their processing. Source manifest v2 also requires all eleven export
+tables; v1 prepared sources are refused. Keep the original Parquet files. Compression and
+spill layers remain, with reference hydration added after decoding. Update readers to hydrate
+v3; a transport-decoded verification payload is intentionally stripped. Existing deployed
+readers have not been upgraded by this change. Size figures from old
+full-record bundles do not predict v3 size; no full-dataset savings have been measured.
 
 ### 5. Publish to R2
 
@@ -207,8 +215,8 @@ arkiv-entity-processor verify work/bundle
 # The `arkiv-entity-processor` CLI
 
 `process` turns Sourcify Ethereum contract records (NDJSON) into the seed bundle; `verify` checks
-a finished bundle; `pack` and `upload` publish it. `process` derives from the former
-`sourcify-offline-importer`; the complete-input payload format changes its output.
+a finished bundle; `hydrate` reconstructs full contract JSON; `pack` and `upload` publish it. `process` derives from the former
+`sourcify-offline-importer`; the v3 shared-reference payload format changes its output.
 
 ## Input
 
@@ -225,6 +233,18 @@ A source that knows it is complete ends with a marker line:
 `"skipped": [{"matchId": "...", "reason": "..."}]` list is copied into `report.json`. With
 `--require-source-complete` the bundle is published only if this marker is present and valid;
 without it, EOF counts as complete (use that only for trusted, finished files).
+
+## Hydrating the original record
+
+```sh
+arkiv-entity-processor hydrate work/bundle > hydrated.ndjson
+```
+
+One full contract JSON is emitted per line in bundle order. The command reads `seed.json` and
+entity parts, so it also works on an extracted prefill archive without audit-only
+`metadata.jsonl` or `payloads.bin`. Missing, corrupt or unsupported dependencies fail with a
+nonzero exit status; do not accept partial stdout as a complete dataset. Inspect the
+[stored and hydrated example](docs/example.html) to compare both representations.
 
 ## Output
 
@@ -249,6 +269,7 @@ runs with different `--workers` / `--compression-workers`.
 ```text
 arkiv-entity-processor process [OPTIONS] --output <DIR>
 arkiv-entity-processor verify <BUNDLE_DIR>
+arkiv-entity-processor hydrate <BUNDLE_DIR>
 arkiv-entity-processor pack <BUNDLE_DIR> --output <FILE.tar.zst> [--contents prefill|full] [--level 3] [--threads N]
 arkiv-entity-processor upload <FILE.tar.zst> --bucket <B> --key <K> [--credentials-file <FILE>]
 arkiv-entity-processor --help | --version
@@ -389,7 +410,7 @@ x86_64-unknown-linux-musl && cargo build --release --locked --target x86_64-unkn
 `tests/fixture/parquet` holds every row behind 19 real matches (Solidity, Vyper, Fe, a large
 source with blob entities, a two-revision match, a non-Ethereum match and one per skip reason),
 extracted from the export by `tests/fixture/extract.ts`. `tests/fixture/expected.json` retains
-the original source-stream baseline. The pipeline tests check full verified-contract payload
+the original source-stream baseline. The pipeline tests check full hydrated-contract
 equality with each input record and deterministic bundles across worker counts.
 
 ## CI and releases

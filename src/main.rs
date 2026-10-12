@@ -14,6 +14,7 @@ use std::{
     time::Instant,
 };
 
+mod hydrate_cli;
 mod pack;
 mod s3;
 mod upload;
@@ -33,7 +34,7 @@ Output: a bundle directory with entities/*.jsonl (import-ready Arkiv prefill ent
 payloads.bin (deduplicated raw payloads), metadata.jsonl, report.json, SHA256SUMS and seed.json.
 seed.json is published last, only after the whole input was processed (fail-closed).
 
-`process` and `verify` run offline: no database, RPC, Sourcify API or transactions. `pack` turns a
+`process`, `verify` and `hydrate` run offline: no database, RPC, Sourcify API or transactions. `pack` turns a
 bundle into one deterministic .tar.zst archive and `upload` publishes it to S3-compatible storage
 (Cloudflare R2) without ever overwriting an object.";
 
@@ -96,6 +97,9 @@ enum Command {
     /// Transform NDJSON contract records into a seed bundle
     #[command(long_about = PROCESS_LONG_ABOUT, after_help = PROCESS_EXAMPLES)]
     Process(ProcessArgs),
+    /// Reconstruct full contract NDJSON from stored wire entities
+    #[command(long_about = hydrate_cli::LONG_ABOUT)]
+    Hydrate(hydrate_cli::HydrateArgs),
     /// Verify a finished bundle: SHA256SUMS, report.json status and seed.json
     #[command(long_about = verify::LONG_ABOUT)]
     Verify(VerifyArgs),
@@ -775,6 +779,7 @@ fn run_parallel(
 fn main() -> Result<()> {
     match Cli::parse().command {
         Command::Process(a) => process(&a),
+        Command::Hydrate(a) => hydrate_cli::hydrate(&a),
         Command::Verify(v) => {
             let summary = verify::verify(&v.dir)?;
             println!("OK {}: {summary}", v.dir.display());

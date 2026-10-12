@@ -1,35 +1,46 @@
 One-contract evidence: SafeProxy, Ethereum mainnet
 
-sourcify-response.json is the exact saved public HTTP response. Its capture URL
-and time are in provenance.json. processor-input.ndjson contains that JSON as
-one record, followed by a completion marker. No fields were added to the record.
+sourcify-response.json is the saved public HTTP response. Its capture URL/time
+are in provenance.json. processor-input.ndjson contains that unchanged record
+followed by a source-complete marker. This source capture has not been rewritten.
 
-processor-entities.json contains every entity generated from that record:
-decoded payload, real generated key, actual seed attributes, and original seed
-entry. Binary code payloads are displayed as hexadecimal. seed-entities.jsonl
-is the original import-ready output. example-bundle.tar.gz is the complete
-verified local bundle, including SHA256SUMS and seed.json. No deployment is
-implied. The 0x111...111 owner is an explicit example CLI setting.
+stored-contract.json is the actual transport-decoded verified_contract v3
+payload: a stripped envelope containing data and explicit references.
+hydrated-contract.json is actual `hydrate` CLI output reconstructed from the
+seed bundle. Its JSON values equal the complete captured source.
 
-Reproduce from this saved response (run in the processor repository):
+processor-entities.json lists every generated entity with its real key, decoded
+stored payload, typed attributes, decoded byte count, wire byte count and original
+seed entry. Binary payloads are displayed as hex. seed-entities.jsonl concatenates
+all import-ready entity parts in order. example-bundle.tar.gz contains the full
+verified bundle including seed.json and SHA256SUMS. None of this implies an Arkiv
+deployment. The 0x111...111 owner is an illustrative CLI setting.
+
+Reproduce from this saved response (in the processor repository):
 
   cargo build --release --locked
-  work=$(mktemp -d)
-  cp docs/data/sourcify-response.json "$work/sourcify-response.json"
-  cp docs/data/processor-input.ndjson "$work/input.ndjson"
+  example_work=$(mktemp -d)
+  cp docs/data/sourcify-response.json "$example_work/sourcify-response.json"
+  cp docs/data/processor-input.ndjson "$example_work/input.ndjson"
   target/release/arkiv-entity-processor process \
-    --input "$work/input.ndjson" --output "$work/bundle" \
+    --input "$example_work/input.ndjson" --output "$example_work/bundle" \
     --require-source-complete --owner 0x1111111111111111111111111111111111111111
-  target/release/arkiv-entity-processor verify "$work/bundle"
-  python3 docs/export-example.py --work "$work" --captured-at 2026-10-09T13:34:56Z
+  target/release/arkiv-entity-processor hydrate "$example_work/bundle"
+  python3 docs/export-example.py --work "$example_work" \
+    --captured-at 2026-10-09T13:34:56Z
 
-The export script checks every decoded payload against the processor audit
-bytes and SHA-256, then verifies complete contract JSON equality and the individual field/reference relationships. Its
-re-export records the current repository revision. Bundle timing/report fields
-and archive timestamps can vary; entity keys and payloads remain reproducible.
+The exporter runs bundle verify and hydrate, compares the complete hydrated JSON
+with the source, and validates every decoded seed payload against audit bytes and
+SHA-256. It records binary and Rust source digests as well as the baseline Git
+revision; a dirty working tree is explicit. Bundle timing/report fields and
+archive timestamps can vary. No entity count or layout is hardcoded.
 
-Scope: this illustrates the transform with live API input. The production
-pipeline reads Parquet. The API does not provide sourcifyIds, so those are absent
-here. The API supplies current proxyResolution, while the offline Parquet
-adapter cannot resolve current proxies. The decoded verified-contract payload equals every JSON value in this captured API response.
-This does not claim complete API parity for records produced by the Parquet adapter.
+Size figures distinguish decoded payload bytes, compressed/identity wire payload
+bytes and JSONL framing (attributes plus base64). The compact original JSON byte
+count uses a stated serialization, not the HTTP file size. Single-sample figures
+do not establish full-dataset savings.
+
+This is API-input evidence. The offline Parquet adapter cannot resolve current
+proxies, and its exported metadata text can differ from a live API JSON string.
+The API has no relational sourcifyIds, so none are fabricated here. The Parquet
+adapter carries those separately as supplementary attributes.

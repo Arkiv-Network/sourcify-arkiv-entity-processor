@@ -1,0 +1,25 @@
+{
+  "title": "Controlled repeated-compilation comparison",
+  "methodology": "20 synthetic records derived from the saved SafeProxy API response. Only address and matchId changed. These are not 20 independently observed deployments. Both processor versions receive the same inputs.",
+  "scope": "Local generated bundles, not a production dataset benchmark. Payload, compressed wire payload and complete seed JSONL are distinct measures.",
+  "sourceExample": "provenance.json",
+  "measurements": {
+    "baseline-bundle": {
+      "contracts": 20,
+      "entities": 25,
+      "decodedPayloadBytes": 412370,
+      "gzipWirePayloadBytes": 69327,
+      "seedJsonlBytes": 126242,
+      "compilations": 1
+    },
+    "shared-bundle": {
+      "contracts": 20,
+      "entities": 25,
+      "decodedPayloadBytes": 109067,
+      "gzipWirePayloadBytes": 23662,
+      "seedJsonlBytes": 65326,
+      "compilations": 1
+    },
+    "hydratedEquality": true
+  }
+}

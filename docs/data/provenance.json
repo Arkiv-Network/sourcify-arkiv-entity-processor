@@ -2,297 +2,145 @@
   "address": "0x000000000034065b3a94C2118CFe5B4C0067B615",
   "chainId": "1",
   "capturedAt": "2026-10-09T13:34:56Z",
+  "generatedAt": "2026-10-09T15:42:43.656818+00:00",
   "sourceUrl": "https://sourcify.dev/server/v2/contract/1/0x000000000034065b3a94C2118CFe5B4C0067B615?fields=all",
-  "processorRevision": "1a0a6a2845ee11dc0d72d33c25872fbba9ca59c1",
-  "inputMethod": "The saved live Sourcify API JSON was passed unchanged as one NDJSON record to the current processor CLI, followed by a source-complete marker. This is an API-input illustration, not a production Parquet export or a deployed Arkiv response.",
+  "processorRevision": "e94c65946621fdb8c363593dd588f3c68ded9a71",
+  "processorWorkingTreeDirty": true,
+  "processorBinarySha256": "8354d93316d8908149260bd143e4fb326c3e3c288312ad18d437f45643377658",
+  "processorSourceSha256": {
+    "src/hydrate.rs": "cb02e39a8574a590822d33192d279de302f79478253c7ffbeb1340fc5986d6b2",
+    "src/hydrate_cli.rs": "660ab72a6a588a99e6ec6d57c304c8fae2624ffa79da24d428ed034b5fcae24b",
+    "src/lib.rs": "d4fd27fd1f80731ff8451f64d890a940952414664738ec8829f0b015fa491251",
+    "src/main.rs": "07c3680f56e4d6a90ae9a1c6e204071eac6bd33f216120c0d9fc8d81d9ccc200",
+    "src/pack.rs": "aed656484a0fc9ad723babfc3dc39772c1b30c1b69cd93aac93afe7e28a03bdf",
+    "src/s3.rs": "f64ecc7e5f20a97e3c24930848d84198f1fc323f50fda450674cd540806ca1bc",
+    "src/split.rs": "07492d06100dbc280dddbd25dec370e66c4bb43a33a178167f8502a2aadddad0",
+    "src/upload.rs": "17f5a40ebfd95ef5f0bb14e6b344ffed74383ff674c6f0e62c1077968570f9fc",
+    "src/verify.rs": "682da2d255ce1a57c0c9a0e434ee39f2fbc0c0b3f57f42e4c6a499788b178d9e"
+  },
+  "inputMethod": "Saved full API response passed unchanged to process; hydrate reads the actual generated seed entities. No deployed Arkiv response is implied.",
   "owner": "0x1111111111111111111111111111111111111111",
-  "ownerNote": "Explicit illustrative owner supplied to CLI; it is not a contract owner or proof of deployment.",
+  "ownerNote": "Illustrative CLI owner, not evidence of contract ownership.",
   "scopeNotes": [
-    "Sourcify API has no sourcifyIds; these are therefore absent. The production Parquet adapter adds source database IDs.",
-    "proxyResolution was returned by the live Sourcify API and preserved. The offline Parquet adapter cannot resolve current proxies.",
-    "The complete contract payload equals the full supplied API JSON, including signatures, stdJsonInput and stdJsonOutput. Object-key order and JSON whitespace may differ. The Parquet adapter currently supplies a different record and does not supply those three fields.",
-    "Code payloads are binary bytes shown here as hexadecimal. JSON payloads are decoded from actual gzip seed output.",
-    "Entity keys are processor-generated seed keys. The bundle has not been deployed to Arkiv."
+    "Stored verification JSON is a v3 envelope with stripped data and explicit references. Hydration reconstructs every original JSON value.",
+    "Source JSON formatting and object order need not match; strings, nulls, absent fields, arrays and unknown fields do.",
+    "API provenance has no relational sourcifyIds. The Parquet adapter carries those separately as supplementary attributes.",
+    "Live proxyResolution is preserved because supplied here. Offline Parquet has no live proxy resolution; its exported metadata text can differ from a live API string.",
+    "Size measurements cover only this generated example. Decoded payloads, compressed wire payload bytes and JSONL framing are different measures; no dataset savings are claimed."
   ],
+  "metrics": {
+    "originalCompactJsonBytes": 20171,
+    "storedContractDecodedBytes": 4814,
+    "storedContractWireBytes": 982,
+    "allEntitiesDecodedBytes": 17630,
+    "allEntitiesWireBytes": 5457,
+    "seedJsonlBytes": 12647,
+    "entityCount": 6
+  },
   "validation": {
-    "fullPayloadEquality": true,
+    "hydratedEquality": true,
     "bundleVerify": "passed",
     "entityPayloadHashes": 6,
     "fieldChecks": [
       {
-        "check": "complete contract payload equals full source JSON",
-        "passed": true,
-        "valueSha256": "9ba620ec05235f7e0b229a753c7d5b0def078b92f9d2e1e72b335eba2b008465"
+        "check": "hydrated contract equals complete captured source JSON",
+        "passed": true
       },
       {
         "check": "matchId",
-        "passed": true,
-        "valueSha256": "5f09838fb2895a1692c83004d3986c604db8fd69ca5844022e1a4dc9381b5115"
+        "passed": true
       },
       {
         "check": "creationMatch",
-        "passed": true,
-        "valueSha256": "427bf9e30ae695d12cf74584298135afc6495c03717a393649e137a708f78b50"
+        "passed": true
       },
       {
         "check": "runtimeMatch",
-        "passed": true,
-        "valueSha256": "427bf9e30ae695d12cf74584298135afc6495c03717a393649e137a708f78b50"
+        "passed": true
       },
       {
         "check": "verifiedAt",
-        "passed": true,
-        "valueSha256": "4169ae8b5eebd1d45edee69f8ea2fdaeac692e6480da9af898c5831d16e92f67"
+        "passed": true
       },
       {
         "check": "creationBytecode",
-        "passed": true,
-        "valueSha256": "242bce4a2d5fe8edf18492e3c8ca49d8c26e9631fd9a52549190ff1f1f802968"
+        "passed": true
       },
       {
         "check": "runtimeBytecode",
-        "passed": true,
-        "valueSha256": "dcab0a0895cda198220dc836bc4413d002902c59351b838c33dc5d4a6f98242d"
+        "passed": true
       },
       {
         "check": "deployment",
-        "passed": true,
-        "valueSha256": "65c62fa0a7bd84b69a15e48fe876cecbde4dcb72a394e2697e98077790e86299"
+        "passed": true
       },
       {
         "check": "sources",
-        "passed": true,
-        "valueSha256": "d2c58541df0bb5658843f5ddce76e99275f96b3ca51b1366f147a87235511773"
+        "passed": true
       },
       {
         "check": "compilation",
-        "passed": true,
-        "valueSha256": "9b576dc63ac4c1da45eadf8a76aa5f9a3335c233db7ebd5491d47e9323bd8ced"
+        "passed": true
       },
       {
         "check": "abi",
-        "passed": true,
-        "valueSha256": "3b187c2aa68deb34b1cef3b0442dec2ea12cd6e5d549d58e55ab3bd1c4a8d89f"
+        "passed": true
       },
       {
         "check": "metadata",
-        "passed": true,
-        "valueSha256": "78999b1035d05f807bde8428c59684e3235d9924aa7cd424b8a1a809117f888f"
+        "passed": true
       },
       {
         "check": "storageLayout",
-        "passed": true,
-        "valueSha256": "c6ea670150de7e605b12717919daf0ce7c40d1291874f1a3ff0023f4c3909a77"
+        "passed": true
       },
       {
         "check": "transientStorageLayout",
-        "passed": true,
-        "valueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        "passed": true
       },
       {
         "check": "userdoc",
-        "passed": true,
-        "valueSha256": "1083a132426069f4d765f4e9609faeb2cf2ef50cb6010ed1a62d6db556ede1cd"
+        "passed": true
       },
       {
         "check": "devdoc",
-        "passed": true,
-        "valueSha256": "06eb6bf85ac939e4a04d1599c298346f8f5993cb565fc701ad1e011b1d702c28"
+        "passed": true
       },
       {
         "check": "sourceIds",
-        "passed": true,
-        "valueSha256": "8bb1fdb60b03a5a074d9fbd4a36707372a7bd6429d16c6c3a83487ca578d88b6"
+        "passed": true
       },
       {
         "check": "additionalInput",
-        "passed": true,
-        "valueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+        "passed": true
       },
       {
         "check": "stdJsonInput",
-        "passed": true,
-        "valueSha256": "cbe485101a9c05dc65ee89a2ed44ee04825a516131ba3f4d51472c3fec4679db"
+        "passed": true
       },
       {
         "check": "stdJsonOutput",
-        "passed": true,
-        "valueSha256": "64b7218eaae0c671cb036eb503d24ab90bd0b9940dd1cc776f8ca92e2205fd6e"
+        "passed": true
       },
       {
         "check": "signatures",
-        "passed": true,
-        "valueSha256": "98c24dc22efe8804d2f83b1568975d015794ec45bd3e1fde2111c928be36c59d"
+        "passed": true
       },
       {
         "check": "proxyResolution",
-        "passed": true,
-        "valueSha256": "67507d116b16999a1ddb6dfd7d1b48a8a06d6e722febc669b3d3eecc6b6c2bb4"
+        "passed": true
       },
       {
         "check": "match",
-        "passed": true,
-        "valueSha256": "427bf9e30ae695d12cf74584298135afc6495c03717a393649e137a708f78b50"
+        "passed": true
       },
       {
         "check": "chainId",
-        "passed": true,
-        "valueSha256": "391552c099c101b131feaf24c5795a6a15bc8ec82015424e0d2b4274a369a0bf"
+        "passed": true
       },
       {
         "check": "address",
-        "passed": true,
-        "valueSha256": "04d8347d1f26fd021b48b44f46bb2833c05f56c06313563b048009d80ba0742b"
-      },
-      {
-        "check": "compilation.language",
-        "passed": true,
-        "valueSha256": "145fedd9fc33fe7f9fe6187d0d4ef56fbc1e0af3ef5c066ea7b805cb1a690ffe"
-      },
-      {
-        "check": "compilation.compiler",
-        "passed": true,
-        "valueSha256": "911932b2e80521caf58292b76f9982537e9cd59625190027c82800c76d40d952"
-      },
-      {
-        "check": "compilation.compilerVersion",
-        "passed": true,
-        "valueSha256": "82a0592040d9b11bbe8966b431755e37762e5486a43bf06edd39c5ed1627f610"
-      },
-      {
-        "check": "compilation.compilerSettings",
-        "passed": true,
-        "valueSha256": "5eda26c721f605d0c4299b698641ed153052c2eebd73d47abe269e1ed6b4e05b"
-      },
-      {
-        "check": "compilation.name",
-        "passed": true,
-        "valueSha256": "366629cd9f0e68907339c7e198fca47b7efb3a0cd797aefcc3970f1f865475d5"
-      },
-      {
-        "check": "compilation.fullyQualifiedName",
-        "passed": true,
-        "valueSha256": "8de50b0bafb23c2764151bfa1e183beb4e182dc8cc27e94d8f5c75376f2f5f25"
-      },
-      {
-        "check": "metadata",
-        "passed": true,
-        "valueSha256": "78999b1035d05f807bde8428c59684e3235d9924aa7cd424b8a1a809117f888f"
-      },
-      {
-        "check": "storageLayout",
-        "passed": true,
-        "valueSha256": "c6ea670150de7e605b12717919daf0ce7c40d1291874f1a3ff0023f4c3909a77"
-      },
-      {
-        "check": "transientStorageLayout",
-        "passed": true,
-        "valueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
-      },
-      {
-        "check": "userdoc",
-        "passed": true,
-        "valueSha256": "1083a132426069f4d765f4e9609faeb2cf2ef50cb6010ed1a62d6db556ede1cd"
-      },
-      {
-        "check": "devdoc",
-        "passed": true,
-        "valueSha256": "06eb6bf85ac939e4a04d1599c298346f8f5993cb565fc701ad1e011b1d702c28"
-      },
-      {
-        "check": "sourceIds",
-        "passed": true,
-        "valueSha256": "8bb1fdb60b03a5a074d9fbd4a36707372a7bd6429d16c6c3a83487ca578d88b6"
-      },
-      {
-        "check": "sources.contracts/proxies/SafeProxy.sol.content",
-        "passed": true,
-        "valueSha256": "68a823b67f2e5c65fc6e714be8aaa9e88037bab4ff9003b83c371c1676e41233"
-      },
-      {
-        "check": "source content SHA-256",
-        "passed": true,
-        "valueSha256": "6fff94e2b555e2ba230b02a96f01596de467f17f69023808e63ce6e75e3960d9"
-      },
-      {
-        "check": "creationBytecode.sourceMap",
-        "passed": true,
-        "valueSha256": "e583bf35d7006706c20fa7bdbf8818c8dad946ff95b3ccd416156e0fc3ef22fc"
-      },
-      {
-        "check": "creationBytecode.linkReferences",
-        "passed": true,
-        "valueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
-      },
-      {
-        "check": "creationBytecode.cborAuxdata",
-        "passed": true,
-        "valueSha256": "85db54327493639763d6980f8889379da72b857375e435d1a62a409f4500d428"
-      },
-      {
-        "check": "creationBytecode.transformations",
-        "passed": true,
-        "valueSha256": "d3206d2cb50bd467fe7f63e10b111dbcf86a4cad5a51ca16978df78da7963f0a"
-      },
-      {
-        "check": "creationBytecode.transformationValues",
-        "passed": true,
-        "valueSha256": "eae4e5cab6d1c0bbcce90d2c0f44b0fb1d6e955a3945eab6bbe3e4f05f1bb8bb"
-      },
-      {
-        "check": "creationBytecode.onchainBytecode",
-        "passed": true,
-        "valueSha256": "7360770b61780d7e1ae70b03b76b3252f23f4a606478eaf217c6e0b946ef2176"
-      },
-      {
-        "check": "creationBytecode.recompiledBytecode",
-        "passed": true,
-        "valueSha256": "d9629592c6f26d5a9ed2b298f4070cb03641a331f01d7efb278115bf856dce6a"
-      },
-      {
-        "check": "runtimeBytecode.sourceMap",
-        "passed": true,
-        "valueSha256": "9e08ff8df6fb16a73d415b9964cc2013ce3faecc4dc7737eea47d9e0c2317ca9"
-      },
-      {
-        "check": "runtimeBytecode.linkReferences",
-        "passed": true,
-        "valueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
-      },
-      {
-        "check": "runtimeBytecode.cborAuxdata",
-        "passed": true,
-        "valueSha256": "245f2fbc7e2406fbfedd14d6abe206f1952f07b98a1b60fc78b7cdc9eed79436"
-      },
-      {
-        "check": "runtimeBytecode.immutableReferences",
-        "passed": true,
-        "valueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
-      },
-      {
-        "check": "runtimeBytecode.transformations",
-        "passed": true,
-        "valueSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
-      },
-      {
-        "check": "runtimeBytecode.transformationValues",
-        "passed": true,
-        "valueSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
-      },
-      {
-        "check": "runtimeBytecode.onchainBytecode",
-        "passed": true,
-        "valueSha256": "e04f96bc0e85f34af8588bb09c432e3c457fec77a04f11b6911992ca2db1ea1d"
-      },
-      {
-        "check": "runtimeBytecode.recompiledBytecode",
-        "passed": true,
-        "valueSha256": "e04f96bc0e85f34af8588bb09c432e3c457fec77a04f11b6911992ca2db1ea1d"
-      },
-      {
-        "check": "resolved compilation entity key",
-        "passed": true,
-        "valueSha256": "303c01ea9c1d5877efa1a2e98a469eea6b5b4a8f20fe9a21d081d3af7c4a746b"
+        "passed": true
       }
     ]
   }

@@ -8,74 +8,35 @@
 <a href="limitations.html">Parity findings</a>
 <a href="sources.html">Sources</a></div></nav>
 <main id="main"><section>
-<h1>Different hashes answer different questions</h1>
-<p>Content hashes find shared bodies. Staging IDs identify complete semantic entities. Payload checksums protect bytes in transit. They should not be used interchangeably. Arkiv code.hash is Keccak-256 of raw bytecode. Do not substitute upstream relational IDs or code indexes for this content reference.</p>
-<div class="table-wrap">
-<table >
-<thead>
-<tr>
-<th>Value</th>
-<th>Computed from</th>
-<th>Why it matters</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>Source hash</td>
-<td>SHA-256 of UTF-8 source content</td>
-<td>Used by compilation.sources path references; independent of gzip and JSON envelope.</td>
-</tr>
-<tr>
-<td>Code hash</td>
-<td>Keccak-256 of raw bytecode</td>
-<td>Used by shared code entities and indexed code hash attributes. Original bytecode also remains in the verified_contract payload.</td>
-</tr>
-<tr>
-<td>Compilation indexed hash</td>
-<td>Processor legacy fingerprint of compiler/version/language/FQN/settings, path–source hashes and all four code hashes</td>
-<td>Not a hash of the full compilation payload. Metadata and other artifacts are not all covered by this index.</td>
-</tr>
-<tr>
-<td>Semantic staging ID</td>
-<td>SHA-256 of canonical kind, payload representation, attributes and semantic key references</td>
-<td>Full entity identity protects against dedup collisions from incomplete compilation fingerprints.</td>
-</tr>
-<tr>
-<td>ABI hash</td>
-<td>SHA-256 of serialized ABI JSON, including null</td>
-<td>Queryable attribute; null ABI and empty ABI remain distinct.</td>
-</tr>
-<tr>
-<td>payloadsha256</td>
-<td>SHA-256 of entity payload before optional gzip</td>
-<td>Validates transport-decoded entity bytes. For a spilled parent this hashes the stub, not the full original body.</td>
-</tr>
-<tr>
-<td>$spill.hash</td>
-<td>SHA-256 of complete original payload bytes</td>
-<td>Validates concatenated blob bodies; separate from each chunk’s payloadsha256.</td>
-</tr>
-<tr>
-<td>Processor seed entity key</td>
-<td>0x + SHA-256(UTF-8(&quot;arkiv-prefill.imported-staging.v1:&quot; + lowercase hex staging ID without 0x))</td>
-<td>Deterministic imported seed key. Different from the source/content hash.</td>
-</tr>
-</tbody>
-</table>
-</div>
-<div class="callout">
-<h3>Compilation hash is not the dedup authority</h3>
-<p>A full canonical compilation-payload hash and the processor’s indexed fingerprint are different definitions. The processor retains its existing fingerprint; it does not claim compatibility with a full-payload hash. Its semantic staging ID includes the represented payload and attributes (a spill stub includes the complete-body hash), so payload differences still distinguish entities.</p>
-</div>
-<h3>Two consequences of the current fingerprint</h3>
-<ul><li><strong>Same index, different entities:</strong> a metadata-only change can leave the indexed compilation hash unchanged. The payload changes, so the semantic staging ID still distinguishes the entities.</li><li><strong>Same payload, extra entities:</strong> the fingerprint includes onchain bytecode hashes, although the compilation payload stores the recompiled hashes. A change only to onchain bytecode can therefore produce different compilation attributes and staging IDs for identical compilation payloads. This can create redundant compilation entities; its prevalence has not been measured.</li></ul>
-<h3>Compression and oversized payloads</h3><p>The verified_contract logical payload is the complete input JSON, with no injected schema marker. Decode compression and resolve any spill parts before comparing it with the input. Full records are larger than the previous selected-field payloads and may need more blob parts; regenerate old bundles.</p>
-<ol>
-<li>Build the logical entity payload. Bodies over 122,880 bytes become a small <code>$spill</code> stub plus 100,000-byte blob slices.</li>
-<li>Apply gzip level 6 to each entity payload only when it reduces its size; otherwise use identity. The processor enforces a 120,000-byte wire-payload limit. Preserve original content type and payload checksum.</li>
-</ol><h3>Interpreting a stored payload</h3><p>A consumer needs to reverse these storage layers:</p><ol><li>Decode transport compression and validate the entity checksum.</li>
-<li>If spilled, gather every part, validate indexes, counts and byte lengths, then verify the complete SHA-256.</li>
-<li>Validate source SHA-256 or bytecode Keccak content references before interpreting the contract data.</li>
-</ol>
-<p>Gzip is intentional. It changes stored bytes, not the decoded contract data. A consumer should reject missing or corrupt dependencies. These are decoding requirements, not an HTTP reader implemented by this processor.</p>
+<h1>How stripped JSON becomes the full record</h1>
+<p>The v3 storage format separates reusable values from deployment-specific data. Gzip decoding alone shows a stripped envelope, not the original Sourcify response. Hydration is the final step.</p>
+<pre><code>verified_contract: {schema, data, references}
+    ├─ compilation hash → compilation: {schema, data, references}
+    │      ├─ source SHA-256 → sourcefile content
+    │      ├─ bytecode Keccak-256 → code bytes
+    │      └─ local pointer → an equal value in this compilation
+    └─ bytecode Keccak-256 → onchain code bytes
+                  ↓ hydrate
+       complete original contract JSON</code></pre>
+<h2>Reference manifest</h2>
+<p>Each envelope contains <code>data</code> and a separate <code>references</code> array. A reference’s <code>path</code> is the destination JSON Pointer: <code>~1</code> escapes a slash and <code>~0</code> escapes a tilde. Referenced object keys are absent from stored data; referenced array positions retain null placeholders so indexes stay stable. The manifest distinguishes these placeholders from original null values and restores the referenced content during hydration. Literal user objects named <code>$ref</code> remain ordinary input data.</p>
+<ul><li><code>kind: sourcefile</code> resolves exact source text by SHA-256.</li><li><code>kind: code</code> resolves bytes by Keccak-256; <code>encoding</code> preserves the original hex prefix and uppercase positions.</li><li><code>kind: compilation</code> selects a field from the hydrated shared compilation using <code>pointer</code>.</li><li><code>kind: local</code> restores an equal standard-JSON subtree when the reference is smaller than repeating it from another <code>pointer</code> in the same compilation. External dependencies resolve first.</li></ul>
+<p>Use the <a href="example.html">actual generated example</a> to follow references and compare stored and hydrated JSON. These are content references, not Sourcify database IDs or Arkiv entity keys. The typed <code>compilationref</code> attribute additionally links the verification to its compilation entity key.</p>
+<h2>Different hashes answer different questions</h2><p>Here canonical JSON means sorted object keys with exact number representations preserved. It is not a claim of complete RFC 8785 normalization. Arrays retain their order.</p>
+<div class="table-wrap"><table><thead><tr><th>Value</th><th>Computed from</th><th>Use</th></tr></thead><tbody>
+<tr><td>Source hash</td><td>SHA-256 of exact UTF-8 source text</td><td>Find a shared source body; independent of its JSON envelope and gzip.</td></tr>
+<tr><td>Code hash</td><td>Keccak-256 of raw bytecode</td><td>Find shared bytes; presentation is preserved separately by each reference.</td></tr>
+<tr><td>Compilation hash</td><td>SHA-256 of the complete canonical v3 compilation envelope before spill</td><td>Find the shared compiler representation. Onchain-only deployment changes do not enter it.</td></tr>
+<tr><td>Semantic staging ID</td><td>Canonical entity kind, payload representation, attributes and semantic key references</td><td>Global entity deduplication.</td></tr>
+<tr><td>ABI hash</td><td>SHA-256 of canonical exact ABI JSON, including null and lossless numbers</td><td>Queryable index; null and empty array remain distinct.</td></tr>
+<tr><td>payloadsha256</td><td>SHA-256 of payload before optional gzip</td><td>Validate transport-decoded bytes. For a spilled parent, this hashes the stub.</td></tr>
+<tr><td>$spill.hash</td><td>SHA-256 of the full original payload body</td><td>Validate concatenated blob parts.</td></tr>
+<tr><td>Seed entity key</td><td>SHA-256 of the staging ID with the arkiv-prefill.imported-staging.v1 namespace</td><td>Deterministic imported entity identity, distinct from content hashes.</td></tr>
+</tbody></table></div>
+<h2>Compression, spill and hydration</h2>
+<ol><li>Read the seed entity and decode <code>gzip</code> or <code>identity</code>. Check its payload checksum.</li><li>For a spill stub, collect all <code>blob</code> parts in order and validate count, lengths and the complete SHA-256.</li><li>Resolve the v3 reference manifest, validate target content hashes, and restore values at their exact JSON Pointer paths.</li><li>Return the hydrated original JSON, without storage schema, data or references wrappers.</li></ol>
+<p>Logical bodies over 122,880 bytes spill into 100,000-byte slices. Gzip level 6 is applied only when smaller; the wire payload limit is 120,000 bytes. These transport layers remain separate from semantic references.</p>
+<pre><code>arkiv-entity-processor hydrate BUNDLE_DIR &gt; hydrated.ndjson</code></pre>
+<p>The reader uses seed entity files and works with an extracted prefill archive. Missing or corrupt dependencies cause failure. A failed stream must not be treated as a complete dataset. This CLI is an offline reader; the repository does not provide an HTTP API server.</p>
+<h2>Migration and size claims</h2><p>Version 3 changes verification and compilation schemas, hashes and keys. Regenerate old bundles and update consumers; never interpret stripped data as the original record. Existing deployed readers have not been upgraded by this processor change. The example reports decoded payload bytes, compressed wire payload bytes and JSONL framing separately. Sharing can remove repeated bodies, but one contract cannot establish whole-dataset savings.</p>
 </section><footer>Processor reference · 9 October 2026 · <a href="sources.html">Sources and evidence</a></footer></main></body></html>
