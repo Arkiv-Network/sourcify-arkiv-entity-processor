@@ -8,6 +8,11 @@ repository = "https://github.com/Arkiv-Network/sorcify-arkiv-entity-processor"
 readme = "README.md"
 publish = false
 
+[workspace]
+members = ["crates/server"]
+default-members = ["."]
+resolver = "2"
+
 [[bin]]
 name = "arkiv-entity-processor"
 path = "src/main.rs"

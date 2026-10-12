@@ -1,0 +1,20 @@
+[package]
+name = "arkiv-sourcify-server"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.90"
+description = "Fixture-backed Sourcify Mainnet contract read service"
+publish = false
+
+[dependencies]
+anyhow = "1"
+arkiv-entity-processor = { path = "../.." }
+axum = { version = "0.8.9", default-features = false, features = ["http1", "json", "tokio"] }
+clap = { version = "4", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order", "arbitrary_precision"] }
+tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros", "net", "signal", "sync", "time"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }

@@ -49,6 +49,7 @@ on strict cross-source JSON equality.
 | Path | Contents |
 | --- | --- |
 | `src/` | `arkiv-entity-processor` (Rust): `process`, `verify`, `hydrate`, `pack`, `upload` |
+| `crates/server/` | `arkiv-sourcify-server`: fixture-backed Mainnet contract reads; [API and runbook](docs/server.md) |
 | `source/` | Bun + DuckDB source stage: `prepare.ts` (Parquet → DuckDB), `stream.ts` (DuckDB → NDJSON records) |
 | `pipeline/` | `run.sh` (resumable phases, progress, `timings.json`), `state.ts` (its bookkeeping) |
 | `Dockerfile`, `compose.yaml`, `.env.example` | container deployment |
@@ -58,7 +59,8 @@ on strict cross-source JSON equality.
 
 Start with the [overview](docs/index.html) and [one-contract example](docs/example.html).
 The reference covers Sourcify-to-entity field mapping, storage, and known parity gaps.
-It documents the offline processor; no HTTP API server is included. Open `docs/index.html`
+Those pages document the offline processor. The new [fixture read server](docs/server.md)
+has a separate API contract and does not yet read from an Arkiv node. Open `docs/index.html`
 in a browser, or serve `docs/` with any static file server.
 
 ## Run with Docker Compose
@@ -396,9 +398,10 @@ The toolchain is pinned in `rust-toolchain.toml` (Rust 1.90.0 with rustfmt and c
 stage needs Bun 1.4.
 
 ```sh
-cargo build --release --locked        # target/release/arkiv-entity-processor
-cargo test --locked
-cargo fmt --all --check && cargo clippy --locked --all-targets -- -D warnings
+cargo build --workspace --release --locked # processor and fixture server
+cargo test --workspace --locked
+cargo fmt --all --check && cargo clippy --workspace --locked --all-targets -- -D warnings
+python3 tests/server-smoke.py          # real bundle, TCP requests, SIGTERM shutdown
 bun install --frozen-lockfile
 bun run test                          # end-to-end on tests/fixture (needs the release build)
 ```
