@@ -53,7 +53,7 @@ on strict cross-source JSON equality.
 | `source/` | Bun + DuckDB source stage: `prepare.ts` (Parquet → DuckDB), `stream.ts` (DuckDB → NDJSON records) |
 | `pipeline/` | `run.sh` (resumable phases, progress, `timings.json`), `state.ts` (its bookkeeping) |
 | `Dockerfile`, `compose.yaml`, `.env.example` | container deployment |
-| `tests/` | end-to-end test on a small real-data Parquet fixture (`tests/fixture/`) |
+| `tests/` | end-to-end tests on a small real-data Parquet fixture; [opt-in live contract comparison](docs/live-conformance.md) |
 
 ## Entity parity documentation
 

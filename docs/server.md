@@ -200,6 +200,7 @@ cargo test --workspace --locked
 cargo clippy --workspace --locked --all-targets -- -D warnings
 cargo build --workspace --release --locked
 python3 tests/server-smoke.py
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/live -p 'test_*.py'
 bun install --frozen-lockfile && bun run test
 ```
 
@@ -211,6 +212,13 @@ local and escaped references, spills, missing/corrupt dependencies, ambiguity, c
 misses, cancellation, overload and a complete 9 MiB single-field response. The TCP
 smoke test runs process → verify → CLI hydrate → bundle HTTP reads → SIGTERM shutdown.
 Existing deterministic processor and Bun/Parquet tests remain in CI.
+
+The [opt-in live comparison](live-conformance.md) samples actual contracts from a
+prepared Parquet-derived source, processes them into a small bundle, starts the
+real HTTP server and compares selected fields against independently captured
+Sourcify responses. It defaults to five contracts and `abi,compilation,sources`;
+only its offline sampler, comparator and HTTP client tests run in CI. A passing
+spot check is not a full-dataset or all-fields parity claim.
 
 Production Arkiv serving, dataset acceptance/ownership, live proxy RPC, signature
 derivation policy, broad API parity, full-dataset benchmarks and a dedicated server
