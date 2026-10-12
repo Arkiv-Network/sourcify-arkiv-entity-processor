@@ -4,7 +4,6 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
 
 permissions:
   contents: read
@@ -37,18 +36,20 @@ jobs:
         run: cargo fmt --all --check
 
       - name: Clippy
-        run: cargo clippy --locked --all-targets -- -D warnings
+        run: cargo clippy --workspace --locked --all-targets -- -D warnings
 
       - name: Test
-        run: cargo test --locked
+        run: cargo test --workspace --locked
 
       - name: Build release
-        run: cargo build --release --locked
+        run: cargo build --workspace --release --locked
 
       - name: Smoke test
         run: |
           bin=target/release/arkiv-entity-processor
           "$bin" --version
+          target/release/arkiv-sourcify-server --version
+          target/release/arkiv-sourcify-server --help >/dev/null
           "$bin" process --help >/dev/null
           # One minimal record plus its completion marker, then verify the bundle.
           printf '%s\n' \
@@ -58,6 +59,12 @@ jobs:
                 --owner 0x1111111111111111111111111111111111111111
           "$bin" verify "$RUNNER_TEMP/bundle"
           (cd "$RUNNER_TEMP/bundle" && sha256sum -c SHA256SUMS)
+
+      - name: Bundle HTTP smoke test
+        run: python3 tests/server-smoke.py
+
+      - name: Offline live-comparison client tests
+        run: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/live -p 'test_*.py'
 
   pipeline:
     name: pipeline end-to-end (Bun + DuckDB + processor)
@@ -81,7 +88,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Build release
-        run: cargo build --release --locked
+        run: cargo build --workspace --release --locked
 
       # Adapter NDJSON compatibility, decoded payload parity, and build-aware pipeline reuse/refusal.
       - name: End-to-end tests

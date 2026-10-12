@@ -4,6 +4,7 @@ use anyhow::{bail, ensure, Context, Result};
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 use sha3::Keccak256;
+pub mod bundle;
 pub mod hydrate;
 mod split;
 pub const BUDGET: usize = 122880;

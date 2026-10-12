@@ -3,7 +3,8 @@ FROM rust:1.90.0-slim-trixie AS builder
 WORKDIR /build
 COPY Cargo.toml Cargo.lock ./
 COPY src ./src
-RUN cargo build --release --locked
+COPY crates/server ./crates/server
+RUN cargo build -p arkiv-entity-processor --release --locked
 
 FROM oven/bun:1.4.2-slim@sha256:debbe76858f2e398d2937c1eceeb82c571ac1fcd78aadf00e9634578ac2b5ef7
 USER root

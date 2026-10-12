@@ -69,7 +69,8 @@ jobs:
           rustup show active-toolchain
 
       - name: Build
-        run: cargo build --release --locked --target ${{ matrix.target }}
+        # The processor release remains unchanged; the fixture server has no production release yet.
+        run: cargo build -p arkiv-entity-processor --release --locked --target ${{ matrix.target }}
 
       - name: Smoke test
         run: |
