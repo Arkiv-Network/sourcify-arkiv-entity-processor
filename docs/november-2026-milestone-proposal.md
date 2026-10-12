@@ -1,5 +1,10 @@
 # Proposed deliverable for November milestone:
 
+For reconciliation with the full shared document, see the
+[requirements synthesis](sourcify-requirements.md). The
+[processor and server plan](processor-server-plan.md) describes the proposed
+implementation; cutoff, signature, and proxy policies remain decisions to confirm.
+
 The proof of concept proved the following:
 
 - The data model maps cleanly between Sourcify's Postgres schema and Arkiv entities.
