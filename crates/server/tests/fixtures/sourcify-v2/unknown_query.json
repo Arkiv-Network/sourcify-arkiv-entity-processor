@@ -1,0 +1,23 @@
+{
+  "name": "unknown_query",
+  "path": "/v2/contract/1/0xdae07103f1e0b23eb58d50758b9ade175d33e71b?x=1",
+  "status": 400,
+  "headers": {
+    "x-powered-by": "Express",
+    "access-control-allow-origin": "*",
+    "content-type": "application/json; charset=utf-8",
+    "etag": "W/\"7b-r+3FaAbMZLmSjaIynH9qMtBjFU8\"",
+    "x-cloud-trace-context": "ca2a612fe21acf00167737287ab9dcef",
+    "date": "Tue, 13 Oct 2026 19:33:52 GMT",
+    "server": "Google Frontend",
+    "Content-Length": "123",
+    "via": "1.1 google",
+    "Alt-Svc": "h3=\":443\"; ma=2592000",
+    "Connection": "close"
+  },
+  "body": {
+    "customCode": "invalid_parameter",
+    "message": "Unknown query parameter 'x'",
+    "errorId": "f169982b-d456-4b2e-b379-2417c51d7a0f"
+  }
+}

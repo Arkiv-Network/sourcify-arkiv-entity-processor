@@ -1,0 +1,25 @@
+{
+  "name": "version",
+  "path": "/version",
+  "status": 200,
+  "headers": {
+    "x-powered-by": "Express",
+    "access-control-allow-origin": "*",
+    "content-type": "application/json; charset=utf-8",
+    "etag": "W/\"be-SLLvxAQDNcQYufdXj2Dm/eDuPD0\"",
+    "x-cloud-trace-context": "a97a010074e0b18419bea65a4014d993",
+    "date": "Tue, 13 Oct 2026 19:33:43 GMT",
+    "server": "Google Frontend",
+    "Content-Length": "190",
+    "via": "1.1 google",
+    "Alt-Svc": "h3=\":443\"; ma=2592000",
+    "Connection": "close"
+  },
+  "body": {
+    "sourcifyServerVersion": "4.1.2",
+    "libSourcifyVersion": "^3.7.3",
+    "sourcifyCompilersVersion": "^1.3.1",
+    "bytecodeUtilsVersion": "^1.6.3",
+    "gitCommitHash": "6048af7dfb36a3f5b7b2b30ede5daca3e701f7b0"
+  }
+}

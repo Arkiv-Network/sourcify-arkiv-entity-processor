@@ -1,0 +1,23 @@
+{
+  "name": "bad_chain",
+  "path": "/v2/contract/no/0xdae07103f1e0b23eb58d50758b9ade175d33e71b",
+  "status": 400,
+  "headers": {
+    "x-powered-by": "Express",
+    "access-control-allow-origin": "*",
+    "content-type": "application/json; charset=utf-8",
+    "etag": "W/\"94-tGep/pGD0bUvFFkCrJnWDkGAt5s\"",
+    "x-cloud-trace-context": "40f7c1af953238c7070ee691225a2892",
+    "date": "Tue, 13 Oct 2026 19:33:56 GMT",
+    "server": "Google Frontend",
+    "Content-Length": "148",
+    "via": "1.1 google",
+    "Alt-Svc": "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000",
+    "Connection": "close"
+  },
+  "body": {
+    "customCode": "invalid_parameter",
+    "message": "request/params/chainId must match pattern \"^\\d+$\"",
+    "errorId": "6be73f5b-32b2-4084-9822-768a993d412b"
+  }
+}

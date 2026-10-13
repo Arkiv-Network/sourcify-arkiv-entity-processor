@@ -1,0 +1,23 @@
+{
+  "name": "all_mixed",
+  "path": "/v2/contract/1/0xdae07103f1e0b23eb58d50758b9ade175d33e71b?fields=all,abi",
+  "status": 400,
+  "headers": {
+    "x-powered-by": "Express",
+    "access-control-allow-origin": "*",
+    "content-type": "application/json; charset=utf-8",
+    "etag": "W/\"86-YL1/XEShLInSkFm9ilpELUfczQQ\"",
+    "x-cloud-trace-context": "f20b25b6d248560faa0cc01ad78d9a5c",
+    "date": "Tue, 13 Oct 2026 19:33:50 GMT",
+    "server": "Google Frontend",
+    "Content-Length": "134",
+    "via": "1.1 google",
+    "Alt-Svc": "h3=\":443\"; ma=2592000",
+    "Connection": "close"
+  },
+  "body": {
+    "customCode": "invalid_parameter",
+    "message": "Cannot specify 'all' with other fields",
+    "errorId": "ec648e74-d40d-41cc-aef7-42bef8b63424"
+  }
+}

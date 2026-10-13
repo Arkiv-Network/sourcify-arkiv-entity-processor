@@ -1,0 +1,104 @@
+{
+  "name": "signatures",
+  "path": "/v2/contract/1/0xdae07103f1e0b23eb58d50758b9ade175d33e71b?fields=abi,signatures",
+  "status": 200,
+  "headers": {
+    "x-powered-by": "Express",
+    "access-control-allow-origin": "*",
+    "content-type": "application/json; charset=utf-8",
+    "etag": "W/\"441-yWjKHAjRp9+MdvrYheMzPq54xKM\"",
+    "x-cloud-trace-context": "21f5dba7b4935366fc526302d5c6035e",
+    "date": "Tue, 13 Oct 2026 19:37:35 GMT",
+    "server": "Google Frontend",
+    "Content-Length": "1089",
+    "via": "1.1 google",
+    "vary": "Accept-Encoding",
+    "Cache-Control": "public,max-age=3600",
+    "Alt-Svc": "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000",
+    "Connection": "close"
+  },
+  "body": {
+    "abi": [
+      {
+        "name": "sweep",
+        "type": "function",
+        "inputs": [
+          {
+            "name": "_token",
+            "type": "address"
+          },
+          {
+            "name": "_amount",
+            "type": "uint256"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "",
+            "type": "bool"
+          }
+        ],
+        "payable": false,
+        "constant": false
+      },
+      {
+        "name": "tokenFallback",
+        "type": "function",
+        "inputs": [
+          {
+            "name": "_from",
+            "type": "address"
+          },
+          {
+            "name": "_value",
+            "type": "uint256"
+          },
+          {
+            "name": "_data",
+            "type": "bytes"
+          }
+        ],
+        "outputs": [],
+        "payable": false,
+        "constant": false
+      },
+      {
+        "type": "constructor",
+        "inputs": [
+          {
+            "name": "_sweeperlist",
+            "type": "address"
+          }
+        ],
+        "payable": false
+      },
+      {
+        "type": "fallback",
+        "payable": true
+      }
+    ],
+    "signatures": {
+      "function": [
+        {
+          "signature": "sweep(address,uint256)",
+          "signatureHash4": "0x6ea056a9",
+          "signatureHash32": "0x6ea056a96809c8b65a74dd75b05ce1fa30fefa15d1fc36fdeac03fb606ab6619"
+        },
+        {
+          "signature": "tokenFallback(address,uint256,bytes)",
+          "signatureHash4": "0xc0ee0b8a",
+          "signatureHash32": "0xc0ee0b8a6e4350b62ea1e6de17deed9eca76ac59f71daed4a2ab55db9cd85f01"
+        }
+      ],
+      "event": [],
+      "error": []
+    },
+    "matchId": "16511691",
+    "creationMatch": "match",
+    "runtimeMatch": "match",
+    "verifiedAt": "2026-02-03T11:04:09Z",
+    "match": "match",
+    "chainId": "1",
+    "address": "0xdAE07103f1e0B23eb58d50758b9ADe175d33e71B"
+  }
+}

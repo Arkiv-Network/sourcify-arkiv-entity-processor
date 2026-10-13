@@ -1,0 +1,40 @@
+{
+  "capturedAt": "2026-10-13",
+  "upstreamSourceCommit": "6048af7dfb36a3f5b7b2b30ede5daca3e701f7b0",
+  "description": "Bounded selector and error conformance probes; one known contract. No bulk downloads.",
+  "cases": [
+    "version",
+    "minimal",
+    "nested",
+    "omit_top",
+    "omit_nested",
+    "omit_required",
+    "unknown_field",
+    "implicit_field",
+    "deep_field",
+    "both",
+    "all_mixed",
+    "repeated_fields",
+    "unknown_query",
+    "empty_fields",
+    "empty_omit",
+    "bad_checksum",
+    "bad_address",
+    "missing",
+    "bad_chain",
+    "signatures"
+  ],
+  "serverVersion": "4.1.2",
+  "openApiVersion": "2.1.0",
+  "snapshotInput": {
+    "file": "stored-16511691.json",
+    "source": "/home/ubuntu/arkiv-network/operations/arkiv-reader-validation/16511691.expected.json",
+    "sha256": "1c42633bab2d9752ee825a872c460e2846d5819eb0868eb23bab3b0098d979ec",
+    "kind": "retained source record, not a live API capture"
+  },
+  "signatureVectors": {
+    "file": "signature-vectors.json",
+    "generator": "generate-signature-vectors.cjs",
+    "ethersVersion": "6.17.0"
+  }
+}

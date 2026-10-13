@@ -1,0 +1,25 @@
+{
+  "name": "missing",
+  "path": "/v2/contract/1/0x0000000000000000000000000000000000000000",
+  "status": 404,
+  "headers": {
+    "x-powered-by": "Express",
+    "access-control-allow-origin": "*",
+    "content-type": "application/json; charset=utf-8",
+    "etag": "W/\"7c-lugG4q45VcIL70DTgs84IN+mo2E\"",
+    "x-cloud-trace-context": "d643d19b770031038c6700b11e03b29d",
+    "date": "Tue, 13 Oct 2026 19:33:55 GMT",
+    "server": "Google Frontend",
+    "Content-Length": "124",
+    "via": "1.1 google",
+    "Alt-Svc": "h3=\":443\"; ma=2592000",
+    "Connection": "close"
+  },
+  "body": {
+    "match": null,
+    "creationMatch": null,
+    "runtimeMatch": null,
+    "chainId": "1",
+    "address": "0x0000000000000000000000000000000000000000"
+  }
+}

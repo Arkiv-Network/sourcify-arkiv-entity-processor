@@ -1,0 +1,23 @@
+{
+  "name": "repeated_fields",
+  "path": "/v2/contract/1/0xdae07103f1e0b23eb58d50758b9ade175d33e71b?fields=abi&fields=compilation",
+  "status": 400,
+  "headers": {
+    "x-powered-by": "Express",
+    "access-control-allow-origin": "*",
+    "content-type": "application/json; charset=utf-8",
+    "etag": "W/\"83-AUU9u2T0N1qBFT+GBeIg0a/Mr1U\"",
+    "x-cloud-trace-context": "0bb52d3920552e786df11306601aa44a",
+    "date": "Tue, 13 Oct 2026 19:33:51 GMT",
+    "server": "Google Frontend",
+    "Content-Length": "131",
+    "via": "1.1 google",
+    "Alt-Svc": "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000",
+    "Connection": "close"
+  },
+  "body": {
+    "customCode": "invalid_parameter",
+    "message": "request/query/fields must be string",
+    "errorId": "033ed7a9-7937-419b-aa71-de06775f6aa9"
+  }
+}
