@@ -1,0 +1,105 @@
+name: Live API conformance
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      count:
+        description: Number of Mainnet contracts to sample
+        type: choice
+        options: ['1', '4', '8', '16']
+        default: '16'
+      seed:
+        description: Optional reproducible seed (empty generates a fresh seed)
+        type: string
+        default: ''
+  schedule:
+    # Once daily, away from the hourly scheduling peak. Times are UTC.
+    - cron: '23 4 * * *'
+
+permissions:
+  contents: read
+
+jobs:
+  offline:
+    name: Offline runner tests (no deployed or candidate service coverage)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Test comparison clients using localhost fixtures
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: python3 -m unittest discover -s tests/live -p 'test_*.py'
+
+  deployed:
+    name: Compare deployed APIs (not this checkout's server)
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    needs: offline
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    concurrency:
+      group: live-conformance-deployed-services
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # This exercises two existing public services. It does not build, launch,
+      # deploy, or claim server coverage for code in the workflow's checkout.
+      - name: Compare a bounded randomized sample
+        timeout-minutes: 16
+        env:
+          SAMPLE_COUNT: ${{ github.event_name == 'pull_request' && '3' || inputs.count || '16' }}
+          SAMPLE_SEED: ${{ inputs.seed || '' }}
+          # Frozen full-import source-manifest.json lastMatchId.
+          MAX_MATCH_ID: '54163210'
+          REFERENCE_BASE_URL: https://sourcify-mirror.arkiv-global.net
+          SERVER_BASE_URL: https://sourcify-prefill.arkiv-global.net
+          PYTHONDONTWRITEBYTECODE: '1'
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p data
+          args=(
+            --output data/live-randomized
+            --count "$SAMPLE_COUNT"
+            --max-match-id "$MAX_MATCH_ID"
+            --delay-seconds 1
+            --reference-base-url "$REFERENCE_BASE_URL"
+            --server-base-url "$SERVER_BASE_URL"
+          )
+          if [[ -n "$SAMPLE_SEED" ]]; then
+            args+=(--seed "$SAMPLE_SEED")
+          fi
+          python3 tests/live/randomized.py "${args[@]}" 2>&1 | tee data/live-randomized.log
+
+      - name: Retain report, sampled requests, and raw responses
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: live-conformance-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            data/live-randomized/
+            data/live-randomized.log
+          if-no-files-found: warn
+          retention-days: 14
+          compression-level: 6
+
+      - name: Describe coverage
+        if: always()
+        shell: bash
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'SUMMARY'
+          This run compares the deployed Sourcify reference mirror with the deployed Arkiv API.
+          It does not exercise the server from this checkout or establish candidate-build coverage.
+
+          Available artifacts retain the seed, sample and exact requests, comparison report, raw responses,
+          and runner log, including evidence collected before a mismatch or network failure.
+          SUMMARY
+          if [[ ! -f data/live-randomized/report.json ]]; then
+            echo "No comparison report was produced; inspect the runner log and failed workflow step." >> "$GITHUB_STEP_SUMMARY"
+          fi

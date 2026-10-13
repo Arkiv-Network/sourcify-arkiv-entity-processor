@@ -1,5 +1,10 @@
 # Random contract comparison against Sourcify
 
+For scheduled and pull-request checks with no local dataset prerequisite, use the
+[randomized deployed API workflow](randomized-live-conformance.md). It discovers
+contracts from our own Sourcify reference node and supports nested/all/omit/proxy
+cases. The older source-sampled spot checker below remains available separately.
+
 This opt-in check compares our real HTTP server with an independent Sourcify API.
 The running service reads the imported Arkiv node. The independent local prepared
 source is used only to choose reproducible sample addresses; it is never a server
