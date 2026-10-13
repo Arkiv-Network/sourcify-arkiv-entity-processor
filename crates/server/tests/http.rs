@@ -218,6 +218,53 @@ fn decode_body(encoding: Option<&str>, bytes: &[u8]) -> Vec<u8> {
     }
 }
 #[tokio::test]
+async fn parquet_metadata_http_string_matches_independent_live_capture() {
+    let original: Value = serde_json::from_str(include_str!(
+        "fixtures/metadata-whitespace/mirror-before.json"
+    ))
+    .unwrap();
+    let expected: Value =
+        serde_json::from_str(include_str!("fixtures/metadata-whitespace/sourcify.json")).unwrap();
+    assert_ne!(original["stdJsonOutput"], expected["stdJsonOutput"]);
+    let backend = Memory::new(&original, Fault::None);
+    let hydrate_original = || {
+        let contract = backend
+            .entities
+            .iter()
+            .find(|e| e.kind == "verified_contract")
+            .unwrap();
+        arkiv_entity_processor::hydrate::hydrate_with(contract, |kind, hash, part| {
+            Ok(backend
+                .entities
+                .iter()
+                .find(|e| {
+                    e.kind == kind
+                        && e.attributes["hash"]["value"] == hash
+                        && part.is_none_or(|p| e.attributes["part"]["value"] == p)
+                })
+                .unwrap()
+                .clone())
+        })
+        .unwrap()
+    };
+    assert_eq!(hydrate_original(), original);
+    for query in ["?fields=all", "?fields=stdJsonOutput"] {
+        let (status, actual) = request(app(backend.clone()).router(), &uri(query)).await;
+        assert_eq!(status, StatusCode::OK);
+        if query == "?fields=all" {
+            // Full JSON equality compares the embedded metadata as an exact
+            // string, not as a parsed inner JSON object.
+            assert_eq!(actual, expected);
+        } else {
+            assert_eq!(actual["stdJsonOutput"], expected["stdJsonOutput"]);
+            assert_eq!(actual.as_object().unwrap().len(), fields::MINIMAL.len() + 1);
+        }
+    }
+    // Serving policy must not rewrite entities or offline reconstruction.
+    assert_eq!(hydrate_original(), original);
+}
+
+#[tokio::test]
 async fn captured_fixture_minimal_selected_and_all_preserve_values() {
     let record = captured();
     for query in [

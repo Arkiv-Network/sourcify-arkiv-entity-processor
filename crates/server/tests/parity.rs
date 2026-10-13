@@ -243,3 +243,52 @@ fn non_solidity_metadata_is_null_and_unavailable_abi_is_an_error() {
         .project(record)
         .is_err());
 }
+
+#[test]
+fn output_metadata_compaction_preserves_literals_and_only_touches_metadata_leaves() {
+    let raw = " \r\n{ \"z\": 9007199254740993, \"a\": 1e+03, \"n\": -0, \"d\": 1.00, \"huge\": 1e+999, \"s\": \" \\t\\n \\\" \\\\ \\u0061 café \" } \t";
+    let compact = r#"{"z":9007199254740993,"a":1e+03,"n":-0,"d":1.00,"huge":1e+999,"s":" \t\n \" \\ \u0061 café "}"#;
+    let mut record = stored();
+    record["stdJsonOutput"] = json!({
+        "contracts": {
+            "path/~.sol": {
+                "A": {"metadata":raw,"other":raw,"userdoc":{"metadata":raw}},
+                "B": {"metadata":" { \"x\" : 2 } "},
+                "Null": {"metadata":null}, "Absent":{}, "Object":{"metadata":{"raw":raw}}
+            }
+        },
+        "sources":{"metadata":raw}, "metadata":raw
+    });
+    record["sources"] = json!({"A.sol":{"content":raw}});
+    let before = record.clone();
+    let output = fields::parse(Some("fields=stdJsonOutput,sources,metadata"))
+        .unwrap()
+        .project(record)
+        .unwrap();
+    assert_eq!(
+        output["stdJsonOutput"]["contracts"]["path/~.sol"]["A"]["metadata"],
+        compact
+    );
+    assert_eq!(
+        output["stdJsonOutput"]["contracts"]["path/~.sol"]["B"]["metadata"],
+        r#"{"x":2}"#
+    );
+    let mut expected = before["stdJsonOutput"].clone();
+    expected["contracts"]["path/~.sol"]["A"]["metadata"] = compact.into();
+    expected["contracts"]["path/~.sol"]["B"]["metadata"] = r#"{"x":2}"#.into();
+    assert_eq!(output["stdJsonOutput"], expected);
+    assert_eq!(output["sources"], before["sources"]);
+    assert_eq!(output["metadata"], before["metadata"]);
+}
+
+#[test]
+fn invalid_output_metadata_fails_only_when_selected() {
+    let mut record = stored();
+    record["stdJsonOutput"] = json!({"contracts":{"A.sol":{"A":{"metadata":"{ invalid json }"}}}});
+    assert!(fields::parse(None).unwrap().project(record.clone()).is_ok());
+    let selection = fields::parse(Some("fields=stdJsonOutput")).unwrap();
+    assert_eq!(selection.dependencies().len(), fields::MINIMAL.len() + 1);
+    let error = selection.project(record).unwrap_err();
+    assert_eq!(error.status.as_u16(), 502);
+    assert_eq!(error.code, "corrupt_data");
+}

@@ -50,6 +50,11 @@ pub(crate) fn project(mut record: Value, selectors: &[String]) -> Result<Value, 
             }
         }
     }
+    if selectors.iter().any(|s| s == "stdJsonOutput") {
+        if let Some(output) = stored.get_mut("stdJsonOutput") {
+            compact_output_metadata(output)?;
+        }
+    }
     // Ethers getAddress checksums both the request address and deployer upstream.
     {
         let address = stored
@@ -92,6 +97,45 @@ pub(crate) fn project(mut record: Value, selectors: &[String]) -> Result<Value, 
         }
     }
     Ok(Value::Object(projected))
+}
+
+/// Parquet metadata text can contain formatting whitespace absent from the
+/// upstream API's embedded metadata string. This is an HTTP serving policy;
+/// hydration continues to reconstruct the original stored text exactly.
+fn compact_output_metadata(output: &mut Value) -> Result<(), ApiError> {
+    let Some(files) = output.get_mut("contracts").and_then(Value::as_object_mut) else {
+        return Ok(());
+    };
+    for contracts in files.values_mut().filter_map(Value::as_object_mut) {
+        for contract in contracts.values_mut() {
+            let Some(Value::String(text)) = contract.get_mut("metadata") else {
+                continue;
+            };
+            // Validate before editing. Do not parse/reserialize: that can change
+            // number spellings, escape sequences, key ordering or duplicate keys.
+            serde_json::from_str::<serde::de::IgnoredAny>(text).map_err(|_| ApiError::corrupt())?;
+            let mut quoted = false;
+            let mut escaped = false;
+            text.retain(|ch| {
+                if quoted {
+                    if escaped {
+                        escaped = false;
+                    } else if ch == '\\' {
+                        escaped = true;
+                    } else if ch == '"' {
+                        quoted = false;
+                    }
+                    true
+                } else if ch == '"' {
+                    quoted = true;
+                    true
+                } else {
+                    !matches!(ch, ' ' | '\t' | '\r' | '\n')
+                }
+            });
+        }
+    }
+    Ok(())
 }
 
 /// Equivalent to Sourcify's extractSignaturesFromAbi for compiler JSON ABI:

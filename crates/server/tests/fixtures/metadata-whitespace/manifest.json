@@ -1,0 +1,23 @@
+{
+  "capturedAt": "2026-10-13",
+  "description": "Independent 200 responses retained from the reported HTTP diff; JSON values unmodified. Only the embedded standard-output metadata string differs.",
+  "referenceSourceCommit": "6048af7dfb36a3f5b7b2b30ede5daca3e701f7b0",
+  "captures": [
+    {
+      "file": "mirror-before.json",
+      "url": "https://sourcify-prefill.arkiv-global.net/v2/contract/1/0x000000000034065b3a94C2118CFe5B4C0067B615?fields=all",
+      "status": 200,
+      "acceptEncoding": "identity",
+      "sha256": "c820aafcacefaa713c769d14fc219e2e54e1c67ee127e44420eb7d523bfa1ee9",
+      "originalCapture": "/home/ubuntu/arkiv-network/operations/sourcify-diff-investigation/mirror.json"
+    },
+    {
+      "file": "sourcify.json",
+      "url": "https://sourcify.dev/server/v2/contract/1/0x000000000034065b3a94C2118CFe5B4C0067B615?omit=proxyResolution",
+      "status": 200,
+      "acceptEncoding": "identity",
+      "sha256": "181f4d71da65e5f8175bc964ad98390f4cda821954b848dd61ad8879f941dffe",
+      "originalCapture": "/home/ubuntu/arkiv-network/operations/sourcify-diff-investigation/sourcify.json"
+    }
+  ]
+}

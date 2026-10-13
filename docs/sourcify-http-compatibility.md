@@ -84,6 +84,22 @@ signatures. Metadata requires compilation language. Absent fields remain absent;
 nulls, empty arrays/objects and scalar JSON types remain distinct. For non-Solidity
 compilations, existing metadata is returned as null, matching the reference.
 
+When `stdJsonOutput` is selected, the server removes insignificant JSON whitespace
+only from string values at `stdJsonOutput.contracts.*.*.metadata`. It validates the
+embedded JSON, then filters whitespace outside quoted strings without parsing and
+reserializing values. Quoted content, escape sequences, number spellings, key order,
+nulls and absence remain intact; other strings and offline reconstruction are
+unchanged. Invalid embedded JSON fails as corrupt data only when output is selected.
+
+The independent SafeProxy response pair under
+`crates/server/tests/fixtures/metadata-whitespace/` proves exact string equality
+after this projection, including requests for `stdJsonOutput` alone. Upstream
+[stores metadata as PostgreSQL `json`](https://github.com/argotorg/sourcify/blob/6048af7dfb36a3f5b7b2b30ede5daca3e701f7b0/services/database/migrations/20260826100000_add_compiled_contracts_metadata.sql)
+and the pinned output selector casts it to text. Therefore this observed compact
+representation is a serving policy, not a claim that every historical upstream
+text can be recovered: an export may already have changed formatting, escapes or
+key order, and original raw text is unavailable to this server.
+
 ## Signatures are a serving policy
 
 Stored/imported signatures are unchanged. Responses derive function, event and
