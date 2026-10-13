@@ -39,7 +39,8 @@ field, including standard compiler JSON and signatures. The Parquet adapter reco
 `stdJsonInput` and `stdJsonOutput` using Sourcify’s stored-field mapping and reads `signatures`
 from the export’s signature tables. Original database IDs travel outside the contract JSON,
 in an NDJSON wrapper, and become entity attributes. Live `proxyResolution` is not available
-from an offline snapshot; full live API parity is not claimed.
+from an offline snapshot. The HTTP server can resolve proxies using a configured
+Ethereum RPC; full live API and dataset parity are not claimed.
 
 The offline SafeProxy Parquet fixture differs from the saved API response in live proxy
 resolution and whitespace inside the `stdJsonOutput` metadata **string**. Offline readers
@@ -63,8 +64,8 @@ the HTTP server derives serving signatures from ABI. See the
 
 Start with the [overview](docs/index.html) and [one-contract example](docs/example.html).
 The reference covers Sourcify-to-entity field mapping, storage, and known parity gaps.
-Those pages document the offline processor. The new [fixture read server](docs/server.md)
-has a separate API contract and does not yet read from an Arkiv node. Open `docs/index.html`
+Those pages document the offline processor. The [Arkiv read server](docs/server.md)
+has a separate API contract, with optional live Ethereum proxy resolution. Open `docs/index.html`
 in a browser, or serve `docs/` with any static file server.
 
 ## Run with Docker Compose
@@ -402,10 +403,10 @@ The toolchain is pinned in `rust-toolchain.toml` (Rust 1.90.0 with rustfmt and c
 stage needs Bun 1.4.
 
 ```sh
-cargo build --workspace --release --locked # processor and fixture server
+cargo build --workspace --release --locked # processor and Arkiv server
 cargo test --workspace --locked
 cargo fmt --all --check && cargo clippy --workspace --locked --all-targets -- -D warnings
-python3 tests/server-smoke.py          # real bundle, TCP requests, SIGTERM shutdown
+python3 tests/server-smoke.py          # HTTP RPC mock, TCP requests, SIGTERM shutdown
 bun install --frozen-lockfile
 bun run test                          # end-to-end on tests/fixture (needs the release build)
 ```

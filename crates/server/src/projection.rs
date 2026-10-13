@@ -34,6 +34,23 @@ pub(crate) fn project(mut record: Value, selectors: &[String]) -> Result<Value, 
     let stored = record.as_object_mut().ok_or_else(ApiError::corrupt)?;
     if selectors
         .iter()
+        .any(|s| s == "proxyResolution" || s.starts_with("proxyResolution."))
+    {
+        // Never serve a frozen imported proxy result. The two raw selectors
+        // expose stored bytecode; a top-level selection is resolved by reader.
+        let mut proxy = Map::new();
+        for (field, container) in [
+            ("onchainCreationBytecode", "creationBytecode"),
+            ("onchainRuntimeBytecode", "runtimeBytecode"),
+        ] {
+            if let Some(value) = stored.get(container).and_then(|v| v.get("onchainBytecode")) {
+                proxy.insert(field.into(), value.clone());
+            }
+        }
+        stored.insert("proxyResolution".into(), Value::Object(proxy));
+    }
+    if selectors
+        .iter()
         .any(|s| s == "signatures" || s.starts_with("signatures."))
     {
         let signatures = derive_signatures(stored.get("abi").ok_or_else(ApiError::corrupt)?)?;

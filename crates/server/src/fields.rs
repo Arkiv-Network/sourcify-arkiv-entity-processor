@@ -28,6 +28,7 @@ pub const OPTIONAL: &[&str] = &[
     "stdJsonOutput",
     "additionalInput",
     "signatures",
+    "proxyResolution",
 ];
 
 // These three implicit response fields are deliberately not selectable upstream:
@@ -54,6 +55,7 @@ const SELECTABLE: &[&str] = &[
     "stdJsonInput",
     "stdJsonOutput",
     "signatures",
+    "proxyResolution",
 ];
 const SUBFIELDS: &[(&str, &[&str])] = &[
     (
@@ -102,6 +104,10 @@ const SUBFIELDS: &[(&str, &[&str])] = &[
         ],
     ),
     ("signatures", &["function", "event", "error"]),
+    (
+        "proxyResolution",
+        &["onchainRuntimeBytecode", "onchainCreationBytecode"],
+    ),
 ];
 
 #[derive(Clone, Debug)]
@@ -115,6 +121,17 @@ impl Selection {
         let mut fields = MINIMAL.to_vec();
         for selector in &self.selectors {
             let top = selector.split('.').next().expect("validated selector");
+            if top == "proxyResolution" {
+                for (field, sub) in [
+                    ("creationBytecode", "onchainCreationBytecode"),
+                    ("runtimeBytecode", "onchainRuntimeBytecode"),
+                ] {
+                    if (selector == top || selector.ends_with(sub)) && !fields.contains(&field) {
+                        fields.push(field);
+                    }
+                }
+                continue;
+            }
             // The serving policy derives signatures from ABI, leaving snapshot
             // signature tables untouched. It must never depend on both copies.
             let top = if top == "signatures" { "abi" } else { top };
@@ -135,6 +152,9 @@ impl Selection {
 
     pub fn project(&self, record: Value) -> Result<Value, ApiError> {
         crate::projection::project(record, &self.selectors)
+    }
+    pub fn resolves_proxy(&self) -> bool {
+        self.selectors.iter().any(|s| s == "proxyResolution")
     }
 }
 
@@ -186,7 +206,7 @@ pub fn parse(query: Option<&str>) -> Result<Selection, ApiError> {
         } else {
             let mut selected = Vec::new();
             for field in requested {
-                validate_selector(field, false)?;
+                validate_selector(field)?;
                 if !selected.iter().any(|s| s == field) {
                     selected.push(field.to_owned());
                 }
@@ -196,7 +216,7 @@ pub fn parse(query: Option<&str>) -> Result<Selection, ApiError> {
     } else if let Some(omit) = omit {
         let omitted: Vec<_> = omit.split(',').collect();
         for field in &omitted {
-            validate_selector(field, true)?;
+            validate_selector(field)?;
         }
         // Production Sourcify 4.1.2 validates dotted omissions but only removes
         // exact top-level names. Match this observed quirk; see pinned captures.
@@ -211,20 +231,12 @@ pub fn parse(query: Option<&str>) -> Result<Selection, ApiError> {
     Ok(Selection { selectors })
 }
 
-fn validate_selector(field: &str, is_omit: bool) -> Result<(), ApiError> {
+fn validate_selector(field: &str) -> Result<(), ApiError> {
     let parts: Vec<_> = field.split('.').collect();
     if parts.len() > 2 {
         return Err(ApiError::invalid(format!(
             "Field selector cannot have more than one level subselectors: {field}"
         )));
-    }
-    if parts[0] == "proxyResolution" {
-        if is_omit && parts.len() == 1 {
-            return Ok(());
-        }
-        return Err(ApiError::invalid(
-            "proxyResolution is deferred and unsupported",
-        ));
     }
     let valid = if parts.len() == 1 {
         SELECTABLE.contains(&field)

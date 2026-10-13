@@ -119,7 +119,6 @@ fn selectors_have_narrow_dependency_closure_and_explicit_proxy_exclusion() {
         1
     );
     for bad in [
-        "fields=proxyResolution",
         "fields=proxyResolution.implementations",
         "omit=all",
         "fields=abi,",
@@ -134,7 +133,7 @@ fn selectors_have_narrow_dependency_closure_and_explicit_proxy_exclusion() {
     ] {
         assert!(fields::parse(Some(bad)).is_err(), "{bad}");
     }
-    let projected = fields::parse(Some("fields=all"))
+    let projected = fields::parse(Some("omit=proxyResolution"))
         .unwrap()
         .project(stored())
         .unwrap();

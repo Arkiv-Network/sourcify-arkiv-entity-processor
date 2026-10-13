@@ -1,5 +1,6 @@
 use arkiv_sourcify_server::{
     backends::arkiv::{ArkivBackend, Config},
+    ethereum::{Config as EthereumConfig, EthereumRpc},
     Application, Limits,
 };
 use clap::Parser;
@@ -10,6 +11,21 @@ use std::{net::SocketAddr, sync::Arc, time::Duration};
 struct Args {
     #[arg(long)]
     rpc_url: String,
+    /// Optional Mainnet RPC for live proxy resolution; never used for Arkiv reads
+    #[arg(long)]
+    ethereum_rpc_url: Option<String>,
+    #[arg(long, default_value_t = 16)]
+    max_ethereum_rpc_concurrency: usize,
+    #[arg(long, default_value_t = 64)]
+    max_ethereum_rpc_requests: usize,
+    #[arg(long, default_value_t = 15)]
+    ethereum_rpc_timeout_seconds: u64,
+    #[arg(long, default_value_t = 1024 * 1024)]
+    max_ethereum_rpc_response_bytes: usize,
+    #[arg(long, default_value_t = 4 * 1024 * 1024)]
+    max_ethereum_read_bytes: usize,
+    #[arg(long, default_value_t = 128)]
+    max_proxy_implementations: usize,
     /// Dedicated owner of the completed Sourcify import
     #[arg(long)]
     owner: String,
@@ -63,7 +79,20 @@ async fn main() -> anyhow::Result<()> {
     config.max_rpc_response_bytes = args.max_rpc_response_bytes;
     config.max_read_bytes = args.max_read_bytes;
     let backend = ArkivBackend::connect(config).await?;
-    let app = Application::new(Arc::new(backend), limits)?;
+    let ethereum = args
+        .ethereum_rpc_url
+        .map(|url| {
+            let mut config = EthereumConfig::new(url);
+            config.max_rpc_concurrency = args.max_ethereum_rpc_concurrency;
+            config.max_rpc_requests = args.max_ethereum_rpc_requests;
+            config.rpc_timeout = Duration::from_secs(args.ethereum_rpc_timeout_seconds);
+            config.max_rpc_response_bytes = args.max_ethereum_rpc_response_bytes;
+            config.max_read_bytes = args.max_ethereum_read_bytes;
+            config.max_implementations = args.max_proxy_implementations;
+            EthereumRpc::new(config)
+        })
+        .transpose()?;
+    let app = Application::with_ethereum(Arc::new(backend), limits, ethereum)?;
     let listener = tokio::net::TcpListener::bind(args.listen).await?;
     tracing::info!(address = %listener.local_addr()?, mode = "arkiv", "contract reader listening");
     axum::serve(listener, app.router())

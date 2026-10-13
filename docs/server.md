@@ -3,7 +3,9 @@
 `arkiv-sourcify-server` reads imported entities directly from Arkiv JSON-RPC.
 The former bundle-backed executable and `--bundle` option have been removed.
 Parquet, DuckDB and processor bundles remain offline ingestion/reference tools;
-the HTTP process never opens them and never falls back to Sourcify or Ethereum.
+the HTTP process never opens them and never falls back to Sourcify. Optional
+Ethereum RPC reads supply live proxy resolution; all stored fields and
+implementation names still come from Arkiv.
 
 The supported product scope is `GET /v2/contract/1/{address}`. The detailed
 [field/error compatibility matrix](sourcify-http-compatibility.md) distinguishes
@@ -19,8 +21,16 @@ RUST_LOG=info target/release/arkiv-sourcify-server \
   --owner 0x986c08292e6c327a310273a45965a3d2e2eac44c \
   --arkiv-chain-id 7706815 \
   --genesis-state-root 0xe1c577a41da3b90bab1d86b95883d4ea7cb84578e5405e8156d5fd587a2021d0 \
+  --ethereum-rpc-url "$ETHEREUM_RPC_URL" \
+  --request-timeout-seconds 55 \
   --listen 127.0.0.1:3001
 ```
+
+`ETHEREUM_RPC_URL` supplies a Mainnet HTTP(S) endpoint supporting EIP-1898
+`blockHash` with `requireCanonical: true` for `eth_getStorageAt` and `eth_call`.
+The flag is optional: without it, a selected live proxy result contains a
+`proxy_resolution_error`; minimal responses and raw nested proxy bytecode
+selectors remain available. The example keeps the deployed 55-second deadline.
 
 These example identities refer to the imported Mainnet dataset on the local
 Arkiv network. Verify the root against the completed import before configuring
@@ -61,7 +71,7 @@ This preserves the audited local-reference, spill, content-hash and staging-ID
 validation without replaying hydration or duplicating it in an async implementation.
 
 A request permit is shared by the driver and worker: finishing CPU work does not
-release admission while the final block check is pending, and cancellation does
+release admission while proxy resolution, implementation names or final block checks are pending, and cancellation does
 not release admission until the CPU worker exits. Dropping a request or reaching
 its deadline drops the active RPC future and channel endpoints, waking any waiting
 worker. CPU hashing/parsing/cloning is indivisible between cooperative checkpoints.
@@ -81,13 +91,33 @@ positive/negative cross-request cache.
 | Limit | Default | Purpose |
 | --- | --- | --- |
 | `--max-concurrent-requests` | 8 | Reject excess reads with 503 rather than queue CPU workers |
-| `--request-timeout-seconds` | 120 | Bound lookup, hydration and final consistency check |
-| `--max-dependency-reads` | 100,000 | Bound unique logical resolver operations |
-| `--max-rpc-concurrency` | 16 | Bound all in-flight HTTP RPC requests across sessions |
+| `--request-timeout-seconds` | 120 | Bound lookup, hydration, proxy resolution, names and final checks; deployment uses 55 |
+| `--max-dependency-reads` | 100,000 | Bound logical resolver operations across the contract and implementation names |
+| `--max-rpc-concurrency` | 16 | Bound in-flight Arkiv HTTP RPC requests across sessions |
 | `--rpc-timeout-seconds` | 15 | Bound each RPC transport/body read |
 | `--max-rpc-requests` | 100,000 | Bound calls inside one session |
 | `--max-rpc-response-bytes` | 8 MiB | Bound one RPC envelope, including hex expansion |
 | `--max-read-bytes` | 256 MiB | Bound cumulative RPC bytes and request-local wire storage |
+
+Ethereum has a separate global RPC gate and per-resolution budgets:
+
+| Limit | Default | Purpose |
+| --- | --- | --- |
+| `--max-ethereum-rpc-concurrency` | 16 | Bound in-flight Ethereum requests across all API reads |
+| `--ethereum-rpc-timeout-seconds` | 15 | Bound each Ethereum transport/body read |
+| `--max-ethereum-rpc-requests` | 64 | Bound calls, including chain and block checks |
+| `--max-ethereum-rpc-response-bytes` | 1 MiB | Bound one Ethereum RPC response |
+| `--max-ethereum-read-bytes` | 4 MiB | Bound cumulative Ethereum response bytes |
+| `--max-proxy-implementations` | 128 | Bound implementation name lookups |
+
+Ethereum resolution pins lazily: detectors that need no storage/call do not make
+Ethereum requests. Before the first read, the adapter checks chain 1 and pins the
+latest block hash. Every storage/call uses that hash with `requireCanonical`;
+a final numeric block lookup checks that the hash remains unchanged. There is no
+fallback to unpinned reads. Implementation names share the original Arkiv session,
+its caches and budgets. These are separate consistent views of two networks, not
+an atomic snapshot across them. The detector yields cooperatively while scanning
+bytecode; dropping the request cancels active Ethereum transport futures.
 
 The wire decoder separately bounds decompressed entity payloads to 122,880 bytes;
 large logical payloads are chunked and checked by the shared hydrator. Input/work
@@ -99,8 +129,9 @@ reads can overlap. Wider dependency batching is a measured follow-up optimizatio
 ## Operations
 
 - `GET /_ops/health`: process liveness only.
-- `GET /_ops/ready`: a fresh network/genesis/head read; returns dataset identity and
-  cumulative RPC requests/bytes. Node outages or changed configuration fail readiness.
+- `GET /_ops/ready`: a fresh Arkiv network/genesis/head read; returns dataset identity and
+  cumulative Arkiv RPC requests/bytes. Arkiv outages or changed configuration fail
+  readiness. This endpoint does not probe Ethereum availability.
 - `GET /_ops/metrics`: HTTP successes/failures, lookups, dependency reads, serialized
   bytes, and active request permits. There are no raw-address metric labels.
 - SIGTERM/SIGINT stops admission and gracefully drains accepted reads.
@@ -108,11 +139,21 @@ reads can overlap. Wider dependency batching is a measured follow-up optimizatio
 Internal errors have stable categories: 502 for corrupt, ambiguous or missing
 stored dependencies; 503 for unreachable/unready backend, changed read view,
 resource budgets or overload; 504 for request deadlines. They never become a false
-404 or a partial successful body. RPC endpoints must be HTTP(S), with no embedded
-credentials, query, fragment or redirects. No writer credentials are accepted.
+404 or a partial successful body. Selected proxy failures use the upstream nested
+HTTP 200 error shape, except an overall deadline still returns 504. The pinned
+upstream Diamond resolver suppresses ordinary remote/ABI failures and tries other
+detectors; malformed RPC envelopes, wrong networks/views, local timeouts and
+resource limits cannot become successful non-proxy results.
+
+Arkiv RPC endpoints must be HTTP(S), with no embedded credentials, query or
+fragment. Ethereum URLs must be HTTP(S) with no fragment; runtime authentication
+may be supplied in the URL. Neither client follows redirects. Ethereum errors
+and startup logs omit the URL. Keep deployment secrets in protected runtime
+configuration; never commit them. No writer credentials are required.
 
 `Dockerfile.server` builds a separate unprivileged API image. It requires network
-access only to the configured Arkiv RPC and no data mounts:
+access to the configured Arkiv and optional Ethereum RPCs, and no data mounts.
+The image includes the Sourcify and whatsabi MIT notices:
 
 ```sh
 docker build -f Dockerfile.server -t arkiv-sourcify-server .
@@ -135,7 +176,10 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/live -p 'test_*.
 The protocol suite uses a real local HTTP RPC mock with transformed entity wires.
 It checks namespace/integrity faults, duplicate/cursor results, block changes,
 deletions, misses, byte/work budgets and cancellation/admission during RPC/final
-checks. In-memory tests verify selective dependency work and HTTP compression.
+checks. The Ethereum HTTP mock covers pinned reads, names, malformed responses,
+Diamond fallback, global concurrency, budgets and cancellation. Independent pinned
+whatsabi vectors test detection and resolver order. In-memory tests verify
+selective dependency work and HTTP compression.
 The CLI smoke test checks real process startup/readiness/negative lookup/shutdown.
 Use the [bounded live conformance runner](live-conformance.md) against an already
 running Arkiv service; its independent source is sampling evidence only.

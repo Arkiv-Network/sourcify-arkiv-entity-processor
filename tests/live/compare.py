@@ -28,7 +28,7 @@ API_BASE = "https://sourcify.dev/server"
 OPTIONAL_FIELDS = {
     "abi", "compilation", "deployment", "creationBytecode", "runtimeBytecode", "sources",
     "metadata", "storageLayout", "transientStorageLayout", "userdoc", "devdoc", "sourceIds",
-    "stdJsonInput", "stdJsonOutput", "additionalInput", "signatures",
+    "stdJsonInput", "stdJsonOutput", "additionalInput", "signatures", "proxyResolution",
 }
 
 

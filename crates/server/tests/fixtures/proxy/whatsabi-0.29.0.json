@@ -1,0 +1,669 @@
+{
+  "version": "0.29.0",
+  "rows": [
+    {
+      "name": "upstream/EIP1167Proxy",
+      "upstream": "EIP1167Proxy",
+      "factory": false,
+      "proxies": [
+        {
+          "name": "FixedProxy",
+          "address": "0x9ec1c3dcf667f2035fb4cd2eb42a1566fd54d2b7"
+        }
+      ]
+    },
+    {
+      "name": "upstream/EIP1167ProxyWithImmutableArgs",
+      "upstream": "EIP1167ProxyWithImmutableArgs",
+      "factory": false,
+      "proxies": [
+        {
+          "name": "FixedProxy",
+          "address": "0x19570da7f9f41d7b406eb5942db28c0e7221eec6"
+        }
+      ]
+    },
+    {
+      "name": "upstream/DiamondProxy",
+      "upstream": "DiamondProxy",
+      "factory": false,
+      "proxies": [
+        {
+          "name": "DiamondProxy"
+        }
+      ]
+    },
+    {
+      "name": "upstream/EIP1967Proxy",
+      "upstream": "EIP1967Proxy",
+      "factory": false,
+      "proxies": [
+        {
+          "name": "EIP1967Proxy"
+        }
+      ]
+    },
+    {
+      "name": "upstream/NoProxy",
+      "upstream": "NoProxy",
+      "factory": false,
+      "proxies": []
+    },
+    {
+      "name": "upstream/FactoryDeployingProxies",
+      "upstream": "FactoryDeployingProxies",
+      "factory": true,
+      "proxies": [
+        {
+          "name": "FixedProxy",
+          "address": "0xf208a8fe1ef2b31b0e408c7399a5d696cadb0be9"
+        }
+      ]
+    },
+    {
+      "name": "upstream/EIP1967ProxyWithSlotOnlyInCreationCode",
+      "upstream": "EIP1967ProxyWithSlotOnlyInCreationCode",
+      "factory": false,
+      "proxies": [
+        {
+          "name": "EIP1967Proxy"
+        }
+      ]
+    },
+    {
+      "name": "upstream/MaticProxy",
+      "upstream": "MaticProxy",
+      "factory": false,
+      "proxies": [
+        {
+          "name": "MaticProxy"
+        }
+      ]
+    },
+    {
+      "name": "upstream/MaticProxyWithSlotOnlyInCreationCode",
+      "upstream": "MaticProxyWithSlotOnlyInCreationCode",
+      "factory": false,
+      "proxies": [
+        {
+          "name": "MaticProxy"
+        }
+      ]
+    },
+    {
+      "name": "upstream/LivepeerManagerProxy",
+      "upstream": "LivepeerManagerProxy",
+      "factory": false,
+      "proxies": [
+        {
+          "name": "LivepeerManagerProxy"
+        }
+      ]
+    },
+    {
+      "name": "slot/EIP1967Proxy/2bbc",
+      "code": "0x7f360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc00",
+      "factory": false,
+      "proxies": [
+        {
+          "name": "EIP1967Proxy"
+        }
+      ]
+    },
+    {
+      "name": "aux/EIP1967Proxy/2bbc",
+      "code": "0x00fe360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc0000",
+      "factory": false,
+      "proxies": [
+        {
+          "name": "EIP1967Proxy"
+        }
+      ]
+    },
+    {
+      "name": "slot/EIP1967Proxy/3d50",
+      "code": "0x7fa3f0ad74e5423aebfd80d3ef4346578335a9a72aeaee59ff6cb3582b35133d5000",
+      "factory": false,
+      "proxies": [
+        {
+          "name": "EIP1967Proxy"
+        }
+      ]
+    },
+    {
+      "name": "aux/EIP1967Proxy/3d50",
+      "code": "0x00fea3f0ad74e5423aebfd80d3ef4346578335a9a72aeaee59ff6cb3582b35133d500000",
+      "factory": false,
+      "proxies": [
+        {
+          "name": "EIP1967Proxy"
+        }
+      ]
+    },
+    {
+      "name": "slot/ZeppelinOSProxy/f8c3",
+      "code": "0x7f7050c9e0f4ca769c69bd3a8ef740bc37934f8e2c036e5a723fd8ee048ed3f8c300",
+      "factory": false,
+      "proxies": [
+        {
+          "name": "ZeppelinOSProxy"
+        }
+      ]
+    },
+    {
+      "name": "aux/ZeppelinOSProxy/f8c3",
+      "code": "0x00fe7050c9e0f4ca769c69bd3a8ef740bc37934f8e2c036e5a723fd8ee048ed3f8c30000",
+      "factory": false,
+      "proxies": [
+        {
+          "name": "ZeppelinOSProxy"
+        }
+      ]
+    },
+    {
+      "name": "slot/PROXIABLEProxy/bcf7",
+      "code": "0x7fc5f16f0fcc639fa48a6947836d9850f504798523bf8c9a3a87d5876cf622bcf700",
+      "factory": false,
+      "proxies": [
+        {
+          "name": "PROXIABLEProxy"
+        }
+      ]
+    },
+    {
+      "name": "aux/PROXIABLEProxy/bcf7",
+      "code": "0x00fec5f16f0fcc639fa48a6947836d9850f504798523bf8c9a3a87d5876cf622bcf70000",
+      "factory": false,
+      "proxies": [
+        {
+          "name": "PROXIABLEProxy"
+        }
+      ]
+    },
+    {
+      "name": "slot/GnosisSafeProxy/0000",
+      "code": "0x7fa619486e0000000000000000000000000000000000000000000000000000000000",
+      "factory": false,
+      "proxies": [
+        {
+          "name": "GnosisSafeProxy"
+        }
+      ]
+    },
+    {
+      "name": "aux/GnosisSafeProxy/0000",
+      "code": "0x00fea619486e000000000000000000000000000000000000000000000000000000000000",
+      "factory": false,
+      "proxies": [
+        {
+          "name": "GnosisSafeProxy"
+        }
+      ]
+    },
+    {
+      "name": "slot/DiamondProxy/131b",
+      "code": "0x7fc8fcad8db84d3cc18b4c41d551ea0ee66dd599cde068d998e57d5e09332c131b00",
+      "factory": false,
+      "proxies": [
+        {
+          "name": "DiamondProxy"
+        }
+      ]
+    },
+    {
+      "name": "aux/DiamondProxy/131b",
+      "code": "0x00fec8fcad8db84d3cc18b4c41d551ea0ee66dd599cde068d998e57d5e09332c131b0000",
+      "factory": false,
+      "proxies": [
+        {
+          "name": "DiamondProxy"
+        }
+      ]
+    },
+    {
+      "name": "slot/DiamondProxy/131c",
+      "code": "0x7fc8fcad8db84d3cc18b4c41d551ea0ee66dd599cde068d998e57d5e09332c131c00",
+      "factory": false,
+      "proxies": [
+        {
+          "name": "DiamondProxy"
+        }
+      ]
+    },
+    {
+      "name": "aux/DiamondProxy/131c",
+      "code": "0x00fec8fcad8db84d3cc18b4c41d551ea0ee66dd599cde068d998e57d5e09332c131c0000",
+      "factory": false,
+      "proxies": [
+        {
+          "name": "DiamondProxy"
+        }
+      ]
+    },
+    {
+      "name": "slot/MaticProxy/bf7f",
+      "code": "0x7fbaab7dbf64751104133af04abc7d9979f0fda3b059a322a8333f533d3f32bf7f00",
+      "factory": false,
+      "proxies": [
+        {
+          "name": "MaticProxy"
+        }
+      ]
+    },
+    {
+      "name": "aux/MaticProxy/bf7f",
+      "code": "0x00febaab7dbf64751104133af04abc7d9979f0fda3b059a322a8333f533d3f32bf7f0000",
+      "factory": false,
+      "proxies": [
+        {
+          "name": "MaticProxy"
+        }
+      ]
+    },
+    {
+      "name": "slot/DiamondProxy/131d",
+      "code": "0x7fc8fcad8db84d3cc18b4c41d551ea0ee66dd599cde068d998e57d5e09332c131d00",
+      "factory": false,
+      "proxies": [
+        {
+          "name": "DiamondProxy"
+        }
+      ]
+    },
+    {
+      "name": "aux/DiamondProxy/131d",
+      "code": "0x00fec8fcad8db84d3cc18b4c41d551ea0ee66dd599cde068d998e57d5e09332c131d0000",
+      "factory": false,
+      "proxies": [
+        {
+          "name": "DiamondProxy"
+        }
+      ]
+    },
+    {
+      "name": "slot/EIP1967Proxy/2bbd",
+      "code": "0x7f360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbd00",
+      "factory": false,
+      "proxies": [
+        {
+          "name": "EIP1967Proxy"
+        }
+      ]
+    },
+    {
+      "name": "aux/EIP1967Proxy/2bbd",
+      "code": "0x00fe360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbd0000",
+      "factory": false,
+      "proxies": [
+        {
+          "name": "EIP1967Proxy"
+        }
+      ]
+    },
+    {
+      "name": "sequence",
+      "code": "0x30545af4",
+      "factory": false,
+      "proxies": [
+        {
+          "name": "SequenceWalletProxy"
+        }
+      ]
+    },
+    {
+      "name": "missing_history_fixed",
+      "code": "0x5af4",
+      "factory": false,
+      "proxies": [
+        {
+          "name": "FixedProxy",
+          "address": "0x0000000000000000000000000000000000000000"
+        }
+      ]
+    },
+    {
+      "name": "missing_history_jump_boundary",
+      "code": "0x5601f07f360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc",
+      "factory": true,
+      "proxies": [
+        {
+          "name": "EIP1967Proxy"
+        }
+      ]
+    },
+    {
+      "name": "missing_history_codecopy_offset",
+      "code": "0x5f3900017fc5f16f0fcc639fa48a6947836d9850f504798523bf8c9a3a87d5876cf622bcf7",
+      "factory": false,
+      "proxies": [
+        {
+          "name": "PROXIABLEProxy"
+        }
+      ]
+    },
+    {
+      "name": "sequence_push0_not_push",
+      "code": "0x5f5af4",
+      "factory": false,
+      "proxies": []
+    },
+    {
+      "name": "fixed_push1",
+      "code": "0x60125af4",
+      "factory": false,
+      "proxies": [
+        {
+          "name": "FixedProxy",
+          "address": "0x0000000000000000000000000000000000000012"
+        }
+      ]
+    },
+    {
+      "name": "fixed_push9",
+      "code": "0x681212121212121212125af4",
+      "factory": false,
+      "proxies": [
+        {
+          "name": "FixedProxy",
+          "address": "0x0000000000000000000000121212121212121212"
+        }
+      ]
+    },
+    {
+      "name": "fixed_push10",
+      "code": "0x69121212121212121212125af4",
+      "factory": false,
+      "proxies": [
+        {
+          "name": "FixedProxy",
+          "address": "0x0000000000000000000012121212121212121212"
+        }
+      ]
+    },
+    {
+      "name": "fixed_push11",
+      "code": "0x6a12121212121212121212125af4",
+      "factory": false,
+      "proxies": [
+        {
+          "name": "FixedProxy",
+          "address": "0x0000000000000000000000121212121212121212"
+        }
+      ]
+    },
+    {
+      "name": "fixed_push12",
+      "code": "0x6b1212121212121212121212125af4",
+      "factory": false,
+      "proxies": [
+        {
+          "name": "FixedProxy",
+          "address": "0x0000000000000000000000001212121212121212"
+        }
+      ]
+    },
+    {
+      "name": "fixed_push19",
+      "code": "0x72121212121212121212121212121212121212125af4",
+      "factory": false,
+      "proxies": [
+        {
+          "name": "FixedProxy",
+          "address": "0x0000000000000000000000000000000000000012"
+        }
+      ]
+    },
+    {
+      "name": "fixed_push20",
+      "code": "0x7312121212121212121212121212121212121212125af4",
+      "factory": false,
+      "proxies": [
+        {
+          "name": "FixedProxy",
+          "address": "0x1212121212121212121212121212121212121212"
+        }
+      ]
+    },
+    {
+      "name": "fixed_push21",
+      "code": "0x741212121212121212121212121212121212121212125af4",
+      "factory": false,
+      "proxies": [
+        {
+          "name": "FixedProxy",
+          "address": "0x1212121212121212121212121212121212121212"
+        }
+      ]
+    },
+    {
+      "name": "fixed_push32",
+      "code": "0x7f12121212121212121212121212121212121212121212121212121212121212125af4",
+      "factory": false,
+      "proxies": [
+        {
+          "name": "FixedProxy",
+          "address": "0x1212121212121212121212121212121212121212"
+        }
+      ]
+    },
+    {
+      "name": "factory",
+      "code": "0xf07f360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc",
+      "factory": true,
+      "proxies": [
+        {
+          "name": "EIP1967Proxy"
+        }
+      ]
+    },
+    {
+      "name": "factory_create2",
+      "code": "0xf57f360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc",
+      "factory": true,
+      "proxies": [
+        {
+          "name": "EIP1967Proxy"
+        }
+      ]
+    },
+    {
+      "name": "factory_inside_push_is_data",
+      "code": "0x60f07f360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc",
+      "factory": false,
+      "proxies": [
+        {
+          "name": "EIP1967Proxy"
+        }
+      ]
+    },
+    {
+      "name": "first_type_dedup_quirk",
+      "code": "0x7f360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc7fc5f16f0fcc639fa48a6947836d9850f504798523bf8c9a3a87d5876cf622bcf77fc5f16f0fcc639fa48a6947836d9850f504798523bf8c9a3a87d5876cf622bcf77fa3f0ad74e5423aebfd80d3ef4346578335a9a72aeaee59ff6cb3582b35133d50",
+      "factory": false,
+      "proxies": [
+        {
+          "name": "EIP1967Proxy"
+        },
+        {
+          "name": "PROXIABLEProxy"
+        },
+        {
+          "name": "PROXIABLEProxy"
+        }
+      ]
+    },
+    {
+      "name": "aux_table_order",
+      "code": "0x00febaab7dbf64751104133af04abc7d9979f0fda3b059a322a8333f533d3f32bf7fc5f16f0fcc639fa48a6947836d9850f504798523bf8c9a3a87d5876cf622bcf7360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc",
+      "factory": false,
+      "proxies": [
+        {
+          "name": "EIP1967Proxy"
+        },
+        {
+          "name": "PROXIABLEProxy"
+        },
+        {
+          "name": "MaticProxy"
+        }
+      ]
+    },
+    {
+      "name": "aux_suppressed_when_instruction_found",
+      "code": "0x7fc5f16f0fcc639fa48a6947836d9850f504798523bf8c9a3a87d5876cf622bcf700fe360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc",
+      "factory": false,
+      "proxies": [
+        {
+          "name": "PROXIABLEProxy"
+        }
+      ]
+    },
+    {
+      "name": "aux_preimage",
+      "code": "0x00fe6d617469632e6e6574776f726b2e70726f78792e696d706c656d656e746174696f6e00",
+      "factory": false,
+      "proxies": [
+        {
+          "name": "MaticProxy"
+        }
+      ]
+    },
+    {
+      "name": "aux_nibble_match",
+      "code": "0x00fe0360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc0",
+      "factory": false,
+      "proxies": [
+        {
+          "name": "EIP1967Proxy"
+        }
+      ]
+    },
+    {
+      "name": "cbor_excludes_slot",
+      "code": "0x00fea15820360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc0023",
+      "factory": false,
+      "proxies": []
+    },
+    {
+      "name": "invalid_cbor_keeps_slot",
+      "code": "0x00fe005820360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc0023",
+      "factory": false,
+      "proxies": [
+        {
+          "name": "EIP1967Proxy"
+        }
+      ]
+    },
+    {
+      "name": "halt_push32_before_boundary",
+      "code": "0x007f360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc",
+      "factory": false,
+      "proxies": [
+        {
+          "name": "EIP1967Proxy"
+        }
+      ]
+    },
+    {
+      "name": "halt_factory_not_executed",
+      "code": "0x00f07f360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc",
+      "factory": false,
+      "proxies": [
+        {
+          "name": "EIP1967Proxy"
+        }
+      ]
+    },
+    {
+      "name": "jump_target_keeps_code",
+      "code": "0x61010056017f360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc",
+      "factory": false,
+      "proxies": [
+        {
+          "name": "EIP1967Proxy"
+        }
+      ]
+    },
+    {
+      "name": "jump_boundary_data",
+      "code": "0x60005601360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc",
+      "factory": false,
+      "proxies": [
+        {
+          "name": "EIP1967Proxy"
+        }
+      ]
+    },
+    {
+      "name": "truncated_push",
+      "code": "0x7f360894",
+      "factory": false,
+      "proxies": []
+    },
+    {
+      "name": "empty",
+      "code": "0x",
+      "factory": false,
+      "proxies": []
+    },
+    {
+      "name": "livepeer_exact",
+      "code": "0x63f77c479114610100576392eefe9b14610100576351720b411461010057f4",
+      "factory": false,
+      "proxies": [
+        {
+          "name": "LivepeerManagerProxy"
+        }
+      ]
+    },
+    {
+      "name": "livepeer_subset_is_not_proxy",
+      "code": "0x63f77c479114610100576392eefe9b1461010057f4",
+      "factory": false,
+      "proxies": []
+    },
+    {
+      "name": "livepeer_superset_is_not_proxy",
+      "code": "0x63f77c479114610100576392eefe9b14610100576351720b41146101005763123456781461010057f4",
+      "factory": false,
+      "proxies": []
+    },
+    {
+      "name": "livepeer_without_delegate_is_not_proxy",
+      "code": "0x63f77c479114610100576392eefe9b14610100576351720b411461010057",
+      "factory": false,
+      "proxies": []
+    },
+    {
+      "name": "livepeer_slot_precedence",
+      "code": "0x63f77c479114610100576392eefe9b14610100576351720b411461010057f47fc5f16f0fcc639fa48a6947836d9850f504798523bf8c9a3a87d5876cf622bcf7",
+      "factory": false,
+      "proxies": [
+        {
+          "name": "PROXIABLEProxy"
+        }
+      ]
+    },
+    {
+      "name": "runtime_reset_drops_init_factory",
+      "code": "0xf06008600039f300017f360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc",
+      "factory": false,
+      "proxies": [
+        {
+          "name": "EIP1967Proxy"
+        }
+      ]
+    },
+    {
+      "name": "creation_prefix_clone",
+      "code": "0x3d602d80600a3d3981f3363d3d373d3d3d363d739ec1c3dcf667f2035fb4cd2eb42a1566fd54d2b75af43d82803e903d91602b57fd5bf3",
+      "factory": false,
+      "proxies": [
+        {
+          "name": "FixedProxy",
+          "address": "0x9ec1c3dcf667f2035fb4cd2eb42a1566fd54d2b7"
+        }
+      ]
+    }
+  ]
+}

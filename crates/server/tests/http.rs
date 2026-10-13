@@ -248,10 +248,10 @@ async fn parquet_metadata_http_string_matches_independent_live_capture() {
         .unwrap()
     };
     assert_eq!(hydrate_original(), original);
-    for query in ["?fields=all", "?fields=stdJsonOutput"] {
+    for query in ["?omit=proxyResolution", "?fields=stdJsonOutput"] {
         let (status, actual) = request(app(backend.clone()).router(), &uri(query)).await;
         assert_eq!(status, StatusCode::OK);
-        if query == "?fields=all" {
+        if query == "?omit=proxyResolution" {
             // Full JSON equality compares the embedded metadata as an exact
             // string, not as a parsed inner JSON object.
             assert_eq!(actual, expected);
@@ -272,7 +272,7 @@ async fn captured_fixture_minimal_selected_and_all_preserve_values() {
         "?fields=abi,compilation",
         "?fields=sources",
         "?fields=stdJsonInput,stdJsonOutput",
-        "?fields=all",
+        "?omit=proxyResolution",
     ] {
         let backend = Memory::new(&record, Fault::None);
         let (status, actual) = request(app(backend.clone()).router(), &uri(query)).await;
@@ -296,7 +296,6 @@ async fn request_validation_precedes_backend_reads() {
     let router = app(backend.clone()).router();
     for query in [
         "?fields=unknown",
-        "?fields=proxyResolution",
         "?fields=proxyResolution.isProxy",
         "?fields=abi&omit=sources",
     ] {
@@ -355,7 +354,7 @@ async fn unavailable_missing_corrupt_and_ambiguous_never_become_404_or_partial_s
     ] {
         let (actual, body) = request(
             app(Memory::new(&captured(), fault)).router(),
-            &uri("?fields=all"),
+            &uri("?omit=proxyResolution"),
         )
         .await;
         assert_eq!(actual, status);
@@ -444,7 +443,8 @@ async fn timeout_cancels_async_lookup_and_releases_admission_permit() {
     .unwrap();
     let router = application.router();
     let pending_router = router.clone();
-    let task = tokio::spawn(async move { request(pending_router, &uri("?fields=all")).await });
+    let task =
+        tokio::spawn(async move { request(pending_router, &uri("?omit=proxyResolution")).await });
     backend.started.notified().await;
     assert_eq!(task.await.unwrap().0, StatusCode::GATEWAY_TIMEOUT);
     assert_eq!(
@@ -459,7 +459,7 @@ async fn timeout_cancels_async_lookup_and_releases_admission_permit() {
 async fn dropping_request_stops_further_dependency_work() {
     let backend = Memory::new(&captured(), Fault::Slow);
     let router = app(backend.clone()).router();
-    let task = tokio::spawn(async move { request(router, &uri("?fields=all")).await });
+    let task = tokio::spawn(async move { request(router, &uri("?omit=proxyResolution")).await });
     backend.started.notified().await;
     task.abort();
     assert!(task.await.unwrap_err().is_cancelled());
@@ -478,7 +478,7 @@ async fn dependency_work_budget_fails_without_partial_body() {
         },
     )
     .unwrap();
-    let (status, body) = request(application.router(), &uri("?fields=all")).await;
+    let (status, body) = request(application.router(), &uri("?omit=proxyResolution")).await;
     assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
     assert_eq!(body["customCode"], "work_limit");
     assert_eq!(backend.counts.dependencies.lock().unwrap().len(), 1);
@@ -507,20 +507,25 @@ async fn gzip_and_zstd_preserve_complete_fixture_response_bytes() {
     let record = captured();
     let router = app(Memory::new(&record, Fault::None)).router();
     let (status, headers, identity) =
-        raw_request(router.clone(), &uri("?fields=all"), "GET", &[]).await;
+        raw_request(router.clone(), &uri("?omit=proxyResolution"), "GET", &[]).await;
     assert_eq!(status, StatusCode::OK);
     assert_encoding(&headers, None, &identity);
     let body: Value = serde_json::from_slice(&identity).unwrap();
     assert_eq!(
         body,
-        fields::parse(Some("fields=all"))
+        fields::parse(Some("omit=proxyResolution"))
             .unwrap()
             .project(record.clone())
             .unwrap()
     );
     for encoding in ["gzip", "zstd"] {
-        let (status, headers, encoded) =
-            raw_request(router.clone(), &uri("?fields=all"), "GET", &[encoding]).await;
+        let (status, headers, encoded) = raw_request(
+            router.clone(),
+            &uri("?omit=proxyResolution"),
+            "GET",
+            &[encoding],
+        )
+        .await;
         assert_eq!(status, StatusCode::OK);
         assert_encoding(&headers, Some(encoding), &encoded);
         assert_eq!(
@@ -605,8 +610,13 @@ async fn unacceptable_or_malformed_encodings_fail_before_backend_work() {
         (&["br;q=banana"], StatusCode::BAD_REQUEST),
     ];
     for (accepted, expected) in rejected {
-        let (status, headers, bytes) =
-            raw_request(router.clone(), &uri("?fields=all"), "GET", accepted).await;
+        let (status, headers, bytes) = raw_request(
+            router.clone(),
+            &uri("?omit=proxyResolution"),
+            "GET",
+            accepted,
+        )
+        .await;
         assert_eq!(status, *expected, "{accepted:?}");
         assert!(
             bytes.is_empty(),

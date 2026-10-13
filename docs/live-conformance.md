@@ -34,9 +34,12 @@ public-API sampling or crawling.
 
 `--count` accepts 1–10. `--fields` accepts up to three distinct supported optional
 fields, or `minimal`. This is a **test request limit**, not a production API field
-or response-byte limit. `all`, nested selectors and `proxyResolution` are refused.
-Signatures can be requested explicitly; differences are reported without any
-signature exception. No live proxy RPC or Sourcify fallback is added to the server.
+or response-byte limit. `all` and nested selectors are refused.
+Signatures and `proxyResolution` can be requested explicitly; differences are
+reported without exceptions. Live proxy comparisons require the server's Ethereum
+RPC configuration. The compared services can pin different Ethereum blocks or
+have different verified implementation names; report such drift explicitly.
+The runner itself never calls Ethereum or supplies server response data.
 
 `--api-base-url http://127.0.0.1:5555` can point to a separately operated official
 Sourcify instance. The default is `https://sourcify.dev/server`. Include any base
