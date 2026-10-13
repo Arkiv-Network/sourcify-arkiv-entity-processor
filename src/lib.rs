@@ -4,9 +4,11 @@ use anyhow::{bail, ensure, Context, Result};
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 use sha3::Keccak256;
+pub mod arkiv;
 pub mod bundle;
 pub mod hydrate;
 mod split;
+mod wire;
 pub const BUDGET: usize = 122880;
 pub const CHUNK: usize = 100000;
 pub fn sha(data: impl AsRef<[u8]>) -> [u8; 32] {

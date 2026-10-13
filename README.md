@@ -30,7 +30,8 @@ from the import-ready seed entities. It verifies dependencies and content hashes
 and spill parts, and restores shared values. String contents, absent fields, nulls, arrays, hex
 casing and unknown fields are preserved. JSON whitespace and object-key order need not match.
 The hydrated response is a reader result; the full response is not stored a second time.
-Canonical JSON here sorts object keys while preserving exact number representations; it does
+[`read-arkiv`](docs/arkiv-reader.md) reconstructs one contract directly from an Arkiv
+prefill node at an explicit block, without a local bundle. Canonical JSON here sorts object keys while preserving exact number representations; it does
 not claim RFC 8785 normalization.
 
 This guarantee starts at the processor input. A captured full API response retains every supplied
@@ -48,7 +49,7 @@ on strict cross-source JSON equality.
 
 | Path | Contents |
 | --- | --- |
-| `src/` | `arkiv-entity-processor` (Rust): `process`, `verify`, `hydrate`, `pack`, `upload` |
+| `src/` | `arkiv-entity-processor` (Rust): `process`, `verify`, `hydrate`, `read-arkiv`, `pack`, `upload` |
 | `crates/server/` | `arkiv-sourcify-server`: fixture-backed Mainnet contract reads; [API and runbook](docs/server.md) |
 | `source/` | Bun + DuckDB source stage: `prepare.ts` (Parquet → DuckDB), `stream.ts` (DuckDB → NDJSON records) |
 | `pipeline/` | `run.sh` (resumable phases, progress, `timings.json`), `state.ts` (its bookkeeping) |

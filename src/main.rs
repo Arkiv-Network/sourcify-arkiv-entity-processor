@@ -14,6 +14,7 @@ use std::{
     time::Instant,
 };
 
+mod arkiv_cli;
 mod hydrate_cli;
 mod pack;
 mod s3;
@@ -100,6 +101,9 @@ enum Command {
     /// Reconstruct full contract NDJSON from stored wire entities
     #[command(long_about = hydrate_cli::LONG_ABOUT)]
     Hydrate(hydrate_cli::HydrateArgs),
+    /// Read and hydrate one Mainnet contract through a pinned Arkiv RPC snapshot
+    #[command(long_about = arkiv_cli::LONG_ABOUT)]
+    ReadArkiv(arkiv_cli::ReadArkivArgs),
     /// Verify a finished bundle: SHA256SUMS, report.json status and seed.json
     #[command(long_about = verify::LONG_ABOUT)]
     Verify(VerifyArgs),
@@ -780,6 +784,7 @@ fn main() -> Result<()> {
     match Cli::parse().command {
         Command::Process(a) => process(&a),
         Command::Hydrate(a) => hydrate_cli::hydrate(&a),
+        Command::ReadArkiv(a) => arkiv_cli::read(&a),
         Command::Verify(v) => {
             let summary = verify::verify(&v.dir)?;
             println!("OK {}: {summary}", v.dir.display());
