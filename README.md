@@ -44,9 +44,10 @@ Ethereum RPC; full live API and dataset parity are not claimed.
 
 The offline SafeProxy Parquet fixture differs from the saved API response in live proxy
 resolution and whitespace inside the `stdJsonOutput` metadata **string**. Offline readers
-retain that exported text. The HTTP server removes insignificant JSON whitespace only in
-the embedded output metadata string to match the captured API response, preserving quoted
-text, escapes, number spelling and key order. This serving policy cannot recover historical
+retain that exported text. In embedded output metadata strings, the HTTP server removes
+insignificant JSON whitespace and decodes non-ASCII Unicode escapes to match captured API
+responses. It preserves ASCII/control escapes, literal backslashes, number spelling and
+key order. This serving policy cannot recover historical
 upstream formatting that an export has already lost. Exported signatures remain stored;
 the HTTP server derives serving signatures from ABI. See the
 [HTTP compatibility contract](docs/sourcify-http-compatibility.md) for these policies.

@@ -2,6 +2,7 @@
 pub mod api;
 pub mod backend;
 pub mod backends;
+mod collation;
 mod compression;
 pub mod ethereum;
 pub mod fields;
@@ -83,6 +84,7 @@ impl Application {
                     .is_some(),
             "server limits must be positive and representable"
         );
+        collation::SignatureCollator::new()?;
         Ok(Self {
             state: Arc::new(AppState {
                 backend,

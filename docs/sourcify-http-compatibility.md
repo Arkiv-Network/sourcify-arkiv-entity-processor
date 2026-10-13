@@ -86,11 +86,19 @@ nulls, empty arrays/objects and scalar JSON types remain distinct. For non-Solid
 compilations, existing metadata is returned as null, matching the reference.
 
 When `stdJsonOutput` is selected, the server removes insignificant JSON whitespace
-only from string values at `stdJsonOutput.contracts.*.*.metadata`. It validates the
-embedded JSON, then filters whitespace outside quoted strings without parsing and
-reserializing values. Quoted content, escape sequences, number spellings, key order,
-nulls and absence remain intact; other strings and offline reconstruction are
-unchanged. Invalid embedded JSON fails as corrupt data only when output is selected.
+and decodes non-ASCII Unicode escapes only in string values at
+`stdJsonOutput.contracts.*.*.metadata`. It validates the embedded JSON, then scans
+its text without parsing and reserializing the object. Valid UTF-16 surrogate
+pairs become Unicode scalars; isolated surrogate escapes remain unchanged.
+ASCII/control escapes, literal backslashes (including literal `\\u2019` text),
+number spellings, duplicate keys, key order, nulls and absence remain intact.
+Other strings and offline reconstruction are unchanged. Invalid embedded JSON
+fails as corrupt data only when output is selected.
+
+Five independent response pairs under
+`crates/server/tests/fixtures/metadata-unicode/` cover exported escaped apostrophes
+and Persian text versus the reference's literal UTF-8. Tests compare the embedded
+metadata as exact strings; they do not parse away or normalize this difference.
 
 The independent SafeProxy response pair under
 `crates/server/tests/fixtures/metadata-whitespace/` proves exact string equality
@@ -159,7 +167,18 @@ algorithm: canonical parameter types, tuple/array recursion, Keccak-256, full
 32-byte hashes and first-four-byte selectors. Invalid fragments such as unresolved
 library types are skipped. Constructors, fallback and receive entries are ignored;
 anonymous events remain events. Duplicate signatures are collapsed per kind and
-arrays are sorted by signature, matching the reference SQL's explicit ordering.
+arrays use the reference PostgreSQL database's `en_US.UTF-8` glibc collation
+for its `ORDER BY signature` (with deterministic byte comparison for ties).
+This differs from byte sorting: case and punctuation have secondary weights,
+so `burnFrom(address,uint256)` precedes `burn(uint256)`. The locale is selected
+explicitly, independent of process `LANG` or `LC_COLLATE`; it is never set globally.
+The server requires GNU libc and this locale and verifies availability at startup.
+The Docker image generates it; native installations must install `locales` and run
+`localedef -i en_US -f UTF-8 en_US.UTF-8`. Different database locales may produce
+different ordering; this profile targets the user-owned mirror. The captured
+`signature-collation.json` regression covers 44 contracts from that mirror on
+2026-10-13, including 41 retained ABIs compared through response projection,
+and makes changes in the installed collation data observable.
 A null ABI yields three empty groups; a missing or malformed ABI needed for a
 signature response fails rather than silently using stored signature tables.
 
