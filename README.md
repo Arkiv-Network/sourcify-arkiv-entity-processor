@@ -41,11 +41,14 @@ from the export’s signature tables. Original database IDs travel outside the c
 in an NDJSON wrapper, and become entity attributes. Live `proxyResolution` is not available
 from an offline snapshot; full live API parity is not claimed.
 
-The real SafeProxy Parquet fixture matches the saved API response except for live proxy
-resolution and whitespace inside the `stdJsonOutput` metadata **string**. The exported
-metadata text is retained, not rewritten to hide that difference. Signatures come from exported tables and are ordered by signature text, following the
-production selector. Snapshot/API metadata text and live proxy state remain explicit limits
-on strict cross-source JSON equality.
+The offline SafeProxy Parquet fixture differs from the saved API response in live proxy
+resolution and whitespace inside the `stdJsonOutput` metadata **string**. Offline readers
+retain that exported text. The HTTP server removes insignificant JSON whitespace only in
+the embedded output metadata string to match the captured API response, preserving quoted
+text, escapes, number spelling and key order. This serving policy cannot recover historical
+upstream formatting that an export has already lost. Exported signatures remain stored;
+the HTTP server derives serving signatures from ABI. See the
+[HTTP compatibility contract](docs/sourcify-http-compatibility.md) for these policies.
 
 | Path | Contents |
 | --- | --- |
