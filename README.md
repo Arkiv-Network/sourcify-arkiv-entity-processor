@@ -50,7 +50,7 @@ on strict cross-source JSON equality.
 | Path | Contents |
 | --- | --- |
 | `src/` | `arkiv-entity-processor` (Rust): `process`, `verify`, `hydrate`, `read-arkiv`, `pack`, `upload` |
-| `crates/server/` | `arkiv-sourcify-server`: fixture-backed Mainnet contract reads; [API and runbook](docs/server.md) |
+| `crates/server/` | `arkiv-sourcify-server`: Arkiv-backed Mainnet contract reads; [API and runbook](docs/server.md) |
 | `source/` | Bun + DuckDB source stage: `prepare.ts` (Parquet → DuckDB), `stream.ts` (DuckDB → NDJSON records) |
 | `pipeline/` | `run.sh` (resumable phases, progress, `timings.json`), `state.ts` (its bookkeeping) |
 | `Dockerfile`, `compose.yaml`, `.env.example` | container deployment |

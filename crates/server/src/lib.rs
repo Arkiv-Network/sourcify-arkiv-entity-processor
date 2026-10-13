@@ -1,4 +1,4 @@
-//! The first fixture-backed read server. Production Arkiv transport is deferred.
+//! Sourcify-shaped Mainnet reads from a scoped, consistent Arkiv view.
 pub mod api;
 pub mod backend;
 pub mod backends;
@@ -55,7 +55,7 @@ struct AppState {
     limits: Limits,
     slots: Arc<Semaphore>,
     ready: AtomicBool,
-    metrics: Metrics,
+    metrics: Arc<Metrics>,
 }
 #[derive(Clone)]
 pub struct Application {
@@ -79,7 +79,7 @@ impl Application {
                 slots: Arc::new(Semaphore::new(limits.max_concurrent_requests)),
                 limits,
                 ready: AtomicBool::new(true),
-                metrics: Metrics::default(),
+                metrics: Arc::new(Metrics::default()),
             }),
         })
     }
@@ -104,6 +104,20 @@ impl Application {
                 tower_http::compression::CompressionLayer::new().compress_when(compression::Json),
             )
             .layer(axum::middleware::from_fn(compression::negotiate))
+            .layer(axum::middleware::from_fn(
+                |request, next: axum::middleware::Next| async move {
+                    let mut response = next.run(request).await;
+                    response.headers_mut().insert(
+                        header::CACHE_CONTROL,
+                        axum::http::HeaderValue::from_static("no-store"),
+                    );
+                    response.headers_mut().insert(
+                        header::ACCESS_CONTROL_ALLOW_ORIGIN,
+                        axum::http::HeaderValue::from_static("*"),
+                    );
+                    response
+                },
+            ))
     }
     /// Called before draining accepted requests on SIGINT/SIGTERM.
     pub fn shutdown(&self) {
@@ -122,7 +136,11 @@ async fn ready(State(state): State<Arc<AppState>>) -> Response {
     if !state.ready.load(Ordering::Relaxed) {
         return api::ApiError::unavailable().into_response();
     }
-    Json(json!({"status":"ready", "mode":"fixture", "apiContract":"fixture-v1", "dataset":state.backend.metadata()})).into_response()
+    match tokio::time::timeout(state.limits.request_timeout, state.backend.check_ready()).await {
+        Ok(Ok(())) => Json(json!({"status":"ready", "mode":"arkiv", "apiContract":"mainnet-contract-v2", "dataset":state.backend.metadata()})).into_response(),
+        Ok(Err(error)) => api::ApiError::from_read(error).into_response(),
+        Err(_) => api::ApiError::deadline().into_response(),
+    }
 }
 async fn metrics(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
     let m = &state.metrics;
@@ -142,7 +160,7 @@ async fn contract(
             state.metrics.successes.fetch_add(1, Ordering::Relaxed);
             (
                 [
-                    (header::CONTENT_TYPE, "application/json"),
+                    (header::CONTENT_TYPE, "application/json; charset=utf-8"),
                     (header::CACHE_CONTROL, "no-store"),
                 ],
                 bytes,
@@ -173,30 +191,18 @@ async fn contract_inner(
             "All contract read workers are busy",
         )
     })?;
-    let cancellation = reader::CancelOnDrop(Arc::new(AtomicBool::new(false)));
-    let cancel = cancellation.0.clone();
-    let worker_state = state.clone();
-    let worker = tokio::task::spawn_blocking(move || {
-        let _permit = permit;
+    tokio::time::timeout(
+        state.limits.request_timeout,
         reader::read(
-            worker_state.backend.as_ref(),
+            state.backend.as_ref(),
             &address,
-            &fields,
-            &worker_state.limits,
-            &cancel,
-            &worker_state.metrics,
-        )
-    });
-    tokio::time::timeout(state.limits.request_timeout, worker)
-        .await
-        .map_err(|_| api::ApiError::deadline())?
-        .map_err(|error| {
-            tracing::error!(%error, "read worker failed");
-            api::ApiError::new(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "internal_error",
-                "The read worker failed",
-            )
-        })?
-        .map_err(api::ApiError::from_read)
+            fields,
+            &state.limits,
+            state.metrics.clone(),
+            permit,
+        ),
+    )
+    .await
+    .map_err(|_| api::ApiError::deadline())?
+    .map_err(api::ApiError::from_read)
 }

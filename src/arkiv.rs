@@ -316,8 +316,9 @@ impl Reader {
     }
 }
 
-/// Restore the processor's original typed values before checking its staging hash.
-fn rpc_wire(entity: &Value, requested_key: &str, owner: &str) -> Result<Value> {
+/// Validate RPC namespace and identity, restoring typed processor wire attributes.
+/// Call [`decode_wire`] next to validate payload bytes and reconstructed staging identity.
+pub fn rpc_wire(entity: &Value, requested_key: &str, owner: &str) -> Result<Value> {
     ensure!(
         hex_value(wire::string(entity, "key")?, 32)? == requested_key,
         "RPC entity key mismatch"
@@ -404,6 +405,15 @@ fn rpc_wire(entity: &Value, requested_key: &str, owner: &str) -> Result<Value> {
     result["$payload"] =
         json!(STANDARD.encode(hex::decode(payload).context("invalid RPC payload hex")?));
     Ok(result)
+}
+
+/// Decode an already normalized RPC wire entity using preloaded key-to-staging identities.
+/// This performs no I/O; transport implementations own reference loading and cancellation.
+pub fn decode_wire<F>(wire: &Value, resolve_key: F) -> Result<Entity>
+where
+    F: FnMut(&str) -> Result<[u8; 32]>,
+{
+    crate::wire::decode(wire, resolve_key)
 }
 
 #[cfg(test)]

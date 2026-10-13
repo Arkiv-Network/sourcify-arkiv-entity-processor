@@ -1,0 +1,14 @@
+# Separate read-only API image. Offline ingestion remains in the root Dockerfile.
+FROM rust:1.90.0-slim-trixie AS builder
+WORKDIR /build
+COPY Cargo.toml Cargo.lock ./
+COPY src ./src
+COPY crates/server ./crates/server
+RUN cargo build -p arkiv-sourcify-server --release --locked
+
+FROM debian:trixie-slim
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
+COPY --from=builder /build/target/release/arkiv-sourcify-server /usr/local/bin/arkiv-sourcify-server
+USER 65532:65532
+EXPOSE 3000
+ENTRYPOINT ["arkiv-sourcify-server"]

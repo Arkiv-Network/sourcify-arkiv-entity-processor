@@ -13,8 +13,6 @@ import http.client
 import json
 from pathlib import Path
 import secrets
-import signal
-import socket
 import subprocess
 import time
 import urllib.error
@@ -221,13 +219,16 @@ def parse_options(argv=None):
     parser.add_argument("--fields", default="abi,compilation,sources", help="At most 3 supported optional fields, or minimal; never all/proxy")
     parser.add_argument("--snapshot-label", default="Local prepared snapshot; see source provenance for capture dates")
     parser.add_argument("--delay-seconds", type=float, default=1.0)
-    parser.add_argument("--processor", type=Path, default=ROOT / "target/release/arkiv-entity-processor")
-    parser.add_argument("--server", type=Path, default=ROOT / "target/release/arkiv-sourcify-server")
+    parser.add_argument("--server-base-url", default="http://127.0.0.1:3000", help="Already running Arkiv-backed server to validate; never starts a fixture server")
     options = parser.parse_args(argv)
     api = urllib.parse.urlsplit(options.api_base_url)
     if api.scheme not in ("http", "https") or not api.netloc or api.username or api.password or api.query or api.fragment:
         parser.error("API base must be an HTTP(S) URL without credentials, query, or fragment")
     options.api_base_url = options.api_base_url.rstrip('/')
+    server_url = urllib.parse.urlsplit(options.server_base_url)
+    if server_url.scheme not in ("http", "https") or not server_url.netloc or server_url.username or server_url.password or server_url.query or server_url.fragment:
+        parser.error("Server base must be an HTTP(S) URL without credentials, query, or fragment")
+    options.server_base_url = options.server_base_url.rstrip('/')
     fields = [] if options.fields == "minimal" else options.fields.split(',')
     if not 1 <= options.count <= 10:
         parser.error("count must be 1..10; this is a spot check, not an API crawler")
@@ -259,13 +260,11 @@ def run(options):
     options.output.mkdir(parents=True, exist_ok=False)
     report = {"schema": "sourcify-arkiv.live-conformance.v1", "startedAt": utc_now(),
               "seed": options.seed, "requestedCount": options.count, "fields": options.selected_fields,
-              "apiBaseUrl": options.api_base_url,
+              "apiBaseUrl": options.api_base_url, "serverBaseUrl": options.server_base_url,
               "snapshotLabel": options.snapshot_label,
               "comparison": "Expected=independent Sourcify response; actual=our server; JSON values with significant array order and missing/null distinctions; no exclusions",
               "driftWarning": "Local snapshot and live capture are different times; mismatches may reflect snapshot drift and are never waived",
               "results": [], "status": "inconclusive"}
-    server = None
-    log = None
     try:
         sample_command = ["bun", "--no-env-file", "tests/live/sample.ts", "--source-dir", str(options.source_dir),
                           "--output", str(options.output), "--seed", options.seed, "--count", str(options.count)]
@@ -276,31 +275,13 @@ def run(options):
             report["sample"] = json.loads(sample_path.read_text())
         if sampled.returncode != 0 or report.get("sample", {}).get("completedCount") != options.count:
             raise RuntimeError("Sampling/reconstruction was incomplete; no live requests made (see sample.json/logs)")
-        bundle = options.output / "bundle"
-        with (options.output / "processor.stdout.log").open("w") as out, (options.output / "processor.stderr.log").open("w") as err:
-            subprocess.run([str(options.processor.resolve()), "process", "--input", str(options.output / "records.ndjson"),
-                            "--output", str(bundle), "--require-source-complete", "--owner",
-                            "0x1111111111111111111111111111111111111111"], check=True, stdout=out, stderr=err)
-        with socket.socket() as probe:
-            probe.bind(("127.0.0.1", 0))
-            port = probe.getsockname()[1]
-        base = f"http://127.0.0.1:{port}"
-        log = (options.output / "server.log").open("w")
-        server = subprocess.Popen([str(options.server.resolve()), "--bundle", str(bundle), "--listen", f"127.0.0.1:{port}"], stdout=log, stderr=log)
-        deadline = time.monotonic() + 30
-        while True:
-            if server.poll() is not None:
-                raise RuntimeError("Server exited before readiness; see server.log")
-            try:
-                status, body = local_get(base + "/_ops/ready")
-                if status == 200:
-                    report["dataset"] = json.loads(body)
-                    break
-            except urllib.error.URLError:
-                pass
-            if time.monotonic() >= deadline:
-                raise RuntimeError("Server did not become ready")
-            time.sleep(0.05)
+        base = options.server_base_url
+        status, body = local_get(base + "/_ops/ready")
+        if status != 200:
+            raise RuntimeError("Arkiv server is not ready")
+        report["dataset"] = json.loads(body)
+        if report["dataset"].get("mode") != "arkiv":
+            raise RuntimeError("Conformance requires the Arkiv-backed server")
         client = CachedClient(options.cache, delay_seconds=options.delay_seconds)
         query = "?" + urllib.parse.urlencode({"fields": ",".join(options.selected_fields)}) if options.selected_fields else ""
         for item in report["sample"]["samples"]:
@@ -335,19 +316,6 @@ def run(options):
             save_json(options.output / "report.json", report)
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError, KeyboardInterrupt) as error:
         report["error"] = str(error)
-    finally:
-        if server is not None and server.poll() is None:
-            server.send_signal(signal.SIGTERM)
-            try:
-                server.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                server.kill()
-                server.wait()
-                report["error"] = "Server failed to drain during shutdown"
-        if server is not None and server.returncode != 0:
-            report["serverExitCode"] = server.returncode
-        if log is not None:
-            log.close()
     outcomes = [result["outcome"] for result in report["results"]]
     report["counts"] = {"requested": options.count, "sampled": len(report.get("sample", {}).get("samples", [])),
                         "reconstructed": report.get("sample", {}).get("completedCount", 0),

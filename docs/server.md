@@ -1,226 +1,141 @@
-# Fixture contract read server
+# Arkiv-backed Mainnet contract API
 
-`arkiv-sourcify-server` is a separate workspace crate and executable for phases 1–2
-of the [server architecture plan](https://github.com/Arkiv-Network/sorcify-arkiv-entity-processor/blob/docs/november-2026-milestone/docs/processor-server-plan.md).
-It serves completed **local v3 processor bundles**. It is a usable development and
-fixture service, not a production Arkiv reader or a claim of full Sourcify API parity.
-The processor CLI and its release/container pipeline remain separate.
+`arkiv-sourcify-server` reads imported entities directly from Arkiv JSON-RPC.
+The former bundle-backed executable and `--bundle` option have been removed.
+Parquet, DuckDB and processor bundles remain offline ingestion/reference tools;
+the HTTP process never opens them and never falls back to Sourcify or Ethereum.
+
+The supported product scope is `GET /v2/contract/1/{address}`. The detailed
+[field/error compatibility matrix](sourcify-http-compatibility.md) distinguishes
+Sourcify behavior from deliberate scope exclusions. JSON value equality is the
+comparison contract; serialization order is not original Sourcify byte identity.
 
 ## Run
 
 ```sh
-cargo build --workspace --release --locked
-target/release/arkiv-sourcify-server --bundle /path/to/bundle --listen 127.0.0.1:3000
-curl 'http://127.0.0.1:3000/_ops/ready'
-curl 'http://127.0.0.1:3000/v2/contract/1/0x000000000034065b3a94C2118CFe5B4C0067B615?fields=abi,compilation'
+cargo build -p arkiv-sourcify-server --release --locked
+RUST_LOG=info target/release/arkiv-sourcify-server \
+  --rpc-url http://127.0.0.1:8745 \
+  --owner 0x986c08292e6c327a310273a45965a3d2e2eac44c \
+  --arkiv-chain-id 7706815 \
+  --genesis-state-root 0xe1c577a41da3b90bab1d86b95883d4ea7cb84578e5405e8156d5fd587a2021d0 \
+  --listen 127.0.0.1:3001
 ```
 
-The bundle must contain `seed.json`, `report.json`, `SHA256SUMS`, and every entity
-part named by the seed. An extracted prefill archive works; `payloads.bin` and
-`metadata.jsonl` are not required. Keep the directory immutable and mount it
-read-only. Start a new process to switch datasets. There is no writer key, RPC
-URL, live Sourcify fallback, or network credential in the server configuration.
+These example identities refer to the imported Mainnet dataset on the local
+Arkiv network. Verify the root against the completed import before configuring
+another deployment. The dedicated owner and genesis root identify this import;
+reuse of the owner for another concurrent import is unsupported. The initial
+load contains 7,823,531 contracts and 15,164,363 entities, with five known source
+skips. A successful absent lookup means absent from this mirror, not globally
+unverified. Root verification is a deployment trust anchor, not a Merkle proof of
+the remote RPC response or completeness of the original Sourcify snapshot.
 
-Startup verifies seed/report/part checksums, completion status, part byte and
-entity counts, wire upload schema, and every contract's v3 envelope version,
-including spilled contract envelopes. It fails before listening if these checks
-fail. It builds compact indexes by entity key, content reference, and source
-chain/address. Indexes and startup scans are proportional to entity count; this
-has not been sized for the full Mainnet dataset.
+The executable validates network and genesis before binding. Each request checks
+them again, then pins the current retained head. It reads current state, so a later
+deletion is visible on the next request. There is no public historical selector.
+All entity queries and direct entity reads use the same numeric block. Before
+returning either success or absence, the service rechecks block hash and state
+root. A changed/pruned view fails the request; it never silently switches height.
 
-Local manifest consistency is not proof of source-export completeness. A completed
-bundle built without `--require-source-complete` remains a valid fixture and exposes
-that fact in readiness metadata. Full transitive content integrity is checked on
-selected reads. An unrequested broken dependency does not force unrelated source
-fetches. Accessed bytes are checked against the indexed line digest; edits to
-unaccessed files are not detected. This fixture model is immutable, not a model for
-current-state Arkiv deletion or historical reads.
-
-## HTTP contract: `fixture-v1`
-
-Only `GET /v2/contract/1/{address}` reads contracts. The source chain must be exactly
-`1`; other chains and alternate spellings such as `01` receive `400`. The address
-must be `0x` plus 40 hexadecimal digits. Lookup is case-insensitive and does not
-require a valid mixed-case checksum. The response preserves the stored address
-and chain ID representation (including numeric chain IDs accepted by the processor).
-
-The default response contains these seven required stored fields:
-
-`address`, `chainId`, `match`, `matchId`, `creationMatch`, `runtimeMatch`, `verifiedAt`.
-
-`fields=abi,compilation` adds the selected optional fields. `fields=all` returns the
-seven required fields and all 16 supported optional fields. It deliberately excludes
-`proxyResolution`. The server returns one complete contract JSON object, never a
-page, truncated object, or metadata wrapper.
-
-| Supported optional fields | Serving rule |
-| --- | --- |
-| `abi`, `compilation` | Select compilation paths before expanding child dependencies |
-| `deployment`, `creationBytecode`, `runtimeBytecode` | Preserve stored values and bytecode representation |
-| `sources`, `metadata`, `storageLayout`, `transientStorageLayout`, `userdoc`, `devdoc`, `sourceIds`, `stdJsonInput`, `stdJsonOutput`, `additionalInput` | Hydrate only selected dependency closures, including local references |
-| `signatures` | Preserve stored input; this initial policy does not derive signatures from ABI |
-
-The value contract preserves null, empty values, absent optional keys, array order,
-source text, and exact JSON number representations. Missing required minimal fields
-are corrupt data. Selecting an absent optional field leaves it absent. Unknown stored
-top-level fields are not exposed by `fields=all`; the offline `hydrate` command still
-preserves them. JSON whitespace and object-key order are not a byte-parity contract.
-
-Only one query parameter, `fields`, is supported. Names are case-sensitive. Comma
-lists accept duplicate field names and collapse them; minimal fields always remain.
-Percent encoding is decoded strictly. Empty HTTP query strings mean minimal fields.
-The following receive `400` before a backend lookup:
-
-- Empty selectors (`fields=`, trailing/doubled commas), whitespace or unknown names.
-- Repeated `fields` parameters, extra query parameters, or malformed percent escapes.
-- Nested/dotted selectors, `omit`, or mixing `all` with other fields.
-- An explicit `proxyResolution` selector, including nested proxy selectors.
-
-Proxy resolution is deferred. Stored proxy values are neither exposed nor replaced
-with fabricated null/default values. A future implementation will query Ethereum
-RPC directly; it will never fetch live Sourcify as a fallback. ABI-derived signatures,
-known exported-signature mismatches, and exact upstream selector/error compatibility
-remain separate acceptance work. The `fixture-v1` behavior above is intentional and
-tested, not a claim that upstream Sourcify rejects or formats requests identically.
-
-## Response compression
-
-Nonempty JSON responses support `zstd`, `gzip`, and uncompressed (`identity`)
-representations through Tower HTTP's streaming compression middleware. This applies
-to contract, error and operational JSON. No compression is imposed on clients that
-reject it. Requests without `Accept-Encoding`, or with an empty header, receive
-identity. For example:
+Examples:
 
 ```sh
-# curl advertises and decodes the encodings supported by its own build:
-curl --compressed 'http://127.0.0.1:3000/v2/contract/1/0x000000000034065b3a94C2118CFe5B4C0067B615?fields=all'
-# Explicitly request an uncompressed response:
-curl -H 'Accept-Encoding: identity' 'http://127.0.0.1:3000/_ops/ready'
+curl 'http://127.0.0.1:3001/v2/contract/1/0x000000000034065b3a94C2118CFe5B4C0067B615?fields=abi,compilation'
+curl 'http://127.0.0.1:3001/v2/contract/1/0x000000000034065b3a94C2118CFe5B4C0067B615?fields=deployment.blockNumber'
+curl 'http://127.0.0.1:3001/v2/contract/1/0x000000000034065b3a94C2118CFe5B4C0067B615?omit=sources'
+curl --compressed 'http://127.0.0.1:3001/v2/contract/1/0x000000000034065b3a94C2118CFe5B4C0067B615?fields=all'
 ```
 
-Quality values are honored among supported codings and explicitly listed identity.
-Equal quality prefers zstd, then gzip, then identity. Unlisted identity is a fallback
-when no accepted supported coding remains. `*` applies to codings not explicitly
-listed; an explicit `gzip;q=0` or `zstd;q=0` overrides the wildcard. Identity is
-unacceptable with `identity;q=0`, or `*;q=0` unless identity has an explicit nonzero
-override. Multiple header lines are combined. Conflicting duplicate coding entries
-use the lowest quality so explicit rejection wins; coding names are case-insensitive.
+Gzip and zstd content negotiation retain `Vary: Accept-Encoding`; identity is also
+supported. Zstd decoding requires client support. Every response is completely
+hydrated and serialized before a successful HTTP body starts. `Cache-Control:
+no-store` avoids stale response reuse after dataset changes.
 
-When all available representations are forbidden, the server returns an empty
-`406 Not Acceptable` before reading the backend. Malformed quality values produce
-an empty `400`. These two negotiation errors have no JSON body because an acceptable
-content coding cannot be established. Valid quality values are `0` through `1`
-with at most three decimal places.
+## Read architecture and limits
 
-Responses include `Vary: Accept-Encoding`, including identity and negotiation errors.
-Compressed responses have the selected `Content-Encoding`; streaming removes the
-original `Content-Length` instead of sending an incorrect uncompressed byte count.
-HTTP/1.1 frames such responses using chunked transfer. Identity responses retain
-their correct length. HEAD responses have no body.
+The async request owns its RPC session and all transport futures. A bounded
+channel connects it to the pure processor hydrator on a CPU worker. The worker
+asks for one unresolved dependency at a time and never performs network I/O.
+This preserves the audited local-reference, spill, content-hash and staging-ID
+validation without replaying hydration or duplicating it in an async implementation.
 
-The pinned codecs use their defaults: zstd level 3 and gzip level 6. Zstd's default
-window stays within the HTTP 8 MiB window requirement; regression decoding enforces
-that bound. Compression changes only transport bytes, not the reconstructed JSON
-or supported response size. Encoding runs as the body is consumed, after hydration,
-and is outside the hydration deadline/concurrency limit. The response-byte metric
-continues to count uncompressed serialized JSON bytes. Production throughput and
-compression CPU costs still require representative deployment measurements.
+A request permit is shared by the driver and worker: finishing CPU work does not
+release admission while the final block check is pending, and cancellation does
+not release admission until the CPU worker exits. Dropping a request or reaching
+its deadline drops the active RPC future and channel endpoints, waking any waiting
+worker. CPU hashing/parsing/cloning is indivisible between cooperative checkpoints.
 
-## Errors and operations
+Lookups scope owner, project, kind and chain/address or content hash. The query
+limit is two; multiple matches or any continuation cursor fail closed. Direct
+entity reads verify owner, creator, project, upload schema, requested key, restored
+staging identity, wire payload digest and content encoding. Wire key attributes
+are resolved concurrently under a global RPC semaphore; all wires are deduplicated
+inside the request. Logical source/code/blob dependencies are hydrated only when selected fields need
+them. Restoring a contract's staging identity also loads its direct key-reference
+wires (including their transported payloads), even on a minimal request. Those
+identity reads are cached, but this implementation does not claim zero unrelated
+payload I/O for minimal or ABI-only reads. Request caches are discarded after the read; there is no stale
+positive/negative cross-request cache.
 
-Error bodies have the stable shape:
-
-```json
-{"error":{"code":"contract_not_found","message":"Contract is absent from the configured fixture dataset"}}
-```
-
-| Status | Codes / meaning |
-| --- | --- |
-| `400` | `invalid_request`: invalid path, chain, query, or unsupported selector |
-| `404` | `contract_not_found`: valid lookup absent from this fixture; `route_not_found`: unknown endpoint |
-| `405` | `method_not_allowed`: only GET is supported on the contract route |
-| `406` | Empty response: no available content coding is acceptable to the client |
-| `502` | `missing_dependency`, `corrupt_data`, `unsupported_schema`, `ambiguous_record` |
-| `503` | `backend_unavailable`, `overloaded`, or configured `work_limit` exceeded |
-| `504` | `deadline_exceeded` |
-| `500` | `internal_error`: unexpected worker failure |
-
-Only initial contract absence yields a contract `404`. Multiple distinct records
-at one chain/address are an error; there is no arbitrary winner. A dependency error
-never yields a successful partial response. Successful responses use `application/json`
-and `Cache-Control: no-store`. Internal file/error details are logged, not returned.
-
-- `GET /_ops/health`: process liveness, independent of worker saturation.
-- `GET /_ops/ready`: startup readiness, `mode: fixture`, API contract version, seed
-  and manifest digests, schema version, source/Arkiv chain IDs, observed counts,
-  and source-completion policy. This is not a continuous scan of bundle files.
-- `GET /_ops/metrics`: low-cardinality JSON counters for requests, successes,
-  failures, lookups, dependency reads, response bytes, and active workers. It is
-  basic diagnostic instrumentation, not the production latency/field-group suite.
-
-SIGINT/SIGTERM marks the application unready, stops accepting new connections and
-drains accepted requests. JSON composition and serialization finish before response
-headers are sent. Health, metadata and metrics stay outside Sourcify response bodies.
-
-## Work and capacity
-
-| Option | Default | Effect |
+| Limit | Default | Purpose |
 | --- | --- | --- |
-| `--listen` | `127.0.0.1:3000` | Listening socket |
-| `--max-concurrent-requests` | `8` | Concurrent hydration/serialization workers; excess work gets `503` without queuing |
-| `--request-timeout-seconds` | `120` | Lookup, hydration and serialization deadline |
-| `--max-dependency-reads` | `100000` | Unique entity-read work budget per request |
+| `--max-concurrent-requests` | 8 | Reject excess reads with 503 rather than queue CPU workers |
+| `--request-timeout-seconds` | 120 | Bound lookup, hydration and final consistency check |
+| `--max-dependency-reads` | 100,000 | Bound unique logical resolver operations |
+| `--max-rpc-concurrency` | 16 | Bound all in-flight HTTP RPC requests across sessions |
+| `--rpc-timeout-seconds` | 15 | Bound each RPC transport/body read |
+| `--max-rpc-requests` | 100,000 | Bound calls inside one session |
+| `--max-rpc-response-bytes` | 8 MiB | Bound one RPC envelope, including hex expansion |
+| `--max-read-bytes` | 256 MiB | Bound cumulative RPC bytes and request-local wire storage |
 
-The finite selector set is not a response byte cap. There is no small response-size
-limit: a selected source/artifact can legitimately be large. The existing v3 wire
-format bounds each decoded entity; logical payloads are reassembled from validated
-chunks. Request-local caches deduplicate shared entities and blob reads. A spilled
-compilation must be fully read and hashed even when selecting only its ABI; unrelated
-source/code entities are still not fetched.
+The wire decoder separately bounds decompressed entity payloads to 122,880 bytes;
+large logical payloads are chunked and checked by the shared hydrator. Input/work
+limits are separate from field count. There is no blanket HTTP response-byte cap.
+The maximum supported field set is fixed by the validated Sourcify selector matrix.
+The current driver resolves logical dependencies sequentially; direct staging-key
+reads can overlap. Wider dependency batching is a measured follow-up optimization.
 
-Each fixture request uses one immutable bundle session on a bounded blocking worker,
-with serial dependency reads. Tokio workers do not perform blocking file reads or
-JSON reconstruction. Dropping/timing out a request sets a cooperative cancellation
-flag; the worker retains its permit until it stops. Checks run between dependency
-reads and during reference traversal. An individual filesystem read, hash, parse,
-clone or serialization cannot be forcibly interrupted. Completed response transmission
-and slow-client socket buffers are outside this hydration concurrency limit.
+## Operations
 
-Responses and logical payloads are currently buffered in memory. Provision RAM and
-the reverse proxy for actual largest responses and reduce concurrency if needed;
-there is no published Mainnet capacity envelope yet. No cross-request payload cache,
-automatic retry, or public historical query is implemented.
-The future Arkiv adapter needs an asynchronous transport driver with a pinned read
-view, dataset/owner scope, actual-node wire tests and deletion-aware behavior.
+- `GET /_ops/health`: process liveness only.
+- `GET /_ops/ready`: a fresh network/genesis/head read; returns dataset identity and
+  cumulative RPC requests/bytes. Node outages or changed configuration fail readiness.
+- `GET /_ops/metrics`: HTTP successes/failures, lookups, dependency reads, serialized
+  bytes, and active request permits. There are no raw-address metric labels.
+- SIGTERM/SIGINT stops admission and gracefully drains accepted reads.
 
-## Verification and remaining scope
+Internal errors have stable categories: 502 for corrupt, ambiguous or missing
+stored dependencies; 503 for unreachable/unready backend, changed read view,
+resource budgets or overload; 504 for request deadlines. They never become a false
+404 or a partial successful body. RPC endpoints must be HTTP(S), with no embedded
+credentials, query, fragment or redirects. No writer credentials are accepted.
+
+`Dockerfile.server` builds a separate unprivileged API image. It requires network
+access only to the configured Arkiv RPC and no data mounts:
 
 ```sh
-cargo test --workspace --locked
+docker build -f Dockerfile.server -t arkiv-sourcify-server .
+```
+
+Bind loopback for local validation. External publication and gateway policy are
+separate deployment steps. The offline pipeline image remains unchanged.
+
+## Validation
+
+```sh
+cargo fmt --all --check
 cargo clippy --workspace --locked --all-targets -- -D warnings
+cargo test --workspace --locked
 cargo build --workspace --release --locked
 python3 tests/server-smoke.py
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/live -p 'test_*.py'
-bun install --frozen-lockfile && bun run test
 ```
 
-HTTP value tests use the independent captured Mainnet response in
-[`data/sourcify-response.json`](data/sourcify-response.json), with capture provenance
-in [`data/provenance.json`](data/provenance.json). Synthetic error cases test this
-document's explicit contract. Coverage includes selective/full projection equivalence,
-local and escaped references, spills, missing/corrupt dependencies, ambiguity, cheap
-misses, cancellation, overload and a complete 9 MiB single-field response. The TCP
-smoke test runs process → verify → CLI hydrate → bundle HTTP reads → SIGTERM shutdown.
-Existing deterministic processor and Bun/Parquet tests remain in CI.
-
-The [opt-in live comparison](live-conformance.md) samples actual contracts from a
-prepared Parquet-derived source, processes them into a small bundle, starts the
-real HTTP server and compares selected fields against independently captured
-Sourcify responses. It defaults to five contracts and `abi,compilation,sources`;
-only its offline sampler, comparator and HTTP client tests run in CI. A passing
-spot check is not a full-dataset or all-fields parity claim.
-
-Production Arkiv serving, dataset acceptance/ownership, live proxy RPC, signature
-derivation policy, broad API parity, full-dataset benchmarks and a dedicated server
-release/image/deployment remain later phases. Contract listing, pagination, all-chain
-lookup and verification endpoints are outside this service's scope.
+The protocol suite uses a real local HTTP RPC mock with transformed entity wires.
+It checks namespace/integrity faults, duplicate/cursor results, block changes,
+deletions, misses, byte/work budgets and cancellation/admission during RPC/final
+checks. In-memory tests verify selective dependency work and HTTP compression.
+The CLI smoke test checks real process startup/readiness/negative lookup/shutdown.
+Use the [bounded live conformance runner](live-conformance.md) against an already
+running Arkiv service; its independent source is sampling evidence only.
