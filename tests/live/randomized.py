@@ -318,14 +318,16 @@ def compare_case(client, reference, server, entry, match_id=None):
             status = result[side]["status"]
             if status != entry["expectedStatus"]:
                 result["differences"].append({"path": "/httpStatus", "side": side, "kind": "unexpected_status", "expected": entry["expectedStatus"], "actual": status})
-            if status == 200 and isinstance(payload, dict) and "customCode" in payload:
+            if not isinstance(payload, dict):
+                raise ValueError(side + " contract response must be a JSON object")
+            if status == 200 and "customCode" in payload:
                 raise ValueError(side + " returned an error envelope with HTTP 200")
             if isinstance(payload, dict) and isinstance(payload.get("proxyResolution"), dict) and "proxyResolutionError" in payload["proxyResolution"]:
                 raise ValueError(side + " returned a proxy resolution error; this is not a successful proxy check")
             proxy = payload.get("proxyResolution") if isinstance(payload, dict) else None
             if "expectedIsProxy" in entry and (not isinstance(proxy, dict) or proxy.get("isProxy") is not entry["expectedIsProxy"]):
                 result["differences"].append({"path": "/proxyResolution/isProxy", "side": side, "kind": "unexpected_proxy_detection", "expected": entry["expectedIsProxy"]})
-        if match_id and isinstance(payloads[0], dict) and payloads[0].get("matchId") != match_id:
+        if match_id and payloads[0].get("matchId") != match_id:
             result["differences"].append({"path": "/matchId", "side": "reference", "kind": "reference_population_changed", "expected": match_id, "actual": payloads[0].get("matchId")})
         if entry["expectedStatus"] == 400 and all(result[side]["status"] == 400 for side in ("reference", "server")):
             payloads = [normalize_expected_error(payload) for payload in payloads]

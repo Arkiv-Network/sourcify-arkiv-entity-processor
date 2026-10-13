@@ -176,6 +176,20 @@ class RandomizedTests(unittest.TestCase):
             self.assertEqual(len(result["server"]["attempts"]), 2)
             self.assertEqual(len(list((output / "raw").glob("*.body"))), 4)
 
+    def test_equal_null_list_or_scalar_contract_responses_cannot_pass(self):
+        for index, payload in enumerate((b"null", b"[]", b"7")):
+            with self.subTest(payload=payload), endpoints() as (base, state):
+                state["fault"] = lambda _side, _path, status, _raw: (status, payload, {})
+                output = self.root / ("shape-" + str(index))
+                output.mkdir()
+                client = runner.Client(output, delay=0)
+                for status, match_id in ((200, "100"), (200, None), (404, None)):
+                    address = runner.SAFE if status == 200 else "0x" + "9" * 40
+                    entry = runner.case("object-required", address, status=status)
+                    result = runner.compare_case(client, base + "/reference", base + "/server", entry, match_id)
+                    self.assertEqual(result["outcome"], "inconclusive")
+                    self.assertIn("must be a JSON object", result["error"])
+
     def test_truncated_and_malformed_json_do_not_pass(self):
         for fault in (lambda _s, _p, _c, _b: (200, b'{}', {"Content-Length": "100"}),
                       lambda _s, _p, _c, _b: (200, b'not JSON', {}),
