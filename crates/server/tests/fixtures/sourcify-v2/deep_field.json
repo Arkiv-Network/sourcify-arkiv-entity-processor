@@ -1,0 +1,23 @@
+{
+  "name": "deep_field",
+  "path": "/v2/contract/1/0xdae07103f1e0b23eb58d50758b9ade175d33e71b?fields=compilation.compilerSettings.optimizer",
+  "status": 400,
+  "headers": {
+    "x-powered-by": "Express",
+    "access-control-allow-origin": "*",
+    "content-type": "application/json; charset=utf-8",
+    "etag": "W/\"c3-9S/JNrs4nrixkum+5wgzRnNq0KI\"",
+    "x-cloud-trace-context": "a3a693f2cd4171f72fe5f12f87240557",
+    "date": "Tue, 13 Oct 2026 19:33:49 GMT",
+    "server": "Google Frontend",
+    "Content-Length": "195",
+    "via": "1.1 google",
+    "Alt-Svc": "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000",
+    "Connection": "close"
+  },
+  "body": {
+    "customCode": "invalid_parameter",
+    "message": "Field selector cannot have more than one level subselectors: compilation.compilerSettings.optimizer",
+    "errorId": "ce4ea7da-5ea6-4a41-95ab-b6936ff8cf00"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "bad_address",
+  "path": "/v2/contract/1/0xabc",
+  "status": 400,
+  "headers": {
+    "x-powered-by": "Express",
+    "access-control-allow-origin": "*",
+    "content-type": "application/json; charset=utf-8",
+    "etag": "W/\"9d-Kp9rUVd8EAkjmW3FlnDU+I7f5OM\"",
+    "x-cloud-trace-context": "6fce6ab5f285e588d94485fde320800b",
+    "date": "Tue, 13 Oct 2026 19:33:55 GMT",
+    "server": "Google Frontend",
+    "Content-Length": "157",
+    "via": "1.1 google",
+    "Alt-Svc": "h3=\":443\"; ma=2592000",
+    "Connection": "close"
+  },
+  "body": {
+    "customCode": "invalid_parameter",
+    "message": "request/params/address must NOT have fewer than 42 characters",
+    "errorId": "43a48d37-80db-482a-bacd-ab02227e164b"
+  }
+}

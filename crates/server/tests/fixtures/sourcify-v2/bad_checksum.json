@@ -1,0 +1,23 @@
+{
+  "name": "bad_checksum",
+  "path": "/v2/contract/1/0xdae07103f1e0B23eb58d50758b9ade175d33e71b",
+  "status": 400,
+  "headers": {
+    "x-powered-by": "Express",
+    "access-control-allow-origin": "*",
+    "content-type": "application/json; charset=utf-8",
+    "etag": "W/\"9b-UqWU5HG9VPEK8nBqrxlJOYjoF1c\"",
+    "x-cloud-trace-context": "88d3c34ef325e95bc2ddb6b9a8483e3e",
+    "date": "Tue, 13 Oct 2026 19:33:54 GMT",
+    "server": "Google Frontend",
+    "Content-Length": "155",
+    "via": "1.1 google",
+    "Alt-Svc": "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000",
+    "Connection": "close"
+  },
+  "body": {
+    "customCode": "invalid_parameter",
+    "message": "Invalid address: 0xdae07103f1e0B23eb58d50758b9ade175d33e71b",
+    "errorId": "96938264-8901-4e01-a56d-6177a3fa91c4"
+  }
+}

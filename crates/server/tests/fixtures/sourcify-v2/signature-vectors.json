@@ -1,0 +1,277 @@
+{
+  "provenance": {
+    "ethers": "6.17.0",
+    "sourcifyCommit": "6048af7dfb36a3f5b7b2b30ede5daca3e701f7b0",
+    "method": "Fragment.from(item), format(\"sighash\"), id(signature); ignore invalid fragments, group, deduplicate, sort, as Sourcify signature-util.ts and database-util.ts."
+  },
+  "cases": [
+    {
+      "name": "standard_types_and_overloads",
+      "abi": [
+        {
+          "type": "function",
+          "name": "transfer",
+          "inputs": [
+            {
+              "type": "address"
+            },
+            {
+              "type": "uint"
+            }
+          ],
+          "outputs": [
+            {
+              "type": "bool"
+            }
+          ]
+        },
+        {
+          "type": "function",
+          "name": "transfer",
+          "inputs": [
+            {
+              "type": "bytes32"
+            },
+            {
+              "type": "int"
+            }
+          ]
+        },
+        {
+          "type": "function",
+          "name": "transfer",
+          "inputs": [
+            {
+              "type": "address"
+            },
+            {
+              "type": "uint256"
+            }
+          ]
+        },
+        {
+          "type": "constructor",
+          "inputs": [
+            {
+              "type": "uint256"
+            }
+          ]
+        },
+        {
+          "type": "fallback"
+        },
+        {
+          "type": "receive"
+        }
+      ],
+      "expected": {
+        "function": [
+          {
+            "signature": "transfer(address,uint256)",
+            "signatureHash4": "0xa9059cbb",
+            "signatureHash32": "0xa9059cbb2ab09eb219583f4a59a5d0623ade346d962bcd4e46b11da047c9049b"
+          },
+          {
+            "signature": "transfer(bytes32,int256)",
+            "signatureHash4": "0xd6ba2a50",
+            "signatureHash32": "0xd6ba2a5088d1e5709d96201eb14d1889bc47b178f94f62124e52c313f199b580"
+          }
+        ],
+        "event": [],
+        "error": []
+      }
+    },
+    {
+      "name": "tuple_arrays",
+      "abi": [
+        {
+          "type": "function",
+          "name": "f",
+          "inputs": [
+            {
+              "type": "tuple[][02]",
+              "components": [
+                {
+                  "type": "uint"
+                },
+                {
+                  "type": "tuple",
+                  "components": [
+                    {
+                      "type": "address"
+                    },
+                    {
+                      "type": "bytes32[]"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "int8[0]"
+            }
+          ],
+          "outputs": []
+        }
+      ],
+      "expected": {
+        "function": [
+          {
+            "signature": "f((uint256,(address,bytes32[]))[][2],int8[0])",
+            "signatureHash4": "0xfb4ebd3f",
+            "signatureHash32": "0xfb4ebd3ff1840c1db998b6435de3f4fb3a44cacbaed676e8b86d090e35e90ce1"
+          }
+        ],
+        "event": [],
+        "error": []
+      }
+    },
+    {
+      "name": "event_error_anonymous",
+      "abi": [
+        {
+          "type": "event",
+          "name": "Transfer",
+          "anonymous": false,
+          "inputs": [
+            {
+              "type": "address",
+              "indexed": true
+            },
+            {
+              "type": "address",
+              "indexed": true
+            },
+            {
+              "type": "uint256",
+              "indexed": false
+            }
+          ]
+        },
+        {
+          "type": "event",
+          "name": "Anonymous",
+          "anonymous": true,
+          "inputs": [
+            {
+              "type": "uint256",
+              "indexed": true
+            }
+          ]
+        },
+        {
+          "type": "error",
+          "name": "Unauthorized",
+          "inputs": [
+            {
+              "type": "address"
+            }
+          ]
+        },
+        {
+          "type": "error",
+          "name": "NoArgs"
+        }
+      ],
+      "expected": {
+        "function": [],
+        "event": [
+          {
+            "signature": "Anonymous(uint256)",
+            "signatureHash4": "0x2643d742",
+            "signatureHash32": "0x2643d742aebaf05f7322b8d1aad7721d3f29a2abed1cb15667c56c4b36cea234"
+          },
+          {
+            "signature": "Transfer(address,address,uint256)",
+            "signatureHash4": "0xddf252ad",
+            "signatureHash32": "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+          }
+        ],
+        "error": [
+          {
+            "signature": "NoArgs()",
+            "signatureHash4": "0xd144d9e3",
+            "signatureHash32": "0xd144d9e3e4304378a275ce8c55f48e681b2038a3792520b00766e2cecef576f5"
+          },
+          {
+            "signature": "Unauthorized(address)",
+            "signatureHash4": "0x8e4a23d6",
+            "signatureHash32": "0x8e4a23d6a5d81f013eca4bc92aeb9214ccafcaebd1f097c350c922d6e19122d5"
+          }
+        ]
+      }
+    },
+    {
+      "name": "invalid_fragments",
+      "abi": [
+        {
+          "type": "function",
+          "name": "library",
+          "inputs": [
+            {
+              "type": "MyLibrary.Data"
+            }
+          ]
+        },
+        {
+          "type": "function",
+          "name": "badOutput",
+          "inputs": [],
+          "outputs": [
+            {
+              "type": "MyLibrary.Data"
+            }
+          ]
+        },
+        {
+          "type": "function",
+          "name": "bad-width",
+          "inputs": []
+        },
+        {
+          "type": "function",
+          "name": "badWidth",
+          "inputs": [
+            {
+              "type": "uint7"
+            }
+          ]
+        },
+        {
+          "type": "function",
+          "name": "badBytes",
+          "inputs": [
+            {
+              "type": "bytes33"
+            }
+          ]
+        },
+        {
+          "type": "function",
+          "name": "valid",
+          "inputs": []
+        }
+      ],
+      "expected": {
+        "function": [
+          {
+            "signature": "valid()",
+            "signatureHash4": "0xc1991219",
+            "signatureHash32": "0xc1991219e9f5f3eea1582578612ea74d8c77b44a161d52e3fe841d605e98d282"
+          }
+        ],
+        "event": [],
+        "error": []
+      }
+    },
+    {
+      "name": "empty",
+      "abi": [],
+      "expected": {
+        "function": [],
+        "event": [],
+        "error": []
+      }
+    }
+  ]
+}

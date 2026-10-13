@@ -1,0 +1,23 @@
+{
+  "name": "both",
+  "path": "/v2/contract/1/0xdae07103f1e0b23eb58d50758b9ade175d33e71b?fields=abi&omit=metadata",
+  "status": 400,
+  "headers": {
+    "x-powered-by": "Express",
+    "access-control-allow-origin": "*",
+    "content-type": "application/json; charset=utf-8",
+    "etag": "W/\"83-5CkO4WnTE9755Ma2JE3es2/ulwU\"",
+    "x-cloud-trace-context": "1e78a3b7362dc9bd2255b81b35cb8cf7",
+    "date": "Tue, 13 Oct 2026 19:33:49 GMT",
+    "server": "Google Frontend",
+    "Content-Length": "131",
+    "via": "1.1 google",
+    "Alt-Svc": "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000",
+    "Connection": "close"
+  },
+  "body": {
+    "customCode": "invalid_parameter",
+    "message": "Cannot specify both fields and omit",
+    "errorId": "591186a1-ffa7-4ef5-bb09-efdce52a8b90"
+  }
+}

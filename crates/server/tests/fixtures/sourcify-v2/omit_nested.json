@@ -1,0 +1,34 @@
+{
+  "name": "omit_nested",
+  "path": "/v2/contract/1/0xdae07103f1e0b23eb58d50758b9ade175d33e71b?omit=creationBytecode,runtimeBytecode,sources,compilation,abi,metadata,storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput,stdJsonInput,stdJsonOutput,signatures,proxyResolution,deployment.transactionHash,deployment.blockNumber",
+  "status": 200,
+  "headers": {
+    "x-powered-by": "Express",
+    "access-control-allow-origin": "*",
+    "content-type": "application/json; charset=utf-8",
+    "etag": "W/\"18c-dxxYWCI9XkA4oe+22QBl7G2jOxI\"",
+    "x-cloud-trace-context": "55c43e4010331d6e9afad67f29e08bf5",
+    "date": "Tue, 13 Oct 2026 19:33:46 GMT",
+    "server": "Google Frontend",
+    "Content-Length": "396",
+    "via": "1.1 google",
+    "Cache-Control": "public,max-age=3600",
+    "Alt-Svc": "h3=\":443\"; ma=2592000",
+    "Connection": "close"
+  },
+  "body": {
+    "matchId": "16511691",
+    "creationMatch": "match",
+    "runtimeMatch": "match",
+    "verifiedAt": "2026-02-03T11:04:09Z",
+    "deployment": {
+      "transactionHash": "0xb26c7a8fffbf3e2bb34cfbe08a697bf3042f9e775fcff69c98ed0e7d27736393",
+      "blockNumber": "5098328",
+      "transactionIndex": "37",
+      "deployer": "0x6CaCE0528324A8afC2b157CebA3cDd2a27c4E21f"
+    },
+    "match": "match",
+    "chainId": "1",
+    "address": "0xdAE07103f1e0B23eb58d50758b9ADe175d33e71B"
+  }
+}

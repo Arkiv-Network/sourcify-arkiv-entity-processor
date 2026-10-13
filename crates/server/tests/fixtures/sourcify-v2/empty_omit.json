@@ -1,0 +1,23 @@
+{
+  "name": "empty_omit",
+  "path": "/v2/contract/1/0xdae07103f1e0b23eb58d50758b9ade175d33e71b?omit=",
+  "status": 400,
+  "headers": {
+    "x-powered-by": "Express",
+    "access-control-allow-origin": "*",
+    "content-type": "application/json; charset=utf-8",
+    "etag": "W/\"8c-snS+6oPjwZ9o3BwPZnN1DK2D+Go\"",
+    "x-cloud-trace-context": "a2b906b24db9be29d78c86c8a86f6292",
+    "date": "Tue, 13 Oct 2026 19:33:53 GMT",
+    "server": "Google Frontend",
+    "Content-Length": "140",
+    "via": "1.1 google",
+    "Alt-Svc": "h3=\":443\"; ma=2592000",
+    "Connection": "close"
+  },
+  "body": {
+    "customCode": "invalid_parameter",
+    "message": "Empty value found for query parameter 'omit'",
+    "errorId": "0ee21c33-96cc-4543-8e58-1fd49156000f"
+  }
+}

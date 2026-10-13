@@ -1,0 +1,23 @@
+{
+  "name": "empty_fields",
+  "path": "/v2/contract/1/0xdae07103f1e0b23eb58d50758b9ade175d33e71b?fields=",
+  "status": 400,
+  "headers": {
+    "x-powered-by": "Express",
+    "access-control-allow-origin": "*",
+    "content-type": "application/json; charset=utf-8",
+    "etag": "W/\"8e-xzZD2AZolUWHAU3M3BnovR06VpI\"",
+    "x-cloud-trace-context": "bb4f5977d5465df074979c67956fc7c1",
+    "date": "Tue, 13 Oct 2026 19:33:52 GMT",
+    "server": "Google Frontend",
+    "Content-Length": "142",
+    "via": "1.1 google",
+    "Alt-Svc": "h3=\":443\"; ma=2592000",
+    "Connection": "close"
+  },
+  "body": {
+    "customCode": "invalid_parameter",
+    "message": "Empty value found for query parameter 'fields'",
+    "errorId": "905a7ca9-e54d-4fe9-a5a6-eb3ac605f410"
+  }
+}

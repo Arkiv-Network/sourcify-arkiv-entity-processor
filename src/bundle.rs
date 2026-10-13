@@ -12,11 +12,9 @@
 //! This does not provide filesystem snapshots or detect edits to unaccessed files.
 //! Startup validates contract envelope versions (including spills); full transitive
 //! content validation remains the hydrator's responsibility.
-use crate::{entity_key, hx, sha, Entity, BUDGET};
-use anyhow::{bail, ensure, Context, Result};
-use base64::{engine::general_purpose::STANDARD, Engine};
-use flate2::read::GzDecoder;
-use serde_json::{json, Map, Value};
+use crate::{entity_key, sha, Entity};
+use anyhow::{ensure, Context, Result};
+use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::{
     collections::{HashMap, HashSet},
@@ -421,86 +419,22 @@ impl Bundle {
             "entity bytes changed after bundle indexing"
         );
         let wire: Value = serde_json::from_slice(&line)?;
-        let encoded = STANDARD.decode(string(&wire, "$payload")?)?;
-        let payload = match typed(&wire, "contentencoding", "str:")? {
-            "identity" => encoded,
-            "gzip" => {
-                let mut out = vec![];
-                GzDecoder::new(encoded.as_slice())
-                    .take((BUDGET + 1) as u64)
-                    .read_to_end(&mut out)?;
-                out
-            }
-            encoding => bail!("unsupported content encoding {encoding}"),
-        };
-        ensure!(
-            payload.len() <= BUDGET,
-            "decoded wire payload exceeds limit"
-        );
-        ensure!(
-            typed(&wire, "payloadsha256", "bytes32:")? == hx(sha(&payload)),
-            "payload checksum mismatch"
-        );
-        let mut attributes = Map::new();
-        for (key, value) in wire.as_object().context("entity must be object")? {
-            if key.starts_with('$')
-                || [
-                    "contentencoding",
-                    "originalcontenttype",
-                    "payloadsha256",
-                    "stagingid",
-                    "uploadschema",
-                ]
-                .contains(&key.as_str())
-            {
-                continue;
-            }
-            let (kind, raw) = value
-                .as_str()
-                .and_then(|v| v.split_once(':'))
-                .context("invalid typed attribute")?;
-            let val = match kind {
-                "key" => {
-                    json!(hex::encode(self.ids.get(raw).ok_or_else(|| {
-                        BundleError::MissingDependency(format!("key {raw}"))
-                    })?))
-                }
-                "i32" => json!(raw.parse::<i32>()?),
-                "u64" => {
-                    raw.parse::<u64>()?;
-                    json!(raw)
-                }
-                "bool" => json!(raw.parse::<bool>()?),
-                "str" | "addr" | "bytes32" => json!(raw),
-                _ => bail!("unsupported attribute type {kind}"),
-            };
-            attributes.insert(
-                if key == "projectid" {
-                    "projectId".into()
-                } else {
-                    key.clone()
-                },
-                json!({"type":kind,"value":val}),
-            );
-        }
-        let entity = Entity::new(
-            typed(&wire, "kind", "str:")?,
-            payload,
-            typed(&wire, "originalcontenttype", "str:")?,
-            attributes,
-        );
-        ensure!(
-            hx(entity.id) == typed(&wire, "stagingid", "bytes32:")?,
-            "entity staging identity mismatch"
-        );
-        Ok(entity)
+        crate::wire::decode(&wire, |key| {
+            self.ids
+                .get(key)
+                .copied()
+                .ok_or_else(|| BundleError::MissingDependency(format!("key {key}")).into())
+        })
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::hx;
+    use base64::{engine::general_purpose::STANDARD, Engine};
     use flate2::{write::GzEncoder, Compression};
+    use serde_json::json;
     use std::{
         io::Write,
         sync::{

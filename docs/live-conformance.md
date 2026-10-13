@@ -1,11 +1,11 @@
 # Random contract comparison against Sourcify
 
 This opt-in check compares our real HTTP server with an independent Sourcify API.
-Its processor input comes from the existing local Parquet-derived DuckDB source,
-through `source/records.ts`. Live responses are only expected values; they never
-feed the processor. The tool creates a small bundle, starts the release server on
-localhost, compares responses, and shuts the server down. It does not upload or
-deploy anything, query Ethereum RPC, or read an Arkiv node.
+The running service reads the imported Arkiv node. The independent local prepared
+source is used only to choose reproducible sample addresses; it is never a server
+backend. Live Sourcify responses are expected values only. Start the Arkiv server
+using the [runbook](server.md) before running this tool. The runner does not create,
+start, stop, upload, or deploy a server, and it never queries Ethereum RPC.
 
 ## Run a small spot check
 
@@ -18,6 +18,7 @@ bun install --frozen-lockfile
 cargo build --workspace --release --locked
 python3 tests/live/compare.py \
   --source-dir /path/to/prepared/source \
+  --server-base-url http://127.0.0.1:3000 \
   --output data/live-conformance/run-001 \
   --snapshot-label 'Sourcify Mainnet snapshot 2026-09-30'
 ```
@@ -71,10 +72,10 @@ Each run requires a new output directory and retains:
 | Artifact | Contents |
 | --- | --- |
 | `sample.json` | Seed, selection algorithm, match IDs, addresses, source manifest digest, source database size/mtime, reconstruction status and original Sourcify IDs |
-| `records.ndjson`, `bundle/` | Actual locally reconstructed processor input and the resulting small bundle |
+| `records.ndjson` | Independent source reconstruction retained as sampling evidence |
 | `report.json` | Counts, source and server dataset provenance, capture times, URLs, HTTP status, response hashes, cache usage and differences |
 | `MATCH_ID.live.body`, `MATCH_ID.local.json` | Captured public API bytes and local response bytes |
-| `*.log` | Sampler, processor and server diagnostics |
+| `*.log` | Sampler diagnostics |
 
 All examples keep public response data and generated files under ignored `data/`.
 No credentials are needed or captured. Reusable cache entries also retain each
@@ -99,7 +100,7 @@ contract is a mismatch. Snapshot and live capture dates differ: a new verificati
 or changed API behavior can produce drift. Such differences need diagnosis; the
 runner never silently excuses them.
 
-On 2026-10-12 UTC, seed `782369dc0049a90c` sampled five matches from the 7,823,536-record
+The superseded bundle-server check on 2026-10-12 UTC, seed `782369dc0049a90c` sampled five matches from the 7,823,536-record
 prepared Mainnet source (September 30 snapshot, prepared October 9). All five
 matched for `abi,compilation,sources` and the minimal fields, using five fresh HTTP
 200 responses and no retries. This checks those five responses only. It does not

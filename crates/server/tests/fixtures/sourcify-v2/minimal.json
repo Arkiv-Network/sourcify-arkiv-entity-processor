@@ -1,0 +1,28 @@
+{
+  "name": "minimal",
+  "path": "/v2/contract/1/0xdae07103f1e0b23eb58d50758b9ade175d33e71b",
+  "status": 200,
+  "headers": {
+    "x-powered-by": "Express",
+    "access-control-allow-origin": "*",
+    "content-type": "application/json; charset=utf-8",
+    "etag": "W/\"be-CLTR80c38wqKSm4Ks78FjaDcNGo\"",
+    "x-cloud-trace-context": "5e4f3ee3e680509d3eb14d097e8f842e",
+    "date": "Tue, 13 Oct 2026 19:33:43 GMT",
+    "server": "Google Frontend",
+    "Content-Length": "190",
+    "via": "1.1 google",
+    "Cache-Control": "public,max-age=3600",
+    "Alt-Svc": "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000",
+    "Connection": "close"
+  },
+  "body": {
+    "matchId": "16511691",
+    "creationMatch": "match",
+    "runtimeMatch": "match",
+    "verifiedAt": "2026-02-03T11:04:09Z",
+    "match": "match",
+    "chainId": "1",
+    "address": "0xdAE07103f1e0B23eb58d50758b9ADe175d33e71B"
+  }
+}
