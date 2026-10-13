@@ -34,6 +34,23 @@ pub(crate) fn project(mut record: Value, selectors: &[String]) -> Result<Value, 
     let stored = record.as_object_mut().ok_or_else(ApiError::corrupt)?;
     if selectors
         .iter()
+        .any(|s| s == "proxyResolution" || s.starts_with("proxyResolution."))
+    {
+        // Never serve a frozen imported proxy result. The two raw selectors
+        // expose stored bytecode; a top-level selection is resolved by reader.
+        let mut proxy = Map::new();
+        for (field, container) in [
+            ("onchainCreationBytecode", "creationBytecode"),
+            ("onchainRuntimeBytecode", "runtimeBytecode"),
+        ] {
+            if let Some(value) = stored.get(container).and_then(|v| v.get("onchainBytecode")) {
+                proxy.insert(field.into(), value.clone());
+            }
+        }
+        stored.insert("proxyResolution".into(), Value::Object(proxy));
+    }
+    if selectors
+        .iter()
         .any(|s| s == "signatures" || s.starts_with("signatures."))
     {
         let signatures = derive_signatures(stored.get("abi").ok_or_else(ApiError::corrupt)?)?;
@@ -99,8 +116,8 @@ pub(crate) fn project(mut record: Value, selectors: &[String]) -> Result<Value, 
     Ok(Value::Object(projected))
 }
 
-/// Parquet metadata text can contain formatting whitespace absent from the
-/// upstream API's embedded metadata string. This is an HTTP serving policy;
+/// Parquet metadata text can contain formatting whitespace and escaped Unicode
+/// absent from the upstream API's embedded metadata string. This is serving policy;
 /// hydration continues to reconstruct the original stored text exactly.
 fn compact_output_metadata(output: &mut Value) -> Result<(), ApiError> {
     let Some(files) = output.get_mut("contracts").and_then(Value::as_object_mut) else {
@@ -111,31 +128,77 @@ fn compact_output_metadata(output: &mut Value) -> Result<(), ApiError> {
             let Some(Value::String(text)) = contract.get_mut("metadata") else {
                 continue;
             };
-            // Validate before editing. Do not parse/reserialize: that can change
-            // number spellings, escape sequences, key ordering or duplicate keys.
-            serde_json::from_str::<serde::de::IgnoredAny>(text).map_err(|_| ApiError::corrupt())?;
-            let mut quoted = false;
-            let mut escaped = false;
-            text.retain(|ch| {
-                if quoted {
-                    if escaped {
-                        escaped = false;
-                    } else if ch == '\\' {
-                        escaped = true;
-                    } else if ch == '"' {
-                        quoted = false;
-                    }
-                    true
-                } else if ch == '"' {
-                    quoted = true;
-                    true
-                } else {
-                    !matches!(ch, ' ' | '\t' | '\r' | '\n')
-                }
-            });
+            *text = format_metadata_text(text)?;
         }
     }
     Ok(())
+}
+
+fn format_metadata_text(text: &str) -> Result<String, ApiError> {
+    // Do not parse/reserialize the whole object: PostgreSQL stores JSON text,
+    // so number spellings, key ordering and duplicate keys may be significant.
+    serde_json::from_str::<serde::de::IgnoredAny>(text).map_err(|_| ApiError::corrupt())?;
+    let mut output = String::with_capacity(text.len());
+    let mut quoted = false;
+    let mut position = 0;
+    while position < text.len() {
+        let ch = text[position..]
+            .chars()
+            .next()
+            .ok_or_else(ApiError::corrupt)?;
+        if quoted && ch == '\\' {
+            if let Some((decoded, width)) = non_ascii_escape(&text.as_bytes()[position..]) {
+                output.push(decoded);
+                position += width;
+                continue;
+            }
+            // Consume both characters so a literal \\u2019 is never decoded,
+            // and an escaped quote cannot terminate the surrounding string.
+            let escaped = text[position + 1..]
+                .chars()
+                .next()
+                .ok_or_else(ApiError::corrupt)?;
+            output.push(ch);
+            output.push(escaped);
+            position += 1 + escaped.len_utf8();
+            continue;
+        }
+        if ch == '"' {
+            quoted = !quoted;
+        }
+        if quoted || !matches!(ch, ' ' | '\t' | '\r' | '\n') {
+            output.push(ch);
+        }
+        position += ch.len_utf8();
+    }
+    Ok(output)
+}
+
+fn non_ascii_escape(bytes: &[u8]) -> Option<(char, usize)> {
+    fn unit(bytes: &[u8]) -> Option<u32> {
+        if !bytes.starts_with(b"\\u") {
+            return None;
+        }
+        bytes.get(2..6)?.iter().try_fold(0, |value, byte| {
+            Some(value * 16 + (*byte as char).to_digit(16)?)
+        })
+    }
+    let high = unit(bytes)?;
+    if high < 0x80 {
+        return None; // Preserve ASCII/control escapes; this fix concerns export Unicode escaping.
+    }
+    if (0xd800..=0xdbff).contains(&high) {
+        let low = unit(bytes.get(6..)?)?;
+        if !(0xdc00..=0xdfff).contains(&low) {
+            return None;
+        }
+        return Some((
+            char::from_u32(0x10000 + ((high - 0xd800) << 10) + low - 0xdc00)?,
+            12,
+        ));
+    }
+    // An isolated surrogate has no UTF-8 scalar representation: retain its escape.
+    Some((char::from_u32(high)?, 6))
 }
 
 /// Equivalent to Sourcify's extractSignaturesFromAbi for compiler JSON ABI:
@@ -172,8 +235,13 @@ fn derive_signatures(abi: &Value) -> Result<Value, ApiError> {
         }
         groups[group].insert(format!("{name}({})", inputs.join(",")));
     }
+    let collator = crate::collation::SignatureCollator::new().map_err(|error| {
+        tracing::error!(%error, "signature collation unavailable");
+        ApiError::unavailable()
+    })?;
     let mut result = Map::new();
     for (kind, signatures) in ["function", "event", "error"].into_iter().zip(groups) {
+        let signatures = collator.sort(signatures).map_err(|_| ApiError::corrupt())?;
         let signatures = signatures.into_iter().map(|signature| {
             let hash = format!("0x{}", hex::encode(Keccak256::digest(signature.as_bytes())));
             json!({"signature": signature, "signatureHash4": &hash[..10], "signatureHash32": hash})

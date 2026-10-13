@@ -28,7 +28,7 @@ API_BASE = "https://sourcify.dev/server"
 OPTIONAL_FIELDS = {
     "abi", "compilation", "deployment", "creationBytecode", "runtimeBytecode", "sources",
     "metadata", "storageLayout", "transientStorageLayout", "userdoc", "devdoc", "sourceIds",
-    "stdJsonInput", "stdJsonOutput", "additionalInput", "signatures",
+    "stdJsonInput", "stdJsonOutput", "additionalInput", "signatures", "proxyResolution",
 }
 
 
@@ -216,7 +216,7 @@ def parse_options(argv=None):
     parser.add_argument("--api-base-url", default=API_BASE, help="Independent Sourcify server, optionally a self-hosted instance")
     parser.add_argument("--seed", default=None, help="Reproducible sampling seed; default generates and records one")
     parser.add_argument("--count", type=int, default=5, help="Small random spot-check sample, 1..10")
-    parser.add_argument("--fields", default="abi,compilation,sources", help="At most 3 supported optional fields, or minimal; never all/proxy")
+    parser.add_argument("--fields", default="abi,compilation,sources", help="At most 3 supported optional fields, or minimal; never all/nested")
     parser.add_argument("--snapshot-label", default="Local prepared snapshot; see source provenance for capture dates")
     parser.add_argument("--delay-seconds", type=float, default=1.0)
     parser.add_argument("--server-base-url", default="http://127.0.0.1:3000", help="Already running Arkiv-backed server to validate; never starts a fixture server")
@@ -233,7 +233,7 @@ def parse_options(argv=None):
     if not 1 <= options.count <= 10:
         parser.error("count must be 1..10; this is a spot check, not an API crawler")
     if len(fields) > 3 or any(field not in OPTIONAL_FIELDS for field in fields) or len(set(fields)) != len(fields):
-        parser.error("fields must be at most 3 distinct supported optional fields; all/proxy/nested selectors are excluded")
+        parser.error("fields must be at most 3 distinct supported optional fields; all/nested selectors are excluded")
     if not 1 <= options.delay_seconds <= 60:
         parser.error("delay must be 1..60 seconds")
     if options.seed is None:

@@ -254,7 +254,7 @@ fn uri(fields: &str) -> String {
 async fn real_http_rpc_hydrates_selected_records_with_one_pinned_view() {
     let mock = Mock::new().await;
     let app = mock.application(Limits::default()).await;
-    for query in ["", "?fields=abi,compilation", "?fields=all"] {
+    for query in ["", "?fields=abi,compilation", "?omit=proxyResolution"] {
         let (status, actual) = get(app.router(), &uri(query)).await;
         assert_eq!(status, StatusCode::OK, "{actual}");
         let selection = arkiv_sourcify_server::fields::parse(query.strip_prefix('?')).unwrap();
@@ -284,7 +284,7 @@ async fn corrupted_missing_ambiguous_and_changed_views_never_succeed_or_become_a
         "root",
     ] {
         mock.fault(fault);
-        let (status, body) = get(app.router(), &uri("?fields=all")).await;
+        let (status, body) = get(app.router(), &uri("?omit=proxyResolution")).await;
         assert!(status.is_server_error(), "{fault}: {status} {body}");
         assert!(body.get("address").is_none(), "partial body for {fault}");
     }
@@ -312,7 +312,7 @@ async fn cancellation_drops_inflight_rpc_and_finalization_keeps_request_admissio
     for fault in ["slow-query", "slow-dependency", "slow-finish"] {
         mock.fault(fault);
         let router = app.router();
-        let task = tokio::spawn(async move { get(router, &uri("?fields=all")).await });
+        let task = tokio::spawn(async move { get(router, &uri("?omit=proxyResolution")).await });
         mock.state.started.notified().await;
         assert_eq!(
             get(app.router(), &uri("")).await.0,
@@ -355,7 +355,7 @@ async fn rpc_work_and_body_budgets_fail_closed_and_network_is_checked_before_sta
         Limits::default(),
     )
     .unwrap();
-    assert!(get(app.router(), &uri("?fields=all"))
+    assert!(get(app.router(), &uri("?omit=proxyResolution"))
         .await
         .0
         .is_server_error());
@@ -409,7 +409,7 @@ async fn global_rpc_gate_bounds_requests_across_concurrent_sessions() {
     mock.fault("slow-rpc");
     let calls = (0..6).map(|_| {
         let router = app.router();
-        async move { get(router, &uri("?fields=all")).await }
+        async move { get(router, &uri("?omit=proxyResolution")).await }
     });
     for (status, body) in futures_util::future::join_all(calls).await {
         assert_eq!(status, StatusCode::OK, "{body}");

@@ -2,9 +2,9 @@
 
 This service implements `GET /v2/contract/1/{address}` against the configured
 Arkiv dataset. It is a Mainnet read service, not a complete Sourcify server.
-All-chains lookup, listing/pagination, verification writes, other chains and live
-proxy resolution are outside its contract. Requests never fall back to a local
-bundle, Parquet files, the Sourcify API or Ethereum RPC.
+All-chains lookup, listing/pagination, verification writes and other chains are
+outside its contract. Requests never fall back to a local bundle, Parquet files
+or the Sourcify API. Live proxy resolution uses a configured Mainnet Ethereum RPC.
 
 ## Pinned reference and evidence
 
@@ -39,22 +39,22 @@ compatibility.
 ## Field contract
 
 Minimal responses contain seven fields: `match`, `creationMatch`, `runtimeMatch`,
-`chainId`, `address`, `verifiedAt`, `matchId`. The following sixteen fields are
-optional, giving the agreed **23 supported fields**:
+`chainId`, `address`, `verifiedAt`, `matchId`. The following seventeen fields are
+optional, giving **24 supported fields**:
 
 `abi`, `compilation`, `deployment`, `creationBytecode`, `runtimeBytecode`,
 `sources`, `metadata`, `storageLayout`, `transientStorageLayout`, `userdoc`,
 `devdoc`, `sourceIds`, `stdJsonInput`, `stdJsonOutput`, `additionalInput`,
-`signatures`.
+`signatures`, `proxyResolution`.
 
 | Request | Behavior |
 | --- | --- |
 | No query | Seven minimal fields |
 | `fields=abi,compilation` | Minimal fields plus requested values |
-| `fields=all` | All 23 supported fields; excludes `proxyResolution` |
+| `fields=all` | All 24 fields, including live `proxyResolution` |
 | `omit=abi,sources` | Supported fields except those optional top-level fields |
-| `omit=proxyResolution` | All supported fields; useful for reference comparisons |
-| `fields=proxyResolution` | 400 `invalid_parameter`, explicitly deferred |
+| `omit=proxyResolution` | The 23 stored/derived fields, with no live proxy work |
+| `fields=proxyResolution` | Minimal fields plus a live result or nested proxy error |
 | `fields` and `omit` together | 400 `invalid_parameter` |
 | Unknown, empty or repeated query parameters | 400 `invalid_parameter` |
 | Repeated selectors in one list | Deduplicated |
@@ -70,6 +70,7 @@ One level of dotted selection is accepted for these groups:
 | `deployment` | `transactionHash`, `blockNumber`, `transactionIndex`, `deployer` |
 | `compilation` | `language`, `compiler`, `compilerVersion`, `compilerSettings`, `name`, `fullyQualifiedName` |
 | `signatures` | `function`, `event`, `error` |
+| `proxyResolution` | `onchainRuntimeBytecode`, `onchainCreationBytecode` (raw stored values) |
 
 Dotted `omit` selectors are validated but **do not remove subfields**. This
 surprising behavior is present in the pinned production source and confirmed by
@@ -85,11 +86,19 @@ nulls, empty arrays/objects and scalar JSON types remain distinct. For non-Solid
 compilations, existing metadata is returned as null, matching the reference.
 
 When `stdJsonOutput` is selected, the server removes insignificant JSON whitespace
-only from string values at `stdJsonOutput.contracts.*.*.metadata`. It validates the
-embedded JSON, then filters whitespace outside quoted strings without parsing and
-reserializing values. Quoted content, escape sequences, number spellings, key order,
-nulls and absence remain intact; other strings and offline reconstruction are
-unchanged. Invalid embedded JSON fails as corrupt data only when output is selected.
+and decodes non-ASCII Unicode escapes only in string values at
+`stdJsonOutput.contracts.*.*.metadata`. It validates the embedded JSON, then scans
+its text without parsing and reserializing the object. Valid UTF-16 surrogate
+pairs become Unicode scalars; isolated surrogate escapes remain unchanged.
+ASCII/control escapes, literal backslashes (including literal `\\u2019` text),
+number spellings, duplicate keys, key order, nulls and absence remain intact.
+Other strings and offline reconstruction are unchanged. Invalid embedded JSON
+fails as corrupt data only when output is selected.
+
+Five independent response pairs under
+`crates/server/tests/fixtures/metadata-unicode/` cover exported escaped apostrophes
+and Persian text versus the reference's literal UTF-8. Tests compare the embedded
+metadata as exact strings; they do not parse away or normalize this difference.
 
 The independent SafeProxy response pair under
 `crates/server/tests/fixtures/metadata-whitespace/` proves exact string equality
@@ -100,6 +109,56 @@ representation is a serving policy, not a claim that every historical upstream
 text can be recovered: an export may already have changed formatting, escapes or
 key order, and original raw text is unavailable to this server.
 
+## Live proxy resolution
+
+The [pinned Sourcify proxy helper](https://github.com/argotorg/sourcify/blob/6048af7dfb36a3f5b7b2b30ede5daca3e701f7b0/services/server/src/server/services/utils/proxy-contract-util.ts)
+uses **@shazow/whatsabi 0.29.0**. The Rust port preserves its bytecode heuristics,
+resolver ordering, factory suppression and supported output types: `EIP1167Proxy`,
+`EIP1967Proxy`, `GnosisSafeProxy`, `DiamondProxy`, `PROXIABLEProxy`,
+`ZeppelinOSProxy`, `MaticProxy`, `SequenceWalletProxy` and `LivepeerManagerProxy`.
+Detection examines stored creation bytecode when nonempty, otherwise stored
+runtime bytecode. It does not fetch current Ethereum code. The fixed-address
+heuristic is returned only for the upstream exact EIP-1167 prefix. These are
+versioned heuristics, not proof that every possible proxy will be recognized.
+
+Only selecting the exact top-level `proxyResolution` triggers live resolution.
+`fields=all` and `omit` requests retaining this field also trigger it. Raw nested
+selectors return the corresponding stored on-chain bytecode without Ethereum
+calls; `proxyResolution.isProxy` and other result-property selectors are invalid.
+Selecting both the top level and a raw subfield returns the live object regardless
+of selector order. Dotted omit retains the same upstream quirk as other groups,
+so it does not suppress live resolution. Imported historical proxy results are
+never used as a substitute for live resolution.
+
+The successful shape is `{isProxy, proxyType, implementations}`. Non-proxies use
+`false`, `null`, and `[]`. Implementation addresses are checksummed; each name is
+read from `compilation.name` in the same pinned Arkiv view as the original contract.
+A missing verified implementation or empty name omits the `name` property. Facet
+order, duplicates and zero addresses are preserved. Names therefore reflect the
+local imported dataset, which can differ from a newer Sourcify database.
+
+Without Ethereum configuration, or when detection/name lookup fails, the selected
+field is `{proxyResolutionError: {customCode: "proxy_resolution_error", message:
+"Error while running proxy detection and implementation resolution", errorId}}`,
+with a fresh UUIDv4 and HTTP 200. A request-wide deadline still returns 504.
+The upstream Diamond resolver catches ordinary remote/ABI failures and falls
+through to other candidates, potentially yielding a non-proxy result. This quirk
+is preserved. Adapter integrity failures (wrong chain, malformed RPC envelopes or
+hex, changed views), local timeouts and resource limits instead fail resolution,
+even when caught by that fallback. Beacon selector fallback is restricted to
+execution reverts. RPC URLs and provider details never enter response errors.
+
+Ethereum storage/call reads use one pinned EIP-1898 block hash with canonicality
+required and a final block-hash check. The [runbook](server.md) documents the
+separate global RPC gate, request cancellation and bounded response/work limits.
+
+`crates/server/tests/fixtures/proxy/references.json` retains nine independent
+responses captured on 2026-10-13 from the self-hosted official Sourcify service at
+`https://sourcify-mirror.arkiv-global.net`: six detection examples, nested selectors
+and a full SafeProxy response. These are test evidence only. The fixture README
+pins the npm distribution integrity and independent 67-vector detector generator;
+scripted resolvers and actual HTTP RPC mocks cover fallbacks and failure paths.
+
 ## Signatures are a serving policy
 
 Stored/imported signatures are unchanged. Responses derive function, event and
@@ -108,7 +167,18 @@ algorithm: canonical parameter types, tuple/array recursion, Keccak-256, full
 32-byte hashes and first-four-byte selectors. Invalid fragments such as unresolved
 library types are skipped. Constructors, fallback and receive entries are ignored;
 anonymous events remain events. Duplicate signatures are collapsed per kind and
-arrays are sorted by signature, matching the reference SQL's explicit ordering.
+arrays use the reference PostgreSQL database's `en_US.UTF-8` glibc collation
+for its `ORDER BY signature` (with deterministic byte comparison for ties).
+This differs from byte sorting: case and punctuation have secondary weights,
+so `burnFrom(address,uint256)` precedes `burn(uint256)`. The locale is selected
+explicitly, independent of process `LANG` or `LC_COLLATE`; it is never set globally.
+The server requires GNU libc and this locale and verifies availability at startup.
+The Docker image generates it; native installations must install `locales` and run
+`localedef -i en_US -f UTF-8 en_US.UTF-8`. Different database locales may produce
+different ordering; this profile targets the user-owned mirror. The captured
+`signature-collation.json` regression covers 44 contracts from that mirror on
+2026-10-13, including 41 retained ABIs compared through response projection,
+and makes changes in the installed collation data observable.
 A null ABI yields three empty groups; a missing or malformed ABI needed for a
 signature response fails rather than silently using stored signature tables.
 

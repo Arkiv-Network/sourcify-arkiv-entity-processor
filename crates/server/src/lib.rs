@@ -2,9 +2,12 @@
 pub mod api;
 pub mod backend;
 pub mod backends;
+mod collation;
 mod compression;
+pub mod ethereum;
 pub mod fields;
 mod projection;
+pub mod proxy;
 mod reader;
 
 use axum::{
@@ -56,6 +59,7 @@ struct AppState {
     slots: Arc<Semaphore>,
     ready: AtomicBool,
     metrics: Arc<Metrics>,
+    ethereum: Option<ethereum::EthereumRpc>,
 }
 #[derive(Clone)]
 pub struct Application {
@@ -63,6 +67,13 @@ pub struct Application {
 }
 impl Application {
     pub fn new(backend: Arc<dyn Backend>, limits: Limits) -> anyhow::Result<Self> {
+        Self::with_ethereum(backend, limits, None)
+    }
+    pub fn with_ethereum(
+        backend: Arc<dyn Backend>,
+        limits: Limits,
+        ethereum: Option<ethereum::EthereumRpc>,
+    ) -> anyhow::Result<Self> {
         anyhow::ensure!(
             limits.max_concurrent_requests > 0
                 && limits.max_concurrent_requests <= Semaphore::MAX_PERMITS
@@ -73,6 +84,7 @@ impl Application {
                     .is_some(),
             "server limits must be positive and representable"
         );
+        collation::SignatureCollator::new()?;
         Ok(Self {
             state: Arc::new(AppState {
                 backend,
@@ -80,6 +92,7 @@ impl Application {
                 limits,
                 ready: AtomicBool::new(true),
                 metrics: Arc::new(Metrics::default()),
+                ethereum,
             }),
         })
     }
@@ -200,6 +213,7 @@ async fn contract_inner(
             &state.limits,
             state.metrics.clone(),
             permit,
+            state.ethereum.as_ref(),
         ),
     )
     .await
