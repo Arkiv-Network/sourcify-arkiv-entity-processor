@@ -39,6 +39,7 @@ struct Hydration {
     max_reads: usize,
     metrics: Arc<Metrics>,
     permit: Arc<OwnedSemaphorePermit>,
+    trace: Option<crate::trace::RpcTrace>,
 }
 impl Hydration {
     fn check(&self) -> Result<()> {
@@ -49,6 +50,7 @@ impl Hydration {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn read(
     backend: &dyn Backend,
     address: &str,
@@ -57,6 +59,7 @@ pub(crate) async fn read(
     metrics: Arc<Metrics>,
     permit: OwnedSemaphorePermit,
     ethereum: Option<&EthereumRpc>,
+    trace: Option<crate::trace::RpcTrace>,
 ) -> Result<Vec<u8>> {
     let cancellation = CancelOnDrop(Arc::new(AtomicBool::new(false)));
     let context = Hydration {
@@ -66,8 +69,9 @@ pub(crate) async fn read(
         max_reads: limits.max_dependency_reads,
         metrics: metrics.clone(),
         permit: Arc::new(permit),
+        trace: trace.clone(),
     };
-    let mut session = backend.begin_read().await?;
+    let mut session = backend.begin_read_with_trace(trace.clone()).await?;
     metrics.lookups.fetch_add(1, Ordering::Relaxed);
     let Some(contract) = session.find_contract("1", address).await? else {
         session.finish().await?;
@@ -94,7 +98,13 @@ pub(crate) async fn read(
     let bytes = tokio::task::spawn_blocking(move || -> Result<Vec<u8>> {
         let _permit = &context.permit;
         context.check()?;
-        let bytes = serde_json::to_vec(&record)?;
+        let bytes = match trace {
+            Some(trace) => serde_json::to_vec(&crate::trace::DebugResponse {
+                response: record,
+                trace: trace.snapshot(),
+            })?,
+            None => serde_json::to_vec(&record)?,
+        };
         context.check()?;
         Ok(bytes)
     })
@@ -180,7 +190,7 @@ async fn resolve_proxy_and_names(
         .filter(|s| !s.is_empty())
         .or_else(|| record["proxyResolution"]["onchainRuntimeBytecode"].as_str())
         .context("proxy bytecode unavailable")?;
-    let mut view = rpc.view();
+    let mut view = rpc.view_with_trace(context.trace.clone());
     let result = crate::proxy::resolve(&mut view, address, code).await?;
     anyhow::ensure!(
         result.implementations.len() <= rpc.max_implementations(),

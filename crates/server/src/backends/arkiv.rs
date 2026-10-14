@@ -146,6 +146,7 @@ impl ArkivBackend {
 }
 #[derive(Default)]
 struct Budget {
+    trace: Option<crate::trace::RpcTrace>,
     requests: AtomicU64,
     bytes: AtomicU64,
 }
@@ -162,63 +163,75 @@ impl Inner {
             .context("RPC concurrency gate closed")?;
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         self.counters.requests.fetch_add(1, Ordering::Relaxed);
-        let response = self
-            .client
-            .post(&self.config.rpc_url)
-            .header("Accept-Encoding", "identity")
-            .header("Accept", "application/json")
-            .json(&json!({"jsonrpc":"2.0","id":id,"method":method,"params":params}))
-            .send()
-            .await
-            .map_err(|_| BackendError::Unavailable(format!("{method} transport failed")))?;
-        ensure!(
-            response.status().is_success(),
-            BackendError::Unavailable(format!("{method}: HTTP {}", response.status()))
-        );
-        ensure!(
-            response
-                .content_length()
-                .is_none_or(|n| n <= self.config.max_rpc_response_bytes as u64),
-            BackendError::WorkLimit("RPC response exceeds configured size".into())
-        );
-        let mut body = Vec::new();
-        let mut chunks = response.bytes_stream();
-        while let Some(chunk) = chunks.next().await {
-            let chunk =
-                chunk.map_err(|_| BackendError::Unavailable("RPC response body failed".into()))?;
+        let call = budget
+            .trace
+            .as_ref()
+            .map(|trace| trace.start("arkiv", method, &params));
+        let result = async {
+            let response = self
+                .client
+                .post(&self.config.rpc_url)
+                .header("Accept-Encoding", "identity")
+                .header("Accept", "application/json")
+                .json(&json!({"jsonrpc":"2.0","id":id,"method":method,"params":params}))
+                .send()
+                .await
+                .map_err(|_| BackendError::Unavailable(format!("{method} transport failed")))?;
             ensure!(
-                chunk.len()
-                    <= self
-                        .config
-                        .max_rpc_response_bytes
-                        .saturating_sub(body.len()),
+                response.status().is_success(),
+                BackendError::Unavailable(format!("{method}: HTTP {}", response.status()))
+            );
+            ensure!(
+                response
+                    .content_length()
+                    .is_none_or(|n| n <= self.config.max_rpc_response_bytes as u64),
                 BackendError::WorkLimit("RPC response exceeds configured size".into())
             );
-            let previous = budget
-                .bytes
-                .fetch_add(chunk.len() as u64, Ordering::Relaxed);
-            self.counters
-                .bytes
-                .fetch_add(chunk.len() as u64, Ordering::Relaxed);
+            let mut body = Vec::new();
+            let mut chunks = response.bytes_stream();
+            while let Some(chunk) = chunks.next().await {
+                let chunk = chunk
+                    .map_err(|_| BackendError::Unavailable("RPC response body failed".into()))?;
+                ensure!(
+                    chunk.len()
+                        <= self
+                            .config
+                            .max_rpc_response_bytes
+                            .saturating_sub(body.len()),
+                    BackendError::WorkLimit("RPC response exceeds configured size".into())
+                );
+                let previous = budget
+                    .bytes
+                    .fetch_add(chunk.len() as u64, Ordering::Relaxed);
+                self.counters
+                    .bytes
+                    .fetch_add(chunk.len() as u64, Ordering::Relaxed);
+                ensure!(
+                    previous.saturating_add(chunk.len() as u64)
+                        <= self.config.max_read_bytes as u64,
+                    BackendError::WorkLimit("RPC cumulative byte limit exceeded".into())
+                );
+                body.extend_from_slice(&chunk);
+            }
+            let envelope: Value = serde_json::from_slice(&body).context("invalid RPC JSON")?;
             ensure!(
-                previous.saturating_add(chunk.len() as u64) <= self.config.max_read_bytes as u64,
-                BackendError::WorkLimit("RPC cumulative byte limit exceeded".into())
+                envelope.is_object()
+                    && envelope["jsonrpc"] == "2.0"
+                    && envelope["id"] == id
+                    && (envelope.get("result").is_some() != envelope.get("error").is_some()),
+                BackendError::Corrupt("invalid JSON-RPC envelope or response ID".into())
             );
-            body.extend_from_slice(&chunk);
+            ensure!(
+                envelope.get("error").is_none(),
+                BackendError::Unavailable(format!("{method} returned RPC error"))
+            );
+            Ok(envelope["result"].clone())
         }
-        let envelope: Value = serde_json::from_slice(&body).context("invalid RPC JSON")?;
-        ensure!(
-            envelope.is_object()
-                && envelope["jsonrpc"] == "2.0"
-                && envelope["id"] == id
-                && (envelope.get("result").is_some() != envelope.get("error").is_some()),
-            BackendError::Corrupt("invalid JSON-RPC envelope or response ID".into())
-        );
-        ensure!(
-            envelope.get("error").is_none(),
-            BackendError::Unavailable(format!("{method} returned RPC error"))
-        );
-        Ok(envelope["result"].clone())
+        .await;
+        if let Some(call) = call {
+            call.finish(result.is_ok());
+        }
+        result
     }
     async fn read_block(&self, budget: &Budget, selector: &str) -> Result<Block> {
         let result = self
@@ -249,8 +262,17 @@ struct Session {
 }
 impl Backend for ArkivBackend {
     fn begin_read(&self) -> ReadFuture<'_, Box<dyn ReadSession>> {
-        Box::pin(async {
-            let budget = Budget::default();
+        self.begin_read_with_trace(None)
+    }
+    fn begin_read_with_trace(
+        &self,
+        trace: Option<crate::trace::RpcTrace>,
+    ) -> ReadFuture<'_, Box<dyn ReadSession>> {
+        Box::pin(async move {
+            let budget = Budget {
+                trace,
+                ..Budget::default()
+            };
             let chain = self.0.rpc(&budget, "eth_chainId", json!([])).await?;
             ensure!(
                 quantity(&chain)? == self.0.config.arkiv_chain_id,

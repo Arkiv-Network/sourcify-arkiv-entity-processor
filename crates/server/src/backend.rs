@@ -24,6 +24,14 @@ pub trait ReadSession: Send {
 
 pub trait Backend: Send + Sync + 'static {
     fn begin_read(&self) -> ReadFuture<'_, Box<dyn ReadSession>>;
+    /// Optional request-owned transport trace. Backends without RPC transport
+    /// retain their ordinary behavior and produce no synthetic calls.
+    fn begin_read_with_trace(
+        &self,
+        _trace: Option<crate::trace::RpcTrace>,
+    ) -> ReadFuture<'_, Box<dyn ReadSession>> {
+        self.begin_read()
+    }
     fn metadata(&self) -> Value;
     fn check_ready(&self) -> ReadFuture<'_, ()> {
         Box::pin(async { self.begin_read().await.map(|_| ()) })

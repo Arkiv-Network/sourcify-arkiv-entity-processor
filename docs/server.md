@@ -7,7 +7,8 @@ the HTTP process never opens them and never falls back to Sourcify. Optional
 Ethereum RPC reads supply live proxy resolution; all stored fields and
 implementation names still come from Arkiv.
 
-The supported product scope is `GET /v2/contract/1/{address}`. The detailed
+The supported product scope is `GET /v2/contract/1/{address}` and its
+`GET /v2/debug/contract/1/{address}` diagnostic counterpart. The detailed
 [field/error compatibility matrix](sourcify-http-compatibility.md) distinguishes
 Sourcify behavior from deliberate scope exclusions. JSON value equality is the
 comparison contract; serialization order is not original Sourcify byte identity.
@@ -61,6 +62,70 @@ Gzip and zstd content negotiation retain `Vary: Accept-Encoding`; identity is al
 supported. Zstd decoding requires client support. Every response is completely
 hydrated and serialized before a successful HTTP body starts. `Cache-Control:
 no-store` avoids stale response reuse after dataset changes.
+
+## Debug RPC trace
+
+`GET /v2/debug/contract/1/{address}` accepts exactly the same `fields` and `omit`
+selectors as the normal route, including `?fields=all`:
+
+```sh
+curl --compressed 'http://127.0.0.1:3001/v2/debug/contract/1/0x000000000034065b3a94C2118CFe5B4C0067B615?fields=all'
+```
+
+The debug route runs one contract read and wraps its actual result:
+
+```json
+{
+  "response": {"match": "exact_match", "chainId": "1", "address": "..."},
+  "trace": {
+    "rpcCalls": [
+      {"index": 0, "network": "arkiv", "method": "eth_chainId", "params": [], "durationMs": 12, "outcome": "success"}
+    ],
+    "truncated": false,
+    "omittedRpcCalls": 0
+  }
+}
+```
+
+This is an abbreviated example. `response` contains the complete normal Sourcify
+body for that same execution and field selection. It is not fetched again or
+reconstructed from a proposed query plan. Both routes share validation, HTTP
+statuses, CORS, gzip/zstd negotiation, admission, work budgets and cancellation.
+The ordinary route does not create a trace recorder.
+
+Each `rpcCalls` entry represents an HTTP JSON-RPC dispatch from this request,
+including network/genesis checks, actual scoped Arkiv queries, direct entity and
+blob reads, Ethereum proxy reads, implementation-name lookups and final pinned
+block checks when executed. `network` is `arkiv` or `ethereum`; the method alone
+cannot identify the network because Arkiv also uses `eth_*` methods. `params`
+contains the exact submitted parameters. No endpoint URL, authentication header,
+RPC response body or upstream error text is included.
+
+`index` is zero-based dispatch order across both networks; parallel calls may
+finish in a different order. `durationMs` measures transport plus response-body
+reading/JSON-RPC validation, rounded down to milliseconds, excluding time waiting
+for the RPC concurrency gate. `outcome` is `success`, `error`, or `cancelled`.
+It describes the transport and JSON-RPC envelope, so later data-integrity or
+block-consistency validation may still fail after a successful RPC. A failed
+transport attempt is recorded even if the remote server never receives it.
+Calls rejected before dispatch by admission or work budgets are not recorded.
+Cancellation at the overall request deadline records active calls as cancelled.
+
+Trace retention is bounded independently of the normal read budgets: at most
+4,096 calls and a conservative 2 MiB encoded-entry budget per debug request.
+Once either bound is reached, the complete retained prefix remains in order,
+`truncated` becomes true, and `omittedRpcCalls` counts every later dispatch. The
+contract read continues under its existing limits; a truncated trace never
+claims to be complete. Recorded count plus omitted count gives total dispatches.
+
+Handler errors, including 400 validation, 404 absence, 503 overload/backend
+failure and 504 deadline, keep their normal HTTP status and appear under
+`response` alongside whatever trace was collected. Invalid selectors and rejected
+admission have empty traces. Random error IDs retain their normal per-execution
+semantics. Selected proxy errors remain nested in the HTTP 200 response.
+Routing/method errors and content-negotiation failures happen before the handler
+and retain their existing unwrapped responses (HEAD has no body; unacceptable or
+malformed content codings have an empty 406 or 400 response).
 
 ## Read architecture and limits
 

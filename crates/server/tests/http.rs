@@ -217,6 +217,56 @@ fn decode_body(encoding: Option<&str>, bytes: &[u8]) -> Vec<u8> {
         Some(other) => panic!("unexpected encoding {other}"),
     }
 }
+
+#[tokio::test]
+async fn debug_envelope_uses_existing_compression_cors_errors_and_negotiation() {
+    let router = app(Memory::new(&captured(), Fault::None)).router();
+    for encoding in [None, Some("gzip"), Some("zstd")] {
+        for (query, expected_status) in [
+            ("?fields=abi,compilation", StatusCode::OK),
+            ("?fields=unknown", StatusCode::BAD_REQUEST),
+        ] {
+            let path = format!("/v2/debug/contract/1/{ADDRESS}{query}");
+            let (status, headers, bytes) = raw_request(
+                router.clone(),
+                &path,
+                "GET",
+                &encoding.into_iter().collect::<Vec<_>>(),
+            )
+            .await;
+            assert_eq!(status, expected_status);
+            assert_eq!(headers[header::ACCESS_CONTROL_ALLOW_ORIGIN], "*");
+            assert_eq!(headers[header::CACHE_CONTROL], "no-store");
+            assert_encoding(&headers, encoding, &bytes);
+            let debug: Value = serde_json::from_slice(&decode_body(encoding, &bytes)).unwrap();
+            assert_eq!(
+                debug["trace"],
+                json!({"rpcCalls":[], "truncated":false, "omittedRpcCalls":0})
+            );
+            let (normal_status, normal) = request(router.clone(), &uri(query)).await;
+            assert_eq!(status, normal_status);
+            if status == StatusCode::OK {
+                assert_eq!(debug["response"], normal);
+            } else {
+                assert_eq!(debug["response"]["customCode"], normal["customCode"]);
+                assert_eq!(debug["response"]["message"], normal["message"]);
+            }
+        }
+    }
+    let path = format!("/v2/debug/contract/1/{ADDRESS}");
+    let (status, _, bytes) = raw_request(router.clone(), &path, "HEAD", &["gzip"]).await;
+    assert_eq!(status, StatusCode::METHOD_NOT_ALLOWED);
+    assert!(bytes.is_empty());
+    let (status, _, bytes) = raw_request(router.clone(), &path, "POST", &[]).await;
+    assert_eq!(status, StatusCode::METHOD_NOT_ALLOWED);
+    assert_eq!(
+        serde_json::from_slice::<Value>(&bytes).unwrap()["customCode"],
+        "method_not_allowed"
+    );
+    let (status, _, bytes) = raw_request(router, &path, "GET", &["identity;q=0,*;q=0"]).await;
+    assert_eq!(status, StatusCode::NOT_ACCEPTABLE);
+    assert!(bytes.is_empty());
+}
 #[tokio::test]
 async fn parquet_metadata_http_string_matches_independent_live_capture() {
     let original: Value = serde_json::from_str(include_str!(
