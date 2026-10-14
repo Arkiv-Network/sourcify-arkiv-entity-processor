@@ -1,0 +1,11 @@
+[Unit]
+Description=Run the daily Sourcify prefill seed at 02:00 UTC
+
+[Timer]
+OnCalendar=*-*-* 02:00:00 UTC
+# A run missed while the host was down starts at the next boot.
+Persistent=true
+Unit=sourcify-daily-seed.service
+
+[Install]
+WantedBy=timers.target

@@ -212,6 +212,33 @@ worker settings:
 The database is read only during the copy steps of `prepare` (about 3 minutes); the source stage
 (`stream.ts`, one JavaScript thread) bounds `process`, not memory or CPUs.
 
+## Daily seed
+
+[`pipeline/daily.sh`](pipeline/daily.sh) publishes a fresh seed every day from a sourcify-mirror-node:
+
+1. stops the mirror's sync, runs `prepare` into `data/runs/YYYYMMDD`, and starts the sync again (also on
+   failure), so the dataset is the database at one `matchId`;
+2. `run` (process -> verify, no network) and `publish` to `R2_KEY_PREFIX-YYYYMMDD.tar.zst` (default
+   `seed-inputs/sourcify-ethereum-…`), read back and checked;
+3. writes `R2_KEY_PREFIX-latest.json` (key, `lastMatchId`, counts, size, SHA-256) for readers;
+4. deletes the seeds it uploaded itself beyond the newest `DAILY_KEEP_REMOTE` (default 2), listed in
+   `data/runs/uploaded.tsv` (nothing else in the bucket is ever deleted), and the local runs older than today's.
+
+Rerunning on the same day resumes; a published day is skipped. Each run appends a line to `data/runs/status.jsonl`.
+Settings: the processor's `.env` (`ENTITY_OWNER`, `R2_BUCKET`, `R2_CREDENTIALS_FILE`, `PG*`, `./pgpass`) and
+`MIRROR_DIR` (the mirror's directory), `DAILY_MEMORY` (40g), `DAILY_CPUS` (8), `DAILY_PREPARE_MEMORY_LIMIT` (6GB),
+`DAILY_KEEP_REMOTE`, `DAILY_MIN_FREE_GB` (500). A run takes about 1.5 hours; the sync is stopped for about 5 minutes.
+
+Install the systemd units ([`deploy/`](deploy/); adjust the paths in the service), then:
+
+```sh
+sudo cp deploy/sourcify-daily-seed.service deploy/sourcify-daily-seed.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl start sourcify-daily-seed.service        # one run now
+sudo systemctl enable --now sourcify-daily-seed.timer   # 02:00 UTC daily (catches up after downtime)
+journalctl -u sourcify-daily-seed.service               # progress (JSON lines)
+```
+
 ## Checking records against an API
 
 `tests/compare-records.py` requests each record's contract from a Sourcify API (`fields` = every
