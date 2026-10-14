@@ -92,17 +92,23 @@ impl fmt::Display for ApiError {
     }
 }
 impl Error for ApiError {}
-impl IntoResponse for ApiError {
-    fn into_response(self) -> Response {
-        let body = self.body.unwrap_or_else(|| {
+impl ApiError {
+    pub(crate) fn response_body(self) -> Value {
+        self.body.unwrap_or_else(|| {
             json!({
                 "customCode": self.code,
                 "message": self.message,
                 "errorId": uuid::Uuid::new_v4().to_string(),
             })
-        });
+        })
+    }
+}
+impl IntoResponse for ApiError {
+    fn into_response(self) -> Response {
+        let status = self.status;
+        let body = self.response_body();
         (
-            self.status,
+            status,
             [(header::CONTENT_TYPE, "application/json; charset=utf-8")],
             Json(body),
         )

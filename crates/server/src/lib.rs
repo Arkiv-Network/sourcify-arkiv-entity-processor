@@ -9,6 +9,7 @@ pub mod fields;
 mod projection;
 pub mod proxy;
 mod reader;
+pub mod trace;
 
 use axum::{
     extract::{Path, RawQuery, State},
@@ -103,6 +104,10 @@ impl Application {
                 get(contract).head(method_not_allowed),
             )
             .route(
+                "/v2/debug/contract/{chainId}/{address}",
+                get(debug_contract).head(method_not_allowed),
+            )
+            .route(
                 "/_ops/health",
                 get(|| async { Json(json!({"status":"ok"})) }),
             )
@@ -166,8 +171,23 @@ async fn contract(
     path: Result<Path<(String, String)>, axum::extract::rejection::PathRejection>,
     RawQuery(query): RawQuery,
 ) -> Response {
+    contract_response(state, path, query, None).await
+}
+async fn debug_contract(
+    State(state): State<Arc<AppState>>,
+    path: Result<Path<(String, String)>, axum::extract::rejection::PathRejection>,
+    RawQuery(query): RawQuery,
+) -> Response {
+    contract_response(state, path, query, Some(trace::RpcTrace::default())).await
+}
+async fn contract_response(
+    state: Arc<AppState>,
+    path: Result<Path<(String, String)>, axum::extract::rejection::PathRejection>,
+    query: Option<String>,
+    trace: Option<trace::RpcTrace>,
+) -> Response {
     state.metrics.requests.fetch_add(1, Ordering::Relaxed);
-    let result = contract_inner(&state, path, query).await;
+    let result = contract_inner(&state, path, query, trace.clone()).await;
     match result {
         Ok(bytes) => {
             state.metrics.successes.fetch_add(1, Ordering::Relaxed);
@@ -182,7 +202,18 @@ async fn contract(
         }
         Err(error) => {
             state.metrics.failures.fetch_add(1, Ordering::Relaxed);
-            error.into_response()
+            match trace {
+                Some(trace) => (
+                    error.status,
+                    [(header::CONTENT_TYPE, "application/json; charset=utf-8")],
+                    Json(trace::DebugResponse {
+                        response: error.response_body(),
+                        trace: trace.snapshot(),
+                    }),
+                )
+                    .into_response(),
+                None => error.into_response(),
+            }
         }
     }
 }
@@ -190,6 +221,7 @@ async fn contract_inner(
     state: &Arc<AppState>,
     path: Result<Path<(String, String)>, axum::extract::rejection::PathRejection>,
     query: Option<String>,
+    trace: Option<trace::RpcTrace>,
 ) -> Result<Vec<u8>, api::ApiError> {
     let Path((chain, address)) = path.map_err(|_| api::ApiError::invalid("Invalid URL path"))?;
     let address = api::validate_path(&chain, &address)?;
@@ -214,6 +246,7 @@ async fn contract_inner(
             state.metrics.clone(),
             permit,
             state.ethereum.as_ref(),
+            trace,
         ),
     )
     .await

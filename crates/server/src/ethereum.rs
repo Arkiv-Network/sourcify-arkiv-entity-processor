@@ -81,7 +81,11 @@ impl EthereumRpc {
     }
     /// Pin lazily: non-proxies and fixed EIP-1167 proxies need no Ethereum calls.
     pub fn view(&self) -> EthereumView {
+        self.view_with_trace(None)
+    }
+    pub(crate) fn view_with_trace(&self, trace: Option<crate::trace::RpcTrace>) -> EthereumView {
         EthereumView {
+            trace,
             rpc: self.clone(),
             block: None,
             requests: 0,
@@ -95,6 +99,7 @@ struct Block {
     hash: String,
 }
 pub struct EthereumView {
+    trace: Option<crate::trace::RpcTrace>,
     rpc: EthereumRpc,
     block: Option<Block>,
     requests: usize,
@@ -172,79 +177,90 @@ impl EthereumView {
             .await
             .context("Ethereum RPC gate closed")?;
         let id = inner.next_id.fetch_add(1, Ordering::Relaxed);
-        let response = inner
-            .client
-            .post(&inner.config.rpc_url)
-            .header("Accept-Encoding", "identity")
-            .json(&json!({"jsonrpc":"2.0","id":id,"method":method,"params":params}))
-            .send()
-            .await
-            .map_err(|error| -> anyhow::Error {
-                if error.is_timeout() {
-                    anyhow::anyhow!("Ethereum RPC timeout")
-                } else {
-                    RemoteFailure("Ethereum RPC transport failed").into()
-                }
-            })?;
-        ensure!(
-            response.status().is_success(),
-            RemoteFailure("Ethereum RPC HTTP failure")
-        );
-        ensure!(
-            response
-                .content_length()
-                .is_none_or(|n| n <= inner.config.max_rpc_response_bytes as u64),
-            "Ethereum RPC response limit exceeded"
-        );
-        let mut body = Vec::new();
-        let mut stream = response.bytes_stream();
-        while let Some(chunk) = stream.next().await {
-            let chunk = chunk.map_err(|error| -> anyhow::Error {
-                if error.is_timeout() {
-                    anyhow::anyhow!("Ethereum RPC timeout")
-                } else {
-                    RemoteFailure("Ethereum RPC body failed").into()
-                }
-            })?;
+        let call = self
+            .trace
+            .as_ref()
+            .map(|trace| trace.start("ethereum", method, &params));
+        let result = async {
+            let response = inner
+                .client
+                .post(&inner.config.rpc_url)
+                .header("Accept-Encoding", "identity")
+                .json(&json!({"jsonrpc":"2.0","id":id,"method":method,"params":params}))
+                .send()
+                .await
+                .map_err(|error| -> anyhow::Error {
+                    if error.is_timeout() {
+                        anyhow::anyhow!("Ethereum RPC timeout")
+                    } else {
+                        RemoteFailure("Ethereum RPC transport failed").into()
+                    }
+                })?;
             ensure!(
-                body.len().saturating_add(chunk.len()) <= inner.config.max_rpc_response_bytes
-                    && self.bytes.saturating_add(chunk.len()) <= inner.config.max_read_bytes,
-                "Ethereum RPC byte limit exceeded"
+                response.status().is_success(),
+                RemoteFailure("Ethereum RPC HTTP failure")
             );
-            self.bytes += chunk.len();
-            body.extend_from_slice(&chunk);
-        }
-        let value: Value =
-            serde_json::from_slice(&body).context("invalid Ethereum JSON-RPC response")?;
-        ensure!(
-            value["jsonrpc"] == "2.0" && value["id"] == id,
-            "Ethereum JSON-RPC response ID/version mismatch"
-        );
-        ensure!(
-            value.get("error").is_some() != value.get("result").is_some(),
-            "Ethereum JSON-RPC must contain exactly one result or error"
-        );
-        if let Some(error) = value.get("error") {
             ensure!(
-                error.is_object()
-                    && error["code"].as_i64().is_some()
-                    && error["message"].is_string(),
-                "invalid Ethereum JSON-RPC error envelope"
+                response
+                    .content_length()
+                    .is_none_or(|n| n <= inner.config.max_rpc_response_bytes as u64),
+                "Ethereum RPC response limit exceeded"
             );
-            if method == "eth_call"
-                && error["message"]
-                    .as_str()
-                    .is_some_and(|s| s.to_ascii_lowercase().contains("revert"))
-            {
-                return Err(crate::proxy::Reverted.into());
+            let mut body = Vec::new();
+            let mut stream = response.bytes_stream();
+            while let Some(chunk) = stream.next().await {
+                let chunk = chunk.map_err(|error| -> anyhow::Error {
+                    if error.is_timeout() {
+                        anyhow::anyhow!("Ethereum RPC timeout")
+                    } else {
+                        RemoteFailure("Ethereum RPC body failed").into()
+                    }
+                })?;
+                ensure!(
+                    body.len().saturating_add(chunk.len()) <= inner.config.max_rpc_response_bytes
+                        && self.bytes.saturating_add(chunk.len()) <= inner.config.max_read_bytes,
+                    "Ethereum RPC byte limit exceeded"
+                );
+                self.bytes += chunk.len();
+                body.extend_from_slice(&chunk);
             }
-            return Err(RemoteFailure("Ethereum RPC failure").into());
+            let value: Value =
+                serde_json::from_slice(&body).context("invalid Ethereum JSON-RPC response")?;
+            ensure!(
+                value["jsonrpc"] == "2.0" && value["id"] == id,
+                "Ethereum JSON-RPC response ID/version mismatch"
+            );
+            ensure!(
+                value.get("error").is_some() != value.get("result").is_some(),
+                "Ethereum JSON-RPC must contain exactly one result or error"
+            );
+            if let Some(error) = value.get("error") {
+                ensure!(
+                    error.is_object()
+                        && error["code"].as_i64().is_some()
+                        && error["message"].is_string(),
+                    "invalid Ethereum JSON-RPC error envelope"
+                );
+                if method == "eth_call"
+                    && error["message"]
+                        .as_str()
+                        .is_some_and(|s| s.to_ascii_lowercase().contains("revert"))
+                {
+                    return Err(crate::proxy::Reverted.into());
+                }
+                return Err(RemoteFailure("Ethereum RPC failure").into());
+            }
+            ensure!(
+                value.get("result").is_some(),
+                "Ethereum {method} missing RPC result"
+            );
+            Ok(value["result"].clone())
         }
-        ensure!(
-            value.get("result").is_some(),
-            "Ethereum {method} missing RPC result"
-        );
-        Ok(value["result"].clone())
+        .await;
+        if let Some(call) = call {
+            call.finish(result.is_ok());
+        }
+        result
     }
     async fn tag(&mut self) -> Result<Value> {
         if self.block.is_none() {
