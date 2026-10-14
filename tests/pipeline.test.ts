@@ -82,7 +82,8 @@ describe('source stage', () => {
     const manifest = JSON.parse(readFileSync(join(sourceDir, 'source-manifest.json'), 'utf8'));
     expect(manifest).toMatchObject({ schema: 'sourcify-arkiv.import-source.v3', status: 'completed', all: true, selectedCount: expected.selectedCount, firstMatchId: '1', database: fixture.database });
     expect(manifest.counts.matches).toBe(String(expected.selectedCount)); // match 100 is on chain 35443
-    if (process.env.PGPASSWORD) expect(readFileSync(join(sourceDir, 'source-manifest.json'), 'utf8')).not.toContain(process.env.PGPASSWORD);
+    // As a JSON string value: a short test password can be part of other values (the test_* schema name).
+    if (process.env.PGPASSWORD) expect(readFileSync(join(sourceDir, 'source-manifest.json'), 'utf8')).not.toContain(JSON.stringify(process.env.PGPASSWORD));
   });
 
   test('prepare reuses an identical selection, also offline, and refuses a different one', async () => {
