@@ -38,7 +38,10 @@ Arkiv network. Verify the root against the completed import before configuring
 another deployment. The dedicated owner and genesis root identify this import;
 reuse of the owner for another concurrent import is unsupported. The initial
 load contains 7,823,531 contracts and 15,164,363 entities, with five known source
-skips. A successful absent lookup means absent from this mirror, not globally
+skips. Contracts the [Postgres → Arkiv sync](../README.md#postgres--arkiv-sync)
+writes later, as the same owner, are read alike: their keys are chain-assigned
+rather than derived from the staging ID, and an entity's identity is the staging
+ID recomputed from its content. A successful absent lookup means absent from this mirror, not globally
 unverified. Root verification is a deployment trust anchor, not a Merkle proof of
 the remote RPC response or completeness of the original Sourcify snapshot.
 

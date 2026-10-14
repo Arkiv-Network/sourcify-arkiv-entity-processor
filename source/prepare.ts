@@ -3,13 +3,16 @@
  * and every row they reference into SOURCE_DIR/subset.duckdb, indexed for batched lookups by stream.ts.
  *
  *   PGHOST=... PGPORT=... PGDATABASE=... PGUSER=... PGPASSWORD=... \
- *     bun source/prepare.ts --source-dir DIR (--all | --limit N) [--pg-schema public] [--threads 8] [--memory-limit 24GB]
+ *     bun source/prepare.ts --source-dir DIR (--all | --limit N [--after-match-id ID]) [--pg-schema public] [--threads 8] [--memory-limit 24GB]
  *
  * The database is a Sourcify mirror (e.g. the sourcify-mirror-node), read through DuckDB's postgres extension in a
  * read-only attachment; the connection comes from the libpq PG* environment variables (the password is never written).
  * Its internal row IDs only join the tables here: records (records.ts) carry API fields only.
  * Reuses a completed identical preparation and resumes an interrupted one; a different selection in SOURCE_DIR is
  * refused. Progress is JSON on stderr.
+ *
+ * With --after-match-id (incremental sync), at most N matches after that ID are selected, and only their rows are
+ * read: each table is loaded with an explicit ID list instead of scanned. The derived tables are the same.
  */
 import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
@@ -19,7 +22,7 @@ import { Database, literal } from './database';
 export interface SourceManifest {
   schema: 'sourcify-arkiv.import-source.v3'; status: 'preparing' | 'completed' | 'failed';
   /** Where the rows came from; the password is not recorded. */
-  database: SourceDatabase; limit: number; all?: boolean; selectedCount?: number; firstMatchId?: string; lastMatchId?: string;
+  database: SourceDatabase; limit: number; all?: boolean; afterMatchId?: string; selectedCount?: number; firstMatchId?: string; lastMatchId?: string;
   startedAt: string; finishedAt?: string; databaseBytes?: number; error?: string;
   steps: { name: string; seconds: number; sql: string }[];
   counts?: Record<string, string>;
@@ -34,6 +37,13 @@ export const tableNames = ['contract_deployments', 'verified_contracts', 'sourci
  * upstream Sourcify matchIds a mirror carries; the sourcify-mirror-node starts its sequences here. */
 export const localMatchIdStart = 1_000_000_000_000n;
 
+/** A few addresses have two matches (e.g. two deployment rows of one contract); the Sourcify API then returns either,
+ * in its database's row order. A seed and the sync keep one per address, so the Arkiv server finds exactly one: the
+ * better match (perfect 2, partial 1, none 0, creation + runtime), then the newer (higher) ID. Of the 90 such mainnet
+ * addresses in October 2026, sourcify.dev returned this one for 83. `m` is a sourcify_matches row (SQL in both DBs). */
+export const matchRank = (m: string) =>
+  `(CASE ${m}.creation_match WHEN 'perfect' THEN 2 WHEN 'partial' THEN 1 ELSE 0 END)+(CASE ${m}.runtime_match WHEN 'perfect' THEN 2 WHEN 'partial' THEN 1 ELSE 0 END)`;
+
 /** The libpq connection the postgres extension uses: the PG* environment variables (PGPASSWORD is not returned). */
 export function sourceDatabase(env: Record<string, string | undefined>, schema = 'public'): SourceDatabase {
   for (const name of ['PGHOST', 'PGDATABASE', 'PGUSER']) if (!env[name]) throw new Error(`${name} is required (libpq environment variables PGHOST, PGPORT, PGDATABASE, PGUSER, PGPASSWORD)`);
@@ -44,10 +54,11 @@ export function sourceDatabase(env: Record<string, string | undefined>, schema =
 /** Materialize a bounded sample or all current Ethereum matches; reconstruction stays batched (records.ts).
  * Without `database`, only a completed preparation of the same selection is accepted (reused offline). */
 export async function prepareSource(options: {
-  limit?: number; all?: boolean; sourceDir: string; database?: SourceDatabase; memoryLimit?: string; threads?: number; onProgress?: (step: string) => void;
+  limit?: number; all?: boolean; afterMatchId?: string; sourceDir: string; database?: SourceDatabase; memoryLimit?: string; threads?: number; onProgress?: (step: string) => void;
 }): Promise<SourceManifest> {
-  const { limit } = options;
+  const { limit, afterMatchId } = options;
   if (options.all && limit !== undefined) throw new Error('Choose all or limit, not both');
+  if (afterMatchId !== undefined && (options.all || !/^(0|[1-9][0-9]{0,18})$/.test(afterMatchId) || BigInt(afterMatchId) >= localMatchIdStart)) throw new Error(`After match ID must be a whole number below ${localMatchIdStart}, with a limit`);
   if (!options.all && (!Number.isSafeInteger(limit) || limit! < 1 || limit! > 100_000)) throw new Error('Limit must be between 1 and 100000');
   if (options.memoryLimit && !/^[1-9][0-9]*(?:MB|GB)$/i.test(options.memoryLimit)) throw new Error('Memory limit must be a positive whole MB or GB value');
   if (options.threads !== undefined && (!Number.isSafeInteger(options.threads) || options.threads < 1 || options.threads > 64)) throw new Error('Threads must be 1..64');
@@ -60,11 +71,13 @@ export async function prepareSource(options: {
   try { existing = JSON.parse(await readFile(manifestPath, 'utf8')); } catch (error: any) { if (error.code !== 'ENOENT') throw error; }
   if (existing) {
     if (existing.schema !== sourceSchema) throw new Error('Prepared source format is outdated (not prepared from PostgreSQL); regenerate in a fresh source directory');
-    if (Boolean(existing.all) !== Boolean(options.all) || (!options.all && existing.limit !== limit) || (database && JSON.stringify(existing.database) !== JSON.stringify(database))) throw new Error('Source directory holds a different selection; use a fresh directory');
+    if (Boolean(existing.all) !== Boolean(options.all) || (!options.all && existing.limit !== limit) || existing.afterMatchId !== afterMatchId || (database && JSON.stringify(existing.database) !== JSON.stringify(database))) throw new Error('Source directory holds a different selection; use a fresh directory');
     if (existing.status === 'completed') return existing;
+    // Its row lists are loaded once, not resumed: a later attempt could select newer matches than the tables it reuses.
+    if (afterMatchId !== undefined) throw new Error('An incremental preparation is not resumed; use a fresh directory');
   }
   if (!database) throw new Error('No completed prepared source: preparing one reads the Sourcify database (set PGHOST, PGPORT, PGDATABASE, PGUSER, PGPASSWORD)');
-  const manifest: SourceManifest = existing ?? { schema: sourceSchema, status: 'preparing', database, limit: limit ?? 0, ...(options.all ? {all: true} : {}), startedAt: new Date().toISOString(), steps: [] };
+  const manifest: SourceManifest = existing ?? { schema: sourceSchema, status: 'preparing', database, limit: limit ?? 0, ...(options.all ? {all: true} : {}), ...(afterMatchId !== undefined ? { afterMatchId } : {}), startedAt: new Date().toISOString(), steps: [] };
   manifest.status = 'preparing'; delete manifest.error; delete manifest.finishedAt;
   const save = async () => { await writeFile(`${manifestPath}.tmp`, JSON.stringify(manifest, null, 2) + '\n'); await rename(`${manifestPath}.tmp`, manifestPath); };
   await save();
@@ -89,29 +102,37 @@ export async function prepareSource(options: {
     await db.connection.run('SET pg_numeric_as_varchar=true');
     // Empty connection string: libpq reads PGHOST, PGPORT, PGDATABASE, PGUSER and PGPASSWORD.
     await db.connection.run("ATTACH IF NOT EXISTS '' AS pg (TYPE postgres, READ_ONLY)");
-    for (const name of tableNames) await db.connection.run(`CREATE OR REPLACE TEMP VIEW raw_${name} AS SELECT * FROM pg.${database.schema}.${name}`);
+    if (afterMatchId === undefined) {
+      for (const name of tableNames) await db.connection.run(`CREATE OR REPLACE TEMP VIEW raw_${name} AS SELECT * FROM pg.${database.schema}.${name}`);
+    } else await loadIncrementalRows(db, database.schema, afterMatchId, limit!, options.onProgress);
     // Each step reads its own database snapshot. A writer that commits a match with all its rows in one transaction
     // (Sourcify, the mirror's sync) cannot make the selection inconsistent: the match IDs are fixed after the
     // deployments and verifications they are filtered by, and every later step only reads rows those reference.
-    await run('Ethereum deployment candidates', 'CREATE TEMP TABLE ethereum_deployments AS SELECT id FROM raw_contract_deployments WHERE chain_id=1');
-    await run('Ethereum verification candidates', 'CREATE TEMP TABLE ethereum_verifications AS SELECT id FROM raw_verified_contracts WHERE deployment_id IN (SELECT id FROM ethereum_deployments)');
+    await run('Ethereum deployment candidates', 'CREATE TEMP TABLE ethereum_deployments AS SELECT id,address FROM raw_contract_deployments WHERE chain_id=1');
+    await run('Ethereum verification candidates', 'CREATE TEMP TABLE ethereum_verifications AS SELECT v.id,d.address FROM raw_verified_contracts v JOIN ethereum_deployments d ON d.id=v.deployment_id');
     // Timestamps as UTC without a zone: DuckDB's Node client renders TIMESTAMPTZ in the process's local time zone.
-    await run('Current Ethereum selection', `CREATE TABLE matches AS SELECT * REPLACE (timezone('UTC', created_at) AS created_at, timezone('UTC', updated_at) AS updated_at) FROM raw_sourcify_matches WHERE verified_contract_id IN (SELECT id FROM ethereum_verifications) ORDER BY id${options.all ? '' : ` LIMIT ${limit}`}`);
+    // One match per address (matchRank). Incrementally the rows are already chosen against the whole database.
+    await run('Current Ethereum selection', `CREATE TABLE matches AS SELECT * REPLACE (timezone('UTC', created_at) AS created_at, timezone('UTC', updated_at) AS updated_at) FROM raw_sourcify_matches WHERE id IN ` +
+      `(SELECT id FROM (SELECT m.id,row_number() OVER (PARTITION BY v.address ORDER BY ${matchRank('m')} DESC,m.id DESC) AS rank FROM raw_sourcify_matches m JOIN ethereum_verifications v ON v.id=m.verified_contract_id) WHERE rank=1) ` +
+      `ORDER BY id${options.all ? '' : ` LIMIT ${limit}`}`);
     const local = await db.one(`SELECT count(*) AS count FROM matches WHERE id>=${localMatchIdStart}`);
     if (Number(local.count) > 0) throw new Error(`${local.count} selected matches have IDs from ${localMatchIdStart} on: they were created by the node itself, not mirrored from Sourcify, and have no Sourcify matchId`);
     const selected = await db.one('SELECT count(*) AS count,min(id)::VARCHAR AS first_id,max(id)::VARCHAR AS last_id FROM matches');
     manifest.selectedCount = Number(selected.count); manifest.firstMatchId = selected.first_id; manifest.lastMatchId = selected.last_id;
-    if (!Number.isSafeInteger(manifest.selectedCount) || manifest.selectedCount < 1) throw new Error('No current Ethereum matches available');
+    // An incremental selection may be short or empty (the sync is caught up); a sample must be complete.
+    if (!Number.isSafeInteger(manifest.selectedCount) || (manifest.selectedCount < 1 && afterMatchId === undefined)) throw new Error('No current Ethereum matches available');
     if (options.all) manifest.limit = manifest.selectedCount;
     await save();
-    if (!options.all && manifest.selectedCount !== limit) throw new Error(`Only ${manifest.selectedCount} current Ethereum matches available, requested ${limit}`);
+    if (!options.all && afterMatchId === undefined && manifest.selectedCount !== limit) throw new Error(`Only ${manifest.selectedCount} current Ethereum matches available, requested ${limit}`);
     await run('Selected verification rows', 'CREATE TABLE verifications AS SELECT * FROM raw_verified_contracts WHERE id IN (SELECT verified_contract_id FROM matches)');
     await run('Selected deployments', `CREATE TABLE deployments AS SELECT * EXCLUDE(address,transaction_hash,deployer), '0x'||lower(hex(address)) AS address, '0x'||lower(hex(transaction_hash)) AS transaction_hex, '0x'||lower(hex(deployer)) AS deployer_hex FROM raw_contract_deployments WHERE id IN (SELECT deployment_id FROM verifications)`);
     await run('Selected compilations', 'CREATE TABLE compilations AS SELECT * EXCLUDE(creation_code_hash,runtime_code_hash),hex(creation_code_hash) AS creation_hash,hex(runtime_code_hash) AS runtime_hash FROM raw_compiled_contracts WHERE id IN (SELECT compilation_id FROM verifications)');
     await run('Selected signature references', 'CREATE TABLE signature_refs AS SELECT DISTINCT compilation_id,hex(signature_hash_32) AS hash,signature_type FROM raw_compiled_contracts_signatures WHERE compilation_id IN (SELECT id FROM compilations)');
     // The Sourcify API orders each signature group by signature text in the database's collation (ORDER BY
     // signatures.signature), which no byte or locale comparison here reproduces exactly: PostgreSQL ranks them.
-    const signatureOrder = `SELECT signature_hash_32,row_number() OVER (ORDER BY signature,signature_hash_32) AS signature_order FROM ${database.schema}.signatures`;
+    // Incrementally only the selected signatures are ranked: their relative order, all records use, is the same.
+    const signatureOrder = `SELECT signature_hash_32,row_number() OVER (ORDER BY signature,signature_hash_32) AS signature_order FROM ${database.schema}.signatures` +
+      (afterMatchId === undefined ? '' : ` WHERE signature_hash_32 IN ${await valueList(db, 'SELECT DISTINCT lower(hex(signature_hash_32)) AS v FROM raw_signatures', 'bytea')}`);
     await run('Signature collation order', `CREATE TEMP TABLE signature_order AS SELECT * FROM postgres_query('pg',${literal(signatureOrder)}) WHERE signature_hash_32 IN (SELECT from_hex(hash) FROM signature_refs)`);
     await run('Selected signature bodies', "CREATE TABLE signatures AS SELECT hex(s.signature_hash_32) AS hash,s.signature,'0x'||lower(hex(s.signature_hash_32)) AS hash32,'0x'||lower(hex(s.signature_hash_4)) AS hash4,o.signature_order FROM raw_signatures s JOIN signature_order o ON o.signature_hash_32=s.signature_hash_32");
     await run('Selected deployed contracts', 'CREATE TABLE contracts AS SELECT id,hex(creation_code_hash) AS creation_hash,hex(runtime_code_hash) AS runtime_hash FROM raw_contracts WHERE id IN (SELECT contract_id FROM deployments)');
@@ -126,7 +147,7 @@ export async function prepareSource(options: {
       await run(`Index ${table}`, `CREATE INDEX ${table}_lookup ON ${table}(${key})`);
     }
     // The derived database is self-contained; it has no view of unrelated chains or the source database.
-    for (const name of tableNames) await db.connection.run(`DROP VIEW raw_${name}`);
+    for (const name of tableNames) await db.connection.run(`DROP ${afterMatchId === undefined ? 'VIEW' : 'TABLE'} raw_${name}`);
     await db.connection.run('DETACH pg');
     manifest.counts = {};
     for (const name of ['matches', 'verifications', 'deployments', 'compilations', 'contracts', 'metadata', 'source_refs', 'sources', 'codes', 'signature_refs', 'signatures']) {
@@ -142,16 +163,53 @@ export async function prepareSource(options: {
   } finally { await db.close(); }
 }
 
-const usage = `bun source/prepare.ts --source-dir DIR (--all | --limit N) [--pg-schema public] [--threads 4] [--memory-limit 4GB]
+/** `(v1,v2,...)` for a PostgreSQL IN clause from the single column `v` of a DuckDB query, or `(NULL)` (matches
+ * nothing) when it is empty. Values are digits (bigint), UUIDs or lowercase hex (bytea); anything else is refused. */
+async function valueList(db: Database, sql: string, type: 'bigint' | 'uuid' | 'bytea') {
+  const pattern = { bigint: /^[0-9]+$/, uuid: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/, bytea: /^(?:[0-9a-f]{2})*$/ }[type];
+  const values = (await db.rows(sql)).map(row => String(row.v));
+  for (const value of values) if (!pattern.test(value)) throw new Error(`Unexpected ${type} value in an ID list`);
+  if (!values.length) return '(NULL)';
+  return `(${values.map(v => type === 'bigint' ? v : type === 'uuid' ? `'${v}'::uuid` : `'\\x${v}'::bytea`).join(',')})`;
+}
+
+/** Incremental selection: raw_<table> temp tables holding only the rows the selected matches reference, each read
+ * with an explicit ID list (PostgreSQL uses its indexes), in reference order. */
+async function loadIncrementalRows(db: Database, schema: string, afterMatchId: string, limit: number, onProgress?: (step: string) => void) {
+  const load = async (table: string, where: string) => {
+    onProgress?.(`Load ${table}`);
+    await db.connection.run(`CREATE OR REPLACE TEMP TABLE raw_${table} AS SELECT * FROM postgres_query('pg', ${literal(`SELECT * FROM ${schema}.${table} WHERE ${where}`)})`);
+  };
+  const ids = (sql: string, type: 'bigint' | 'uuid' | 'bytea') => valueList(db, sql, type);
+  // The next matches by ID whose deployment is on Ethereum mainnet, below the node's own (local) IDs, leaving out a
+  // match when the database holds a better-ranked one for the same address (matchRank), wherever its ID is.
+  const better = `SELECT 1 FROM ${schema}.contract_deployments d2 JOIN ${schema}.verified_contracts v2 ON v2.deployment_id=d2.id JOIN ${schema}.sourcify_matches m2 ON m2.verified_contract_id=v2.id ` +
+    `WHERE d2.chain_id=1 AND d2.address=d.address AND m2.id<>m.id AND m2.id<${localMatchIdStart} AND (${matchRank('m2')}>${matchRank('m')} OR (${matchRank('m2')}=${matchRank('m')} AND m2.id>m.id))`;
+  await load('sourcify_matches', `id IN (SELECT m.id FROM ${schema}.sourcify_matches m JOIN ${schema}.verified_contracts v ON v.id=m.verified_contract_id ` +
+    `JOIN ${schema}.contract_deployments d ON d.id=v.deployment_id WHERE d.chain_id=1 AND m.id>${afterMatchId} AND m.id<${localMatchIdStart} AND NOT EXISTS (${better}) ORDER BY m.id LIMIT ${limit})`);
+  await load('verified_contracts', `id IN ${await ids('SELECT verified_contract_id::VARCHAR AS v FROM raw_sourcify_matches', 'bigint')}`);
+  await load('contract_deployments', `id IN ${await ids('SELECT DISTINCT deployment_id::VARCHAR AS v FROM raw_verified_contracts', 'uuid')}`);
+  await load('compiled_contracts', `id IN ${await ids('SELECT DISTINCT compilation_id::VARCHAR AS v FROM raw_verified_contracts', 'uuid')}`);
+  const compilations = await ids('SELECT id::VARCHAR AS v FROM raw_compiled_contracts', 'uuid');
+  for (const table of ['compiled_contracts_metadata', 'compiled_contracts_sources', 'compiled_contracts_signatures']) await load(table, `compilation_id IN ${compilations}`);
+  await load('contracts', `id IN ${await ids('SELECT DISTINCT contract_id::VARCHAR AS v FROM raw_contract_deployments', 'uuid')}`);
+  await load('sources', `source_hash IN ${await ids('SELECT DISTINCT lower(hex(source_hash)) AS v FROM raw_compiled_contracts_sources', 'bytea')}`);
+  await load('signatures', `signature_hash_32 IN ${await ids('SELECT DISTINCT lower(hex(signature_hash_32)) AS v FROM raw_compiled_contracts_signatures', 'bytea')}`);
+  await load('code', `code_hash IN ${await ids(`SELECT DISTINCT lower(hex(h)) AS v FROM (SELECT creation_code_hash AS h FROM raw_compiled_contracts UNION ALL SELECT runtime_code_hash FROM raw_compiled_contracts
+    UNION ALL SELECT creation_code_hash FROM raw_contracts UNION ALL SELECT runtime_code_hash FROM raw_contracts) WHERE h IS NOT NULL`, 'bytea')}`);
+}
+
+const usage = `bun source/prepare.ts --source-dir DIR (--all | --limit N [--after-match-id ID]) [--pg-schema public] [--threads 4] [--memory-limit 4GB]
 Materializes all (or the first N, 1..100000, by match ID) Ethereum mainnet matches of a Sourcify PostgreSQL database
 into SOURCE_DIR/subset.duckdb. The connection comes from PGHOST, PGPORT, PGDATABASE, PGUSER and PGPASSWORD; a role with
 SELECT on these tables suffices: ${tableNames.join(', ')}. Matches with IDs from ${localMatchIdStart} on (created by
 the node itself) are refused. Reuses a completed identical preparation and resumes an interrupted one; a different
-selection is refused.`;
+selection is refused. --after-match-id ID selects at most N matches after ID instead (possibly none) and reads only
+their rows; it is never resumed.`;
 
 async function main() {
   const { values } = parseArgs({ strict: true, options: {
-    'source-dir': { type: 'string' }, 'pg-schema': { type: 'string', default: 'public' }, limit: { type: 'string' }, all: { type: 'boolean', default: false },
+    'source-dir': { type: 'string' }, 'pg-schema': { type: 'string', default: 'public' }, limit: { type: 'string' }, all: { type: 'boolean', default: false }, 'after-match-id': { type: 'string' },
     threads: { type: 'string', default: '4' }, 'memory-limit': { type: 'string', default: '4GB' }, help: { type: 'boolean', default: false },
   } });
   if (values.help) { console.error(usage); return; }
@@ -163,7 +221,7 @@ async function main() {
   const started = performance.now();
   const elapsedSeconds = () => +((performance.now() - started) / 1000).toFixed(1);
   const manifest = await prepareSource({
-    ...(values.all ? { all: true } : { limit: Number(values.limit) }), sourceDir, database: process.env.PGHOST ? sourceDatabase(process.env, values['pg-schema']) : undefined,
+    ...(values.all ? { all: true } : { limit: Number(values.limit) }), afterMatchId: values['after-match-id'], sourceDir, database: process.env.PGHOST ? sourceDatabase(process.env, values['pg-schema']) : undefined,
     threads: Number(values.threads), memoryLimit: values['memory-limit'],
     onProgress: step => console.error(JSON.stringify({ sourcePreparation: step, elapsedSeconds: elapsedSeconds() })),
   });

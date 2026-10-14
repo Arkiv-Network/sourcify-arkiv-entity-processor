@@ -21,6 +21,7 @@ RUN bun -e "const { DuckDBInstance } = await import('@duckdb/node-api'); \
     chmod -R a+rX /opt/duckdb-extensions
 COPY source ./source
 COPY pipeline ./pipeline
+COPY arkiv ./arkiv
 COPY --from=builder /build/target/release/arkiv-entity-processor /usr/local/bin/arkiv-entity-processor
 ARG REVISION=
 ENV APP_DIR=/app APP_REVISION=$REVISION
