@@ -1,13 +1,15 @@
 # Sourcify → Arkiv entity processor
 
-Turns the public [Sourcify](https://sourcify.dev) Parquet export into a deduplicated
-[Arkiv](https://github.com/Arkiv-Network) prefill seed bundle for every verified Ethereum mainnet
-contract, and optionally publishes it to Cloudflare R2 for arkiv-prefill. Everything up to the
-upload runs offline: no PostgreSQL, RPC, Sourcify API, wallets or transactions.
+Turns a [Sourcify](https://sourcify.dev) PostgreSQL database, such as the
+[sourcify-mirror-node](https://github.com/Arkiv-Network/sourcify-mirror-node) (a mirror whose API returns what
+sourcify.dev returns), into a deduplicated [Arkiv](https://github.com/Arkiv-Network) prefill seed bundle for every
+verified Ethereum mainnet contract, and optionally publishes it to Cloudflare R2 for arkiv-prefill. Only `prepare`
+reads the database (SELECT only); everything after it up to the upload runs offline: no PostgreSQL, RPC, Sourcify
+API, wallets or transactions.
 
 ```text
-Sourcify Parquet export (read-only)
-  │ prepare   source/prepare.ts       DuckDB: current Ethereum matches + referenced rows → WORK/source/subset.duckdb
+Sourcify PostgreSQL database (read-only)
+  │ prepare   source/prepare.ts       DuckDB: Ethereum matches + referenced rows        → WORK/source/subset.duckdb
   │ process   source/stream.ts | arkiv-entity-processor process                       → WORK/bundle/
   │ verify    arkiv-entity-processor verify + record counts against the selection
   │ pack      arkiv-entity-processor pack       (publish)                             → WORK/archive/seed.tar.zst
@@ -35,20 +37,21 @@ prefill node at an explicit block, without a local bundle. Canonical JSON here s
 not claim RFC 8785 normalization.
 
 This guarantee starts at the processor input. A captured full API response retains every supplied
-field, including standard compiler JSON and signatures. The Parquet adapter reconstructs
-`stdJsonInput` and `stdJsonOutput` using Sourcify’s stored-field mapping and reads `signatures`
-from the export’s signature tables. Original database IDs travel outside the contract JSON,
-in an NDJSON wrapper, and become entity attributes. Live `proxyResolution` is not available
-from an offline snapshot. The HTTP server can resolve proxies using a configured
-Ethereum RPC; full live API and dataset parity are not claimed.
+field, including standard compiler JSON and signatures. The database adapter (`source/records.ts`)
+builds the same record as `GET /v2/contract/1/<address>?fields=all` of the Sourcify server on that
+database, without the live `proxyResolution`: `stdJsonInput` and `stdJsonOutput` with Sourcify’s
+stored-field mapping (the metadata text as stored), and `signatures` from the signature tables in
+the database’s collation order. **Records and entities carry Sourcify API fields only:** the
+database’s internal row IDs (verification, deployment, compilation, contract) only join rows in
+`prepare`; `matchId` is the API field. The processor refuses an input envelope with anything
+beside the record (such as the former `sourcifyIds`). The HTTP server can resolve proxies using a
+configured Ethereum RPC; full live API and dataset parity are not claimed.
 
-The offline SafeProxy Parquet fixture differs from the saved API response in live proxy
-resolution and whitespace inside the `stdJsonOutput` metadata **string**. Offline readers
-retain that exported text. In embedded output metadata strings, the HTTP server removes
+Checked against the sourcify-mirror-node: records equal its API response field by field (see
+[Checking records against an API](#checking-records-against-an-api)). In embedded output metadata strings, the HTTP server removes
 insignificant JSON whitespace and decodes non-ASCII Unicode escapes to match captured API
 responses. It preserves ASCII/control escapes, literal backslashes, number spelling and
-key order. This serving policy cannot recover historical
-upstream formatting that an export has already lost. Exported signatures remain stored;
+key order. Stored signatures remain stored;
 the HTTP server derives serving signatures from ABI. See the
 [HTTP compatibility contract](docs/sourcify-http-compatibility.md) for these policies.
 
@@ -56,10 +59,10 @@ the HTTP server derives serving signatures from ABI. See the
 | --- | --- |
 | `src/` | `arkiv-entity-processor` (Rust): `process`, `verify`, `hydrate`, `read-arkiv`, `pack`, `upload` |
 | `crates/server/` | `arkiv-sourcify-server`: Arkiv-backed Mainnet contract reads; [API and runbook](docs/server.md) |
-| `source/` | Bun + DuckDB source stage: `prepare.ts` (Parquet → DuckDB), `stream.ts` (DuckDB → NDJSON records) |
+| `source/` | Bun + DuckDB source stage: `prepare.ts` (PostgreSQL → DuckDB), `stream.ts` (DuckDB → NDJSON records) |
 | `pipeline/` | `run.sh` (resumable phases, progress, `timings.json`), `state.ts` (its bookkeeping) |
 | `Dockerfile`, `compose.yaml`, `.env.example` | container deployment |
-| `tests/` | end-to-end tests on a small real-data Parquet fixture; [opt-in live contract comparison](docs/live-conformance.md) |
+| `tests/` | end-to-end tests on a small real-data PostgreSQL fixture; [opt-in live contract comparison](docs/live-conformance.md) |
 
 ## Entity parity documentation
 
@@ -74,33 +77,40 @@ in a browser, or serve `docs/` with any static file server.
 ### 1. Requirements
 
 * Docker with Compose v2.
-* Historical nine-table run: ~120 GB Parquet input, ~140 GB prepared DuckDB source, ~210 GB
-  bundle, and ~39 GB archive. The expanded payloads and signature tables need new sizing
-  measurements; those historical numbers are not capacity estimates for this format.
-* 12 CPUs and 48 GB memory for the container (the defaults); `prepare` peaks at ~36 GB.
+* A Sourcify PostgreSQL database reachable on a Docker network, e.g. the
+  [sourcify-mirror-node](https://github.com/Arkiv-Network/sourcify-mirror-node)'s `db` service.
+* Disk for the prepared DuckDB source (~150 GB for Ethereum), the bundle (~210 GB) and the
+  archive (~39 GB, publish only).
+* 12 CPUs and 48 GB memory for the container (the defaults); see the reference run below for measured peaks.
 
-### 2. Put the Parquet files in place
+### 2. Give the pipeline read access to the database
 
-The pipeline reads `PARQUET_DIR/<table>/*.parquet` (default `./data/parquet`, mounted read-only)
-for these eleven tables of the Sourcify v2 export:
+`prepare` reads these eleven tables, so a login role with `SELECT` on them is enough (and safer
+than the owner):
+
+```sql
+CREATE ROLE sourcify_export LOGIN PASSWORD '...';
+ALTER ROLE sourcify_export SET default_transaction_read_only = on;
+GRANT USAGE ON SCHEMA public TO sourcify_export;
+GRANT SELECT ON code, sources, signatures, compiled_contracts, compiled_contracts_sources,
+  compiled_contracts_metadata, compiled_contracts_signatures, contracts, contract_deployments,
+  verified_contracts, sourcify_matches TO sourcify_export;
+```
+
+The connection uses libpq settings: `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER` (Compose defaults:
+`db`, `5432`, `sourcify`, `sourcify_export`), `PG_SCHEMA` (default `public`) and the Docker network
+`SOURCE_NETWORK` (default `sourcify-node_default`). The password goes in a libpq password file
+(default `./pgpass`, mode 600, readable by `PIPELINE_UID`; never commit it), mounted as a secret:
 
 ```text
-data/parquet/
-  code/  compiled_contracts/  compiled_contracts_metadata/  compiled_contracts_sources/
-  contract_deployments/  contracts/  sources/  sourcify_matches/  verified_contracts/
-  compiled_contracts_signatures/  signatures/
+db:5432:sourcify:sourcify_export:<password>
 ```
 
-Both signature tables are required, even if the selected contracts have no signatures.
-Download the export (public, no credentials):
-
-```sh
-aws s3 sync s3://sourcify-production-parquet-export/v2/ ./data/parquet \
-  --endpoint-url https://storage.googleapis.com --no-sign-request
-```
-
-An existing copy elsewhere works too: point `PARQUET_DIR` at the directory that contains the table
-directories.
+Matches with IDs from 1,000,000,000,000 on are refused: the sourcify-mirror-node gives that range to
+verifications the node creates itself, which have no sourcify.dev `matchId`. Writes that commit a
+match with its rows in one transaction (Sourcify, the mirror's sync) cannot make a preparation
+inconsistent, but stop them for a dataset of a definite point in time: the preparation's last
+match ID is in `source-manifest.json`.
 
 ### 3. Configure
 
@@ -117,11 +127,12 @@ to `$(id -u)`/`$(id -g)` to own the output as your user. For a quick trial, set
 
 ```sh
 docker compose build
-docker compose up -d pipeline       # prepare -> process -> verify, with no network access
+docker compose --profile prepare run --rm prepare   # database -> WORK_DIR/source (the only database access)
+docker compose up -d pipeline       # process -> verify on the prepared source, with no network access
 docker compose logs -f pipeline     # JSON progress: phase, contracts/s, ETA, memory
 ```
 
-Rerunning `docker compose up pipeline` resumes: a completed `prepare` is reused, an interrupted
+Rerunning resumes: a completed `prepare` is reused, an interrupted
 one continues, and a completed bundle is reused only if it was produced with the same output
 settings. Processing itself does not resume: if it fails, the pipeline stops with the bundle
 directory left without `seed.json`; move it aside (`mv data/work/bundle data/work/bundle.failed`)
@@ -131,31 +142,30 @@ and rerun. `docker compose stop pipeline` interrupts cleanly and records the fai
 
 | Path | Contents |
 | --- | --- |
-| `source/` | prepared DuckDB source and `source-manifest.json` (selection, per-step timings, row counts) |
+| `source/` | prepared DuckDB source and `source-manifest.json` (database, selection, per-step timings, row counts) |
 | `bundle/` | the seed bundle (see [Output](#output)); `seed.json` exists only if processing completed |
 | `logs/` | `prepare.log`, `source.log` (incl. skipped records), `process.log`, `verify.log`, … |
 | `timings.json` | per-phase status, durations, CPU seconds, peak memory, counts, configuration, build hashes |
 
-Records missing required referenced rows (for example deployed contracts or bytecode), or with
+Records missing required referenced rows (for example deployed contracts or bytecode; a Sourcify
+database's foreign keys rule this out, a copy without them may not), or with
 malformed ABI values other than an array or null, are skipped with
 `SKIP_MISSING_REFERENCES=1` (default), listed in `bundle/report.json` (`sourceSkipped`) and counted
 in `timings.json`; more than `MAX_SKIPPED` aborts. With `0`, any such record aborts the run.
 
 A missing Solidity metadata row is represented as `metadata: null`; the available contract data
 is still imported. Yul and other records with a null ABI retain `abi: null` (not an empty array).
-The ABI hash is SHA-256 of its canonical exact JSON value, including `null` and lossless numbers. This does not recover metadata absent
-from the export.
+The ABI hash is SHA-256 of its canonical exact JSON value, including `null` and lossless numbers.
 
-Parquet NDJSON lines use `{record: <contract JSON>, sourcifyIds: {...}}`. The wrapper IDs
-`compilationId`, `deploymentId`, `verificationId`, and `contractId` become the string attributes
-`sourcifycompilationid`, `sourcifydeploymentid`, `sourcifyverificationid`, and `sourcifycontractid`.
-They are absent from the hydrated contract JSON; `matchId` remains an API field. Raw API
-inputs are still accepted and preserved without stripping any user-supplied fields.
+Source NDJSON lines are `{"record": <contract JSON>}`. Raw API responses are accepted as well and
+preserved without stripping any fields. Skip reasons name missing rows by content hash (bytecode,
+source, signature) or by kind only, never by an internal row ID.
 
 **Migration:** v3 changes verification and compilation payload schemas, content hashes and
 entity keys. Regenerate bundles in a fresh output directory; never treat older full-record
-bundles as v3 or resume their processing. Source manifest v2 also requires all eleven export
-tables; v1 prepared sources are refused. Keep the original Parquet files. Compression and
+bundles as v3 or resume their processing. Sources are prepared from PostgreSQL (source manifest
+v3); sources prepared from the Parquet export (v1, v2) are refused, and bundles made from them carry
+the internal `sourcify*id` attributes with different `verified_contract` keys: regenerate. Compression and
 spill layers remain, with reference hydration added after decoding. Update readers to hydrate
 v3; a transport-decoded verification payload is intentionally stripped. Existing deployed
 readers have not been upgraded by this change. Size figures from old
@@ -190,14 +200,28 @@ The archive holds what arkiv-prefill loads, at the archive root: `seed.json`, th
 
 ### Reference run
 
-Full Ethereum mainnet export of 2026-10, 12 CPUs / 48 GB container, default settings:
+The sourcify-mirror-node's database, frozen at matchId 56101108 (2026-10-14), 8 CPUs, default
+worker settings:
 
 | Phase | Time | Notes |
 | --- | ---: | --- |
-| prepare | 5.2 min | 7,823,536 current matches; 147 GB DuckDB file; peak ~36 GB memory |
-| process | 42.8 min | 7,770,258 contracts (~3,000/s), 53,278 skipped; 17,062,922 entities |
-| verify | 2.7 min | 1,707 entity parts, 207 GB bundle (`payloads.bin` 114 GB) |
-| pack | 3.5 min | prefill archive 38.8 GB (re-verifies the 207 GB bundle first; 204 MB memory) |
+| prepare | ~6 min | 7,877,517 Ethereum matches; 175 GB DuckDB file; `PREPARE_MEMORY_LIMIT=6GB`, peak ~7 GB memory (the index steps need several GB beyond the DuckDB limit: 12GB peaked above 20 GB) |
+| process | 86 min | 7,877,517 contracts, 0 skipped; 15,272,328 entities; peak ~10.6 GB memory (40 GB container) |
+| verify | 3 min | 1,528 entity parts, 213 GB bundle |
+
+The database is read only during the copy steps of `prepare` (about 3 minutes); the source stage
+(`stream.ts`, one JavaScript thread) bounds `process`, not memory or CPUs.
+
+## Checking records against an API
+
+`tests/compare-records.py` requests each record's contract from a Sourcify API (`fields` = every
+field except the live `proxyResolution`) and compares the two field by field:
+
+```sh
+bun source/stream.ts --source-dir work/source --limit 1000 > records.ndjson
+python3 -I tests/compare-records.py records.ndjson http://127.0.0.1:5555        # the database's own server
+python3 -I tests/compare-records.py records.ndjson https://sourcify.dev/server --every 100 --pause 1
+```
 
 ## Run without Docker
 
@@ -206,14 +230,16 @@ Needs Bun 1.4 and a Rust toolchain (or a release binary on `PATH`):
 ```sh
 bun install --frozen-lockfile
 cargo build --release --locked
-PATH=$PWD/target/release:$PATH WORK_DIR=$PWD/data/work PARQUET_DIR=$PWD/data/parquet \
-  ENTITY_OWNER=0x... bash pipeline/run.sh run      # or: publish, all
+PGHOST=... PGPORT=... PGDATABASE=... PGUSER=... PGPASSWORD=... \
+PATH=$PWD/target/release:$PATH WORK_DIR=$PWD/data/work \
+  ENTITY_OWNER=0x... bash pipeline/run.sh run      # or: prepare, publish, all
 ```
 
 or each stage by hand:
 
 ```sh
-bun source/prepare.ts --parquet-dir data/parquet --source-dir work/source --all --threads 8 --memory-limit 24GB
+PGHOST=... PGPORT=... PGDATABASE=... PGUSER=... PGPASSWORD=... \
+  bun source/prepare.ts --source-dir work/source --all --threads 8 --memory-limit 24GB
 bun source/stream.ts --source-dir work/source --skip-missing-references --max-skipped 100000 \
   | arkiv-entity-processor process --require-source-complete --output work/bundle \
       --owner 0x... --workers 4 --compression-workers 4
@@ -409,24 +435,28 @@ cargo test --workspace --locked
 cargo fmt --all --check && cargo clippy --workspace --locked --all-targets -- -D warnings
 python3 tests/server-smoke.py          # HTTP RPC mock, TCP requests, SIGTERM shutdown
 bun install --frozen-lockfile
-bun run test                          # end-to-end on tests/fixture (needs the release build)
+PGHOST=... PGUSER=... PGPASSWORD=... PGDATABASE=... \
+  bun run test                        # end-to-end on tests/fixture (needs the release build and a PostgreSQL server)
 ```
 
 zstd (`zstd-sys`) and `ring` compile C, so a C compiler is needed (`gcc`; cross builds use the
 target's GCC). A static binary: `sudo apt-get install musl-tools && rustup target add
 x86_64-unknown-linux-musl && cargo build --release --locked --target x86_64-unknown-linux-musl`.
 
-`tests/fixture/parquet` holds every row behind 19 real matches (Solidity, Vyper, Fe, a large
-source with blob entities, a two-revision match, a non-Ethereum match and one per skip reason),
-extracted from the export by `tests/fixture/extract.ts`. `tests/fixture/expected.json` retains
+`tests/fixture/fixture.sql` holds every row behind 19 real matches (Solidity, Vyper, Fe, a large
+source with blob entities, a non-Ethereum match and one per skip reason), loaded with
+`tests/fixture/schema.sql` into a fresh schema of the PostgreSQL server in the `PG*` variables
+(any disposable one, e.g. `docker run -p 127.0.0.1:5432:5432 -e POSTGRES_PASSWORD=test postgres:15`)
+and dropped afterwards. `tests/fixture/expected.json` retains
 the original source-stream baseline. The pipeline tests check full hydrated-contract
 equality with each input record and deterministic bundles across worker counts.
 
 ## CI and releases
 
 * `.github/workflows/ci.yml` runs fmt, clippy, tests, a release build and a small
-  process/verify smoke test, the end-to-end Bun tests, and builds the Docker image and runs it on
-  the fixture, on every push and pull request to `main`.
+  process/verify smoke test, the end-to-end Bun tests against a PostgreSQL service, and builds the
+  Docker image and runs it on the fixture (`prepare` from PostgreSQL, then `run` without network),
+  on every push and pull request to `main`.
 * `.github/workflows/release.yml` builds `x86_64-unknown-linux-gnu`,
   `x86_64-unknown-linux-musl` (static, with `musl-tools`) and `aarch64-unknown-linux-gnu`
   (smoke-tested with process/verify/pack), each packaged as

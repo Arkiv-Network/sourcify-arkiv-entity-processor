@@ -4,14 +4,15 @@ import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { prepareSource } from '../source/prepare';
+import { createFixtureDatabase, type FixtureDatabase } from './fixture/postgres';
 import { iterateRecords, openSource } from '../source/records';
 import { sampleSource, selectMatchIds, type SampleManifest } from './live/sample';
 
 const root = resolve(import.meta.dir, '..');
 const hash = (algorithm: string, bytes: string | Uint8Array) => createHash(algorithm).update(bytes).digest('hex');
-let scratch: string, sourceDir: string;
+let scratch: string, sourceDir: string, fixture: FixtureDatabase;
 let matchIds: string[], successfulSeed: string, failingSeed: string;
-const reconstructed = new Map<string, { record?: any; sourcifyIds?: any; error?: string }>();
+const reconstructed = new Map<string, { record?: any; error?: string }>();
 let initialDatabase: { sha256: string; mtimeMs: number; size: number };
 let initialSourceManifest: Buffer;
 function expectedIds(seed: string, count: number) {
@@ -34,7 +35,8 @@ async function manifestAt(output: string): Promise<SampleManifest> {
 beforeAll(async () => {
   scratch = await mkdtemp(join(tmpdir(), 'source-live-sample-test-'));
   sourceDir = join(scratch, 'source');
-  await prepareSource({ all: true, parquetDir: join(root, 'tests/fixture/parquet'), sourceDir, threads: 1, memoryLimit: '1GB' });
+  fixture = await createFixtureDatabase();
+  await prepareSource({ all: true, database: fixture.database, sourceDir, threads: 1, memoryLimit: '1GB' });
   const source = await openSource(sourceDir, '1GB');
   try {
     matchIds = (await source.db.rows('SELECT id::VARCHAR AS id FROM matches ORDER BY id')).map(row => String(row.id));
@@ -46,7 +48,10 @@ beforeAll(async () => {
   initialDatabase = { sha256: hash('sha256', await readFile(join(sourceDir, 'subset.duckdb'))), mtimeMs: dbStat.mtimeMs, size: dbStat.size };
   initialSourceManifest = await readFile(join(sourceDir, 'source-manifest.json'));
 }, 60_000);
-afterAll(async () => { if (scratch) await rm(scratch, { recursive: true, force: true }); });
+afterAll(async () => {
+  await fixture?.drop();
+  if (scratch) await rm(scratch, { recursive: true, force: true });
+});
 
 test('hash selection is reproducible, distinct and independently matches the entire population', async () => {
   const source = await openSource(sourceDir, '1GB');
@@ -75,12 +80,12 @@ test('default five records reproduce existing reconstruction and preserve source
   expect(records.at(-1)).toEqual({ type: 'source-complete', records: 5, lastMatchId: one.samples.at(-1)!.matchId });
   expect(records.slice(0, -1)).toEqual(one.samples.map(sample => {
     const item = reconstructed.get(sample.matchId)!;
-    return { record: item.record, sourcifyIds: item.sourcifyIds };
+    return { record: item.record };
   }));
   expect(await readFile(join(first, 'records.ndjson'), 'utf8')).toBe(await readFile(join(second, 'records.ndjson'), 'utf8'));
   expect(await manifestAt(first)).toEqual(one);
   expect(one.source).toMatchObject({ path: sourceDir, readOnly: true, manifestSha256: hash('sha256', initialSourceManifest),
-    manifest: { schema: 'sourcify-arkiv.import-source.v2', status: 'completed', selectedCount: matchIds.length },
+    manifest: { schema: 'sourcify-arkiv.import-source.v3', status: 'completed', selectedCount: matchIds.length },
     database: { path: join(sourceDir, 'subset.duckdb'), bytes: initialDatabase.size, mtimeMs: initialDatabase.mtimeMs } });
   expect(one.source.manifest).not.toHaveProperty('steps');
   expect(await readFile(join(sourceDir, 'source-manifest.json'))).toEqual(initialSourceManifest);
@@ -119,7 +124,7 @@ test('existing files are never overwritten, including when only records.ndjson e
 
 test('too-small populations are incomplete even if all available records reconstruct', async () => {
   const small = join(scratch, 'small-source');
-  await prepareSource({ limit: 1, parquetDir: join(root, 'tests/fixture/parquet'), sourceDir: small, threads: 1, memoryLimit: '1GB' });
+  await prepareSource({ limit: 1, database: fixture.database, sourceDir: small, threads: 1, memoryLimit: '1GB' });
   const output = join(scratch, 'too-few');
   const manifest = await sampleSource({ sourceDir: small, output, seed: 'small', count: 2, memoryLimit: '1GB' });
   expect(manifest).toMatchObject({ count: 2, completedCount: 1, status: 'incomplete', errors: ['Only 1 matches available, requested 2'] });

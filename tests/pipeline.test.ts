@@ -1,10 +1,12 @@
 /**
- * End-to-end tests on tests/fixture/parquet (real export rows, see tests/fixture/extract.ts). expected.json holds the
- * output of the original sourcify-arkiv-helper pipeline: legacy records retain their available data,
- * while complete decoded contract payloads now equal each adapter input. Contract identities and bundle hashes
- * deliberately change; the historical whole-bundle checksums are not a payload-parity oracle.
+ * End-to-end tests on tests/fixture/fixture.sql (real Sourcify rows), loaded into a fresh schema of a test PostgreSQL
+ * (tests/fixture/postgres.ts). expected.json holds the output of the original sourcify-arkiv-helper pipeline: legacy
+ * records retain their available data, while complete decoded contract payloads now equal each adapter input.
+ * Contract identities and bundle hashes deliberately change; the historical whole-bundle checksums are not a
+ * payload-parity oracle.
  *
- * Needs a built processor: `cargo build --release` (or PROCESSOR_BIN=/path/to/arkiv-entity-processor).
+ * Needs a built processor: `cargo build --release` (or PROCESSOR_BIN=/path/to/arkiv-entity-processor), and a
+ * PostgreSQL server in the PG* environment variables.
  */
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
@@ -12,20 +14,26 @@ import { existsSync, readdirSync, mkdtempSync, readFileSync, renameSync, rmSync,
 import { tmpdir } from 'node:os';
 import { gunzipSync } from 'node:zlib';
 import { dirname, join, resolve } from 'node:path';
-import { prepareSource } from '../source/prepare';
+import { localMatchIdStart, prepareSource } from '../source/prepare';
 import { Database } from '../source/database';
+import { createFixtureDatabase, fixtureSql, type FixtureDatabase } from './fixture/postgres';
 
 const root = resolve(import.meta.dir, '..');
-const parquetDir = join(root, 'tests/fixture/parquet');
+let fixture: FixtureDatabase;
 const expected = JSON.parse(readFileSync(join(root, 'tests/fixture/expected.json'), 'utf8'));
 const recoveredIds = ['23813307', '28759260'];
-const remainingSkipped = expected.skipped.filter((item: { matchId: string }) => !recoveredIds.includes(item.matchId));
+// Skip reasons no longer name internal row IDs (the helper's said "Missing deployed contract: <uuid>").
+const remainingSkipped = expected.skipped.filter((item: { matchId: string }) => !recoveredIds.includes(item.matchId))
+  .map((item: { matchId: string; reason: string }) => ({ ...item, reason: item.reason.replace(/^(Missing (?:verification|deployment|compilation|deployed contract)): .*$/, '$1') }));
 const processor = resolve(process.env.PROCESSOR_BIN ?? join(root, 'target/release/arkiv-entity-processor'));
 let scratch: string;
 
 const sha256 = (data: string | Uint8Array) => createHash('sha256').update(data).digest('hex');
 // Hermetic: no pipeline settings from the caller's environment (Bun also auto-loads a local .env).
 const baseEnv = Object.fromEntries(['PATH', 'HOME', 'TMPDIR', 'LANG'].filter(name => process.env[name]).map(name => [name, process.env[name]!]));
+// The test database's libpq settings, for commands that prepare a source.
+const pgEnv = () => ({ ...Object.fromEntries(['PGHOST', 'PGPORT', 'PGDATABASE', 'PGUSER', 'PGPASSWORD'].filter(name => process.env[name]).map(name => [name, process.env[name]!])),
+  PG_SCHEMA: fixture.database.schema });
 const run = (args: string[], env: Record<string, string> = {}) => {
   const result = Bun.spawnSync(args, { cwd: root, env: { ...baseEnv, ...env } });
   return { code: result.exitCode, stdout: result.stdout.toString(), stderr: result.stderr.toString() };
@@ -53,42 +61,61 @@ function decodeBundle(bundle: string) {
   return { entities, contracts, spills };
 }
 
-beforeAll(() => {
+beforeAll(async () => {
   if (!existsSync(processor)) throw new Error(`Processor binary not found at ${processor}: run cargo build --release or set PROCESSOR_BIN`);
   scratch = mkdtempSync(join(tmpdir(), 'entity-processor-test-'));
+  fixture = await createFixtureDatabase();
+}, 60_000);
+afterAll(async () => {
+  await fixture?.drop();
+  rmSync(scratch, { recursive: true, force: true });
 });
-afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
 describe('source stage', () => {
   let sourceDir: string;
   beforeAll(async () => {
     sourceDir = join(scratch, 'source');
-    await prepareSource({ all: true, parquetDir, sourceDir, threads: 2, memoryLimit: '1GB' });
+    await prepareSource({ all: true, database: fixture.database, sourceDir, threads: 2, memoryLimit: '1GB' });
   }, 60_000);
 
-  test('prepare selects the current Ethereum mainnet matches only', () => {
+  test('prepare selects the Ethereum mainnet matches only and records no password', () => {
     const manifest = JSON.parse(readFileSync(join(sourceDir, 'source-manifest.json'), 'utf8'));
-    expect(manifest).toMatchObject({ status: 'completed', all: true, selectedCount: expected.selectedCount, firstMatchId: '1', signatures: true });
+    expect(manifest).toMatchObject({ schema: 'sourcify-arkiv.import-source.v3', status: 'completed', all: true, selectedCount: expected.selectedCount, firstMatchId: '1', database: fixture.database });
     expect(manifest.counts.matches).toBe(String(expected.selectedCount)); // match 100 is on chain 35443
+    if (process.env.PGPASSWORD) expect(readFileSync(join(sourceDir, 'source-manifest.json'), 'utf8')).not.toContain(process.env.PGPASSWORD);
   });
 
-  test('prepare reuses an identical selection and refuses a different one', async () => {
-    expect((await prepareSource({ all: true, parquetDir, sourceDir })).status).toBe('completed');
-    expect(prepareSource({ limit: 3, parquetDir, sourceDir })).rejects.toThrow('different selection');
+  test('prepare reuses an identical selection, also offline, and refuses a different one', async () => {
+    expect((await prepareSource({ all: true, database: fixture.database, sourceDir })).status).toBe('completed');
+    expect((await prepareSource({ all: true, sourceDir })).status).toBe('completed');
+    expect(prepareSource({ limit: 3, database: fixture.database, sourceDir })).rejects.toThrow('different selection');
+    expect(prepareSource({ all: true, database: { ...fixture.database, schema: 'other' }, sourceDir })).rejects.toThrow('different selection');
+    expect(prepareSource({ all: true, sourceDir: join(scratch, 'never-prepared') })).rejects.toThrow('reads the Sourcify database');
   });
 
-  test('old prepared formats are refused instead of silently omitting signatures', async () => {
+  test('sources prepared from Parquet (v2) are refused', async () => {
     const oldDir = join(scratch, 'old-source');
     const { mkdirSync } = await import('node:fs');
     mkdirSync(oldDir);
-    writeFileSync(join(oldDir, 'source-manifest.json'), JSON.stringify({ schema: 'sourcify-arkiv.import-source.v1', status: 'completed', all: true, dataDir: parquetDir, signatures: false }));
-    await expect(prepareSource({ all: true, parquetDir, sourceDir: oldDir })).rejects.toThrow('outdated');
-    expect(run(['bun', 'source/stream.ts', '--source-dir', oldDir]).stderr).toContain('completed v2');
+    writeFileSync(join(oldDir, 'source-manifest.json'), JSON.stringify({ schema: 'sourcify-arkiv.import-source.v2', status: 'completed', all: true, dataDir: '/parquet', signatures: true }));
+    await expect(prepareSource({ all: true, database: fixture.database, sourceDir: oldDir })).rejects.toThrow('outdated');
+    expect(run(['bun', 'source/stream.ts', '--source-dir', oldDir]).stderr).toContain('completed sourcify-arkiv.import-source.v3');
   });
 
-  test('missing exported signature bodies fail closed or are explicitly reported', async () => {
+  test('matches the node created itself (local IDs) are refused', async () => {
+    const local = await createFixtureDatabase(`${fixtureSql()}
+      INSERT INTO sourcify_matches (id, verified_contract_id, creation_match, runtime_match, chain_id)
+        SELECT ${localMatchIdStart}, v.id, 'perfect', 'perfect', 1 FROM verified_contracts v
+        WHERE v.id NOT IN (SELECT verified_contract_id FROM sourcify_matches) ORDER BY v.id LIMIT 1;`);
+    try {
+      await expect(prepareSource({ all: true, database: local.database, sourceDir: join(scratch, 'local-ids'), threads: 1, memoryLimit: '1GB' }))
+        .rejects.toThrow(`1 selected matches have IDs from ${localMatchIdStart} on`);
+    } finally { await local.drop(); }
+  }, 30_000);
+
+  test('missing signature bodies fail closed or are explicitly reported', async () => {
     const missingDir = join(scratch, 'missing-signature');
-    await prepareSource({ limit: 3, parquetDir, sourceDir: missingDir, threads: 1, memoryLimit: '1GB' });
+    await prepareSource({ limit: 3, database: fixture.database, sourceDir: missingDir, threads: 1, memoryLimit: '1GB' });
     const db = await Database.open(join(missingDir, 'subset.duckdb'), {}, missingDir, 'test-');
     try { await db.connection.run('DELETE FROM signatures'); } finally { await db.close(); }
     const strict = run(['bun', 'source/stream.ts', '--source-dir', missingDir]);
@@ -102,14 +129,19 @@ describe('source stage', () => {
   });
 
   test('prepare --limit takes the first matches by ID', async () => {
-    const manifest = await prepareSource({ limit: 3, parquetDir, sourceDir: join(scratch, 'source-3'), threads: 1, memoryLimit: '1GB' });
+    const manifest = await prepareSource({ limit: 3, database: fixture.database, sourceDir: join(scratch, 'source-3'), threads: 1, memoryLimit: '1GB' });
     expect(manifest).toMatchObject({ selectedCount: 3, firstMatchId: '1', lastMatchId: '235' });
   });
 
-  test('every real Parquet adapter record equals its decoded wire contract payload', () => {
+  test('every real adapter record equals its decoded wire contract payload and carries no database IDs', () => {
     const result = run(['bun', 'source/stream.ts', '--source-dir', sourceDir, '--skip-missing-references']);
     expect(result.code).toBe(0);
     const envelopes = result.stdout.trim().split('\n').map(line => JSON.parse(line));
+    for (const envelope of envelopes.slice(0, -1)) expect(Object.keys(envelope)).toEqual(['record']);
+    // The database's internal row IDs (compilations, deployments, contracts, ... are UUIDs) never reach the output.
+    const uuids = new Set(fixtureSql().match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g));
+    expect(uuids.size).toBeGreaterThan(50);
+    for (const uuid of uuids) expect(result.stdout).not.toContain(uuid);
     const lines = envelopes.map(item => item.record ?? item);
     expect(lines.pop()).toEqual({ type: 'source-complete', records: expected.records + 2, lastMatchId: '28759260', skipped: remainingSkipped });
     expect(lines.find(record => record.matchId === '23813307').metadata).toBeNull();
@@ -120,16 +152,9 @@ describe('source stage', () => {
     const snapshotApi = lines.find(record => record.matchId === '607');
     const capturedMetadata = capturedApi.stdJsonOutput.contracts['contracts/proxies/SafeProxy.sol'].SafeProxy.metadata;
     const snapshotMetadata = snapshotApi.stdJsonOutput.contracts['contracts/proxies/SafeProxy.sol'].SafeProxy.metadata;
-    // The export preserves spaced metadata text, while the captured API has compact text.
-    // This is the only stored-field mismatch; do not silently serialize away the difference.
-    expect(snapshotMetadata).not.toBe(capturedMetadata);
-    expect(JSON.parse(snapshotMetadata)).toEqual(JSON.parse(capturedMetadata));
-    const withoutMetadataText = (value: any) => {
-      const copy = structuredClone(value);
-      delete copy.stdJsonOutput.contracts['contracts/proxies/SafeProxy.sol'].SafeProxy.metadata;
-      return copy;
-    };
-    expect(withoutMetadataText(snapshotApi)).toEqual(withoutMetadataText(capturedApi));
+    // The database's stored metadata text is what the API returns (the Parquet export had spaced text instead).
+    expect(snapshotMetadata).toBe(capturedMetadata);
+    expect(snapshotApi).toEqual(capturedApi);
     const signed = lines.find(record => record.matchId === '1');
     for (const type of ['function', 'event', 'error']) {
       expect(signed.signatures[type]).toHaveLength(type === 'function' ? 2 : 1);
@@ -139,16 +164,12 @@ describe('source stage', () => {
     expect(signed.signatures.function.map((item: any) => item.signature)).toEqual(['allowance(address,address)', 'transfer(address,uint256)']);
     expect(signed.signatures.function[0].signatureHash32 > signed.signatures.function[1].signatureHash32).toBe(true);
     expect(lines.some(record => Object.values(record.signatures).every((group: any) => group.length === 0))).toBe(true);
-    for (const envelope of envelopes.filter(item => item.record)) {
-      expect(Object.keys(envelope.sourcifyIds).sort()).toEqual(['compilationId', 'contractId', 'deploymentId', 'verificationId']);
-      for (const id of Object.values(envelope.sourcifyIds)) expect(typeof id).toBe('string');
-    }
     for (const record of lines) {
       expect(record.stdJsonInput).toHaveProperty('settings');
       expect(record.stdJsonOutput).toHaveProperty('contracts');
       expect(record).not.toHaveProperty('sourcifyIds');
     }
-    const legacy = lines.filter(record => !recoveredIds.includes(record.matchId)).map(({ sourcifyIds, signatures, stdJsonInput, stdJsonOutput, ...record }) => record);
+    const legacy = lines.filter(record => !recoveredIds.includes(record.matchId)).map(({ signatures, stdJsonInput, stdJsonOutput, ...record }) => record);
     legacy.push({ type: 'source-complete', records: expected.records, lastMatchId: expected.lastMatchId, skipped: expected.skipped });
     const legacyStream = legacy.map(record => JSON.stringify(record) + '\n').join('');
     // API reconstruction deliberately adds null artifact fields and checksummed addresses.
@@ -192,7 +213,7 @@ describe('source stage', () => {
 
 describe('pipeline/run.sh', () => {
   const env = (workDir: string, extra: Record<string, string> = {}) => ({
-    PATH: `${dirname(processor)}:${process.env.PATH}`, PROCESSOR_BIN: processor, WORK_DIR: workDir, PARQUET_DIR: parquetDir,
+    PATH: `${dirname(processor)}:${process.env.PATH}`, PROCESSOR_BIN: processor, WORK_DIR: workDir, ...pgEnv(),
     ENTITY_OWNER: expected.owner, PREPARE_THREADS: '2', PREPARE_MEMORY_LIMIT: '1GB', SOURCE_MEMORY_LIMIT: '1GB', ...extra,
   });
 
@@ -242,6 +263,24 @@ describe('pipeline/run.sh', () => {
     const other = run(['bash', 'pipeline/run.sh', 'run'], env(workDir, { ENTITY_OWNER: '0x2222222222222222222222222222222222222222' }));
     expect(other.code).toBe(1);
     expect(other.stderr).toContain('refusing to reuse');
+  }, 60_000);
+
+  test('prepare reads the database; run then works without database settings', () => {
+    const workDir = join(scratch, 'work-split'), fresh = join(scratch, 'work-fresh');
+    Bun.spawnSync(['mkdir', '-p', workDir, fresh]);
+    const offline = (dir: string) => Object.fromEntries(Object.entries(env(dir)).filter(([name]) => !name.startsWith('PG')));
+    const refused = run(['bash', 'pipeline/run.sh', 'run'], offline(fresh));
+    expect(refused.code).toBe(1);
+    expect(refused.stderr).toContain('needs PGHOST, PGDATABASE and PGUSER');
+    const prepared = run(['bash', 'pipeline/run.sh', 'prepare'], env(workDir));
+    expect(prepared.code).toBe(0);
+    expect(existsSync(join(workDir, 'bundle'))).toBe(false);
+    const processed = run(['bash', 'pipeline/run.sh', 'run'], offline(workDir));
+    expect(processed.code).toBe(0);
+    const timings = JSON.parse(readFileSync(join(workDir, 'timings.json'), 'utf8'));
+    expect([timings.phases.prepare.status, timings.phases.process.status, timings.phases.verify.status]).toEqual(['reused', 'completed', 'completed']);
+    expect(timings.config.database).toEqual(fixture.database);
+    expect(timings.records).toMatchObject({ contracts: expected.records + 2, sourceSkipped: remainingSkipped.length });
   }, 60_000);
 
   test('pack: the prefill archive holds what prefill loads, with a matching SHA256SUMS', () => {

@@ -24,7 +24,7 @@
   "scopeNotes": [
     "Stored verification JSON is a v3 envelope with stripped data and explicit references. Hydration reconstructs every original JSON value.",
     "Source JSON formatting and object order need not match; strings, nulls, absent fields, arrays and unknown fields do.",
-    "API provenance has no relational sourcifyIds. The Parquet adapter carries those separately as supplementary attributes.",
+    "Like every source record, the API response carries no internal database IDs; none are stored.",
     "Live proxyResolution is preserved because supplied here. Offline Parquet has no live proxy resolution; its exported metadata text can differ from a live API string.",
     "Size measurements cover only this generated example. Decoded payloads, compressed wire payload bytes and JSONL framing are different measures; no dataset savings are claimed."
   ],

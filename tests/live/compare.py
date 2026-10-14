@@ -210,7 +210,7 @@ class CachedClient:
 
 def parse_options(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--source-dir", type=Path, required=True, help="Completed local Parquet-derived source directory (read-only)")
+    parser.add_argument("--source-dir", type=Path, required=True, help="Completed prepared source directory (read-only)")
     parser.add_argument("--output", type=Path, required=True, help="New artifact directory; existing directories are refused")
     parser.add_argument("--cache", type=Path, default=ROOT / "data/live-conformance/cache")
     parser.add_argument("--api-base-url", default=API_BASE, help="Independent Sourcify server, optionally a self-hosted instance")

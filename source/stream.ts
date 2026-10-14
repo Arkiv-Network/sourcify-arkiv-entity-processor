@@ -10,14 +10,14 @@ import { iterateRecords, openSource } from './records';
 
 export interface Options {
   sourceDir: string; limit?: number; afterMatchId?: string; batchSize: number; memoryLimit: string;
-  /** Skip (and report) records whose referenced rows are absent from the export, or that the processor cannot take. */
+  /** Skip (and report) records whose referenced rows are absent from the source, or that the processor cannot take. */
   skipMissingReferences: boolean;
   /** Abort once more than this many records were skipped; skipped records are kept for the marker. */
   maxSkipped: number;
 }
 export interface Skipped { matchId: string; reason: string }
 
-/** Only reconstruction failures caused by referenced data absent from the local export (see `required()` in records.ts). */
+/** Only reconstruction failures caused by referenced data absent from the source (see `required()` in records.ts). */
 export const isMissingReference = (error: string) => error.startsWith('Missing ');
 /** Reject malformed ABI values while preserving valid null ABIs (e.g. Yul). */
 export const unsupportedRecord = (record: Record<string, any>) =>
@@ -27,7 +27,7 @@ const usage = `bun source/stream.ts --source-dir DIR [--limit N] [--after-match-
                      [--skip-missing-references [--max-skipped 10000]]
 Writes the prepared Ethereum mainnet records of DIR (see prepare.ts) as NDJSON to stdout in match ID order, then a
 source-complete marker. Any reconstruction error aborts, unless --skip-missing-references: records whose referenced
-rows are absent from the export (or whose ABI is neither an array nor null) are then skipped, logged to stderr and listed in the
+rows are absent from the source (or whose ABI is neither an array nor null) are then skipped, logged to stderr and listed in the
 marker, at most --max-skipped of them.`;
 
 export function parseOptions(args: string[]): Options | undefined {
@@ -64,7 +64,7 @@ export async function streamRecords(options: Options, write: (line: string) => P
         console.error(JSON.stringify({ skippedMatchId: item.matchId, reason }));
         continue;
       }
-      await write(JSON.stringify({ record: item.record, sourcifyIds: item.sourcifyIds }) + '\n');
+      await write(JSON.stringify({ record: item.record }) + '\n');
       records++; lastMatchId = item.matchId;
       if (records % 1000 === 0) console.error(JSON.stringify({ sourceRecords: records, lastMatchId, ...(skipped ? { skipped: skipped.length } : {}), elapsedSeconds: (performance.now() - started) / 1000 }));
       if (options.limit !== undefined && records >= options.limit) break;

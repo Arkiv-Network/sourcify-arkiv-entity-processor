@@ -4,3 +4,4 @@ node_modules/
 .env
 r2.env
 __pycache__/
+pgpass
