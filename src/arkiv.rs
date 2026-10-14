@@ -1,6 +1,6 @@
 //! First read path for the processor's v3 entities imported by arkiv-prefill.
 //! Reads only RPC data at one explicit block; no bundle or live Sourcify fallback.
-use crate::{checksum_address, entity_key, hydrate, wire, Entity, BUDGET};
+use crate::{checksum_address, hydrate, wire, Entity, BUDGET};
 use anyhow::{bail, ensure, Context, Result};
 use base64::{engine::general_purpose::STANDARD, Engine};
 use serde_json::{json, Map, Value};
@@ -377,13 +377,11 @@ pub fn rpc_wire(entity: &Value, requested_key: &str, owner: &str) -> Result<Valu
         wire::typed(&result, "uploadschema", "str:")? == "sourcify-arkiv.upload.v1",
         "unsupported upload schema"
     );
-    let staging: [u8; 32] = hex::decode(wire::typed(&result, "stagingid", "bytes32:0x")?)?
+    // Any key is accepted: prefilled entities have entity_key(stagingid), entities created later (the Postgres -> Arkiv
+    // sync) have chain-assigned keys. Identity is the staging ID, which decode_wire recomputes from the content.
+    let _: [u8; 32] = hex::decode(wire::typed(&result, "stagingid", "bytes32:0x")?)?
         .try_into()
         .map_err(|_| anyhow::anyhow!("invalid staging ID"))?;
-    ensure!(
-        entity_key(&staging) == requested_key,
-        "RPC key does not match prefill staging identity"
-    );
     let content_type = wire::string(entity, "contentType")?;
     let original = wire::typed(&result, "originalcontenttype", "str:")?;
     let encoding = wire::typed(&result, "contentencoding", "str:")?;
@@ -419,7 +417,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{hx, sha, transform};
+    use crate::{entity_key, hx, sha, transform};
     use flate2::{write::GzEncoder, Compression};
     use std::{
         io::{BufRead, BufReader, Read, Write},
@@ -674,6 +672,27 @@ mod tests {
             );
         }
         assert_eq!(result.rpc_requests, requests.len() as u64);
+    }
+
+    #[test]
+    fn chain_assigned_keys_hydrate_like_prefilled_ones() {
+        // Entities created on a live chain (the Postgres -> Arkiv sync) do not have entity_key(stagingid) keys;
+        // only key-typed references (compilationref) must name the referenced entity's actual key.
+        let (record, mut entities) = fixture();
+        let live = |key: &str| hx(sha(format!("live:{key}")));
+        for entity in &mut entities {
+            entity["key"] = json!(live(entity["key"].as_str().unwrap()));
+            for attribute in entity["attributes"].as_array_mut().unwrap() {
+                if attribute["type"] == "key" {
+                    attribute["value"] = json!(live(attribute["value"].as_str().unwrap()));
+                }
+            }
+        }
+        let mock = Mock::new(entities, "");
+        assert_eq!(
+            read_contract(mock.config(), ADDRESS).unwrap().contract,
+            record
+        );
     }
 
     #[test]

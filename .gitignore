@@ -5,3 +5,4 @@ node_modules/
 r2.env
 __pycache__/
 pgpass
+arkiv-writer.key

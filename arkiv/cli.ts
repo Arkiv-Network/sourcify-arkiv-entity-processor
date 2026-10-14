@@ -13,19 +13,12 @@
  * gas (eth_estimateGas works on read-only endpoints); --execute signs and sends it, waits for the receipt and reads the
  * entity back.
  */
-import { createPublicClient, createWalletClient, ExpirationTime, resolveExpiry, type Expiry } from '@arkiv-network/sdk';
+import { createWalletClient, ExpirationTime, resolveExpiry, type Expiry } from '@arkiv-network/sdk';
 import { addr, bool, bytes32, dec, i32, key, str, u256, u64 } from '@arkiv-network/sdk/attr';
-import { defineChain, encodeFunctionData, http, type Hex } from 'viem';
-import { privateKeyToAccount } from 'viem/accounts';
+import { type Hex } from 'viem';
 import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
-
-const DEFAULT_RPC_URL = 'https://sourcify-prefill.arkiv-global.net/rpc';
-const ARKIV_ADDRESS = '0x4400000000000000000000000000000000000044';
-// Dry runs use the SDK's internal operation encoders, which only this exact version is checked against.
-const SDK_VERSION = '0.8.1-dev.1';
+import { ARKIV_ADDRESS, connect as connectChain, describeError, executeCalldata, sdkInternals, writerAccount } from './chain';
 const USAGE = `Usage: bun arkiv/cli.ts <command> [options]
 
   info                         chain id, head block, writer address, balance, nonces, entity count
@@ -38,27 +31,11 @@ const USAGE = `Usage: bun arkiv/cli.ts <command> [options]
 Attribute types: str, u64, i32, u256, dec, bool, addr, key, bytes32 (e.g. --attr projectid=str:sourcify-sync-test).`;
 
 const env = process.env;
-const rpcUrl = env.ARKIV_RPC_URL || DEFAULT_RPC_URL;
-const transport = http(rpcUrl, { timeout: 30_000, retryCount: 2, fetchOptions: env.ARKIV_RPC_API_KEY ? { headers: { 'X-Api-Key': env.ARKIV_RPC_API_KEY } } : undefined });
 
 const json = (value: unknown) => JSON.stringify(value, (_, v) => typeof v === 'bigint' ? v.toString() : v instanceof Uint8Array ? `<${v.length} bytes>` : v, 2);
 const fail = (message: string): never => { console.error(`error: ${message}`); process.exit(1); };
 
-async function connect() {
-  const probe = createPublicClient({ transport });
-  const id = await probe.getChainId();
-  if (env.ARKIV_CHAIN_ID && Number(env.ARKIV_CHAIN_ID) !== id) fail(`RPC reports chain ${id}, ARKIV_CHAIN_ID is ${env.ARKIV_CHAIN_ID}`);
-  const chain = defineChain({ id, name: `arkiv-${id}`, nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 }, rpcUrls: { default: { http: [rpcUrl] } } });
-  return { chain, client: createPublicClient({ chain, transport }) };
-}
-
-function writer() {
-  const file = env.ARKIV_PRIVATE_KEY_FILE || 'arkiv-writer.key';
-  let secret: string;
-  try { secret = readFileSync(file, 'utf8').trim(); } catch { return fail(`cannot read the writer key file ${file}`); }
-  if (!/^(0x)?[0-9a-fA-F]{64}$/.test(secret)) fail(`${file} does not hold a 32-byte hex private key`);
-  return privateKeyToAccount((secret.startsWith('0x') ? secret : `0x${secret}`) as Hex);
-}
+const writer = () => writerAccount(env.ARKIV_PRIVATE_KEY_FILE || 'arkiv-writer.key');
 
 const ATTRIBUTE_TYPES: Record<string, (value: string) => unknown> = {
   str, dec, addr: v => addr(v as Hex), key: v => key(v as Hex), bytes32: v => bytes32(v as Hex),
@@ -85,21 +62,8 @@ function expiry(spec: string): Expiry {
   return fail(`--expires must be permanent, <days>d or a block number, got ${spec}`);
 }
 
-let internals: Promise<any> | undefined;
-function sdkInternals() {
-  return internals ??= (async () => {
-    const root = dirname(fileURLToPath(import.meta.resolve('@arkiv-network/sdk/package.json')));
-    const { version } = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
-    if (version !== SDK_VERSION) fail(`dry runs are checked against @arkiv-network/sdk ${SDK_VERSION}, installed is ${version}`);
-    const load = (path: string) => import(pathToFileURL(join(root, 'src', path)).href);
-    const [attr, operations] = await Promise.all([load('attr/attributes.ts'), load('entity/operations.ts')]);
-    return { ...attr, ...operations };
-  })();
-}
-
 async function estimate(client: any, from: Hex, operation: unknown) {
-  const { EXECUTE_ABI } = await sdkInternals();
-  const data = encodeFunctionData({ abi: EXECUTE_ABI, functionName: 'execute', args: [[operation]] });
+  const data = await executeCalldata([operation]);
   try {
     const gas = await client.estimateGas({ account: from, to: ARKIV_ADDRESS, data, value: 0n });
     return { calldataBytes: (data.length - 2) / 2, gas, gasPrice: await client.getGasPrice() };
@@ -125,7 +89,7 @@ async function main() {
   });
   const [command, argument] = positionals;
   if (!command || command === 'help' || values.help) return console.log(USAGE);
-  const { chain, client } = await connect();
+  const { chain, client, transport, rpcUrl } = await connectChain(env);
 
   if (command === 'info') {
     const account = env.ARKIV_PRIVATE_KEY_FILE || readable('arkiv-writer.key') ? writer() : undefined;
@@ -155,7 +119,7 @@ async function main() {
   if (command === 'query') {
     if (!argument) fail('query needs an expression');
     const limit = Number(values.limit);
-    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 1000) fail('--limit must be 1..1000');
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 200) fail('--limit must be 1..200 (the node returns at most 200 per query)');
     const result = await client.request({ method: 'arkiv_query' as any, params: [argument, { limit, select: { key: true, owner: true, expiresAt: true, contentType: true, attributes: true } }] as any });
     return console.log(json(result));
   }
@@ -201,14 +165,4 @@ async function main() {
 
 function readable(file: string) { try { readFileSync(file); return true; } catch { return false; } }
 
-// viem and the SDK wrap RPC errors several times; the innermost one names the actual cause.
-function describe(error: any) {
-  const messages: string[] = [];
-  for (let current = error; current; current = current.cause) {
-    const message = current.details ?? current.shortMessage ?? current.message;
-    if (message && !messages.includes(message)) messages.push(message);
-  }
-  return messages.length ? messages.join(': ') : String(error);
-}
-
-await main().catch(error => fail(describe(error)));
+await main().catch(error => fail(describeError(error)));

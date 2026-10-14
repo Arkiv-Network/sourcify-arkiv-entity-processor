@@ -61,6 +61,7 @@ the HTTP server derives serving signatures from ABI. See the
 | `crates/server/` | `arkiv-sourcify-server`: Arkiv-backed Mainnet contract reads; [API and runbook](docs/server.md) |
 | `source/` | Bun + DuckDB source stage: `prepare.ts` (PostgreSQL → DuckDB), `stream.ts` (DuckDB → NDJSON records) |
 | `pipeline/` | `run.sh` (resumable phases, progress, `timings.json`), `state.ts` (its bookkeeping) |
+| `arkiv/` | [Postgres → Arkiv sync](#postgres--arkiv-sync) (`sync.ts`) and a helper CLI (`cli.ts`), Bun + `@arkiv-network/sdk` |
 | `Dockerfile`, `compose.yaml`, `.env.example` | container deployment |
 | `tests/` | end-to-end tests on a small real-data PostgreSQL fixture; [opt-in live contract comparison](docs/live-conformance.md) |
 
@@ -238,6 +239,52 @@ sudo systemctl start sourcify-daily-seed.service        # one run now
 sudo systemctl enable --now sourcify-daily-seed.timer   # 02:00 UTC daily (catches up after downtime)
 journalctl -u sourcify-daily-seed.service               # progress (JSON lines)
 ```
+
+## Postgres → Arkiv sync
+
+[`arkiv/sync.ts`](arkiv/sync.ts) keeps a live Arkiv chain up to date after a seed. It writes the matches the
+mirror gained after a cursor (a `matchId`, kept in `SYNC_DIR/state.json`) as the same entities a seed holds, so the
+Arkiv-backed server reads both alike. One batch (`SYNC_BATCH`, default 200 matches):
+
+1. `prepare --after-match-id` reads only the selected matches' rows, then `stream.ts` and `process` as for a seed;
+2. dependencies (`sourcefile`, `code`, `compilation`, `blob`): one already on the chain (same owner, kind, hash and
+   part, the server's own lookup) is reused, the others are created;
+3. then each `verified_contract`, its `compilationref` naming the compilation's chain key. It is what makes a contract
+   readable, so a contract is never visible before its dependencies. An address that already has a
+   `verified_contract` is not written again: the same entity counts as synced, a different one is skipped and listed
+   in `SYNC_DIR/skipped.jsonl` (changed contracts are not updated yet,
+   [#13](https://github.com/Arkiv-Network/sourcify-arkiv-entity-processor/issues/13));
+4. every created entity is read back and compared; only then does the cursor move. Each batch appends a line
+   (counts, gas, phase timings) to `SYNC_DIR/sync.jsonl`.
+
+Entities never expire (`expiresAt` 2^64-1, like a seed's). Creates are packed into transactions of up to
+`SYNC_MAX_TX_BYTES` (120,000) bytes of calldata, `SYNC_IN_FLIGHT` (4) of them unmined at a time.
+
+The chain is the record of what was written: a rerun after any failure (or a crash between two transactions) looks
+the entities up again instead of creating them twice. That needs one writer whose transactions are all mined, so the
+sync holds `SYNC_DIR/sync.lock` and starts only once the writer has no pending transaction. **Never sign with the
+writer key anywhere else while the sync runs.**
+
+```sh
+# .env: ARKIV_RPC_URL, ARKIV_CHAIN_ID, ARKIV_WRITER_KEY_FILE (32-byte hex private key, mode 600); PG* as for prepare
+docker compose --profile sync run --rm sync --once --start-after 56107622   # first batch after the seed's lastMatchId
+docker compose --profile sync up -d sync                                     # then continuously (polls every 60 s)
+docker compose --profile sync run --rm sync --dry-run                        # plan the next batch, write nothing
+```
+
+`--start-after chain` takes the highest `matchid` of the writer's `verified_contract` entities instead. The server
+accepts these chain-assigned keys: entity identity is the staging ID it recomputes from the content.
+
+Measured on the dev chain (2 s blocks; 2026-10-15), the RPC endpoint's block import is the limit:
+
+| | |
+| --- | --- |
+| 200 matches | ~1,000-1,500 entities (about half reused), 32-60 transactions, 3.5-6.6 MB calldata, ~90-140 s |
+| Rate | ~8,000 contracts/hour; prepare, records, process and lookups take ~5 s of a batch |
+| Gas | 33-38 gas per calldata byte (~115 kB transaction: ~3.9M gas) |
+
+`arkiv/cli.ts` (`bun run arkiv info|get|query|create|delete`) inspects the chain and tries single writes with the same
+settings; writes are dry runs without `--execute`.
 
 ## Checking records against an API
 
