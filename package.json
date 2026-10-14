@@ -6,10 +6,13 @@
   "scripts": {
     "source:prepare": "bun source/prepare.ts",
     "source:stream": "bun source/stream.ts",
-    "test": "bun --no-env-file test --timeout 30000 tests"
+    "test": "bun --no-env-file test --timeout 30000 tests",
+    "arkiv": "bun arkiv/cli.ts"
   },
   "dependencies": {
+    "@arkiv-network/sdk": "0.8.1-dev.1",
     "@duckdb/node-api": "1.5.6-r.1",
-    "@noble/hashes": "1.8.0"
+    "@noble/hashes": "1.8.0",
+    "viem": "2.56.3"
   }
 }
