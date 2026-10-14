@@ -10,7 +10,9 @@ export class Database {
   private constructor(public instance: DuckDBInstance, public connection: DuckDBConnection, private temporary: string) {}
   /** Opens `path` with its own spill directory below `spillParent`, removed again on close. */
   static async open(path: string, options: Record<string, string>, spillParent: string, spillPrefix: string) {
-    const instance = await DuckDBInstance.create(path, options);
+    // The container image ships DuckDB's postgres extension there (Dockerfile); it is never downloaded at run time.
+    const extensions = process.env.DUCKDB_EXTENSION_DIRECTORY ? { extension_directory: process.env.DUCKDB_EXTENSION_DIRECTORY } : {};
+    const instance = await DuckDBInstance.create(path, { ...extensions, ...options });
     try {
       const connection = await instance.connect();
       try {

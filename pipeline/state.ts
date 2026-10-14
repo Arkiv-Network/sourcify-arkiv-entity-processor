@@ -33,11 +33,13 @@ const bool = (value: string | undefined) => value === '1';
 
 function config(): Json {
   return {
-    parquetDir: env.PARQUET_DIR, prepareLimit: env.PREPARE_LIMIT || null, prepareThreads: env.PREPARE_THREADS, prepareMemoryLimit: env.PREPARE_MEMORY_LIMIT,
+    // The source database: the prepared source's, else the libpq settings (the password is never recorded).
+    database: sourceManifest()?.database ?? { host: env.PGHOST ?? null, port: env.PGPORT || '5432', database: env.PGDATABASE ?? null, user: env.PGUSER ?? null, schema: env.PG_SCHEMA },
+    prepareLimit: env.PREPARE_LIMIT || null, prepareThreads: env.PREPARE_THREADS, prepareMemoryLimit: env.PREPARE_MEMORY_LIMIT,
     sourceBatchSize: env.SOURCE_BATCH_SIZE, sourceMemoryLimit: env.SOURCE_MEMORY_LIMIT, contractLimit: env.CONTRACT_LIMIT || null,
     skipMissingReferences: bool(env.SKIP_MISSING_REFERENCES), maxSkipped: env.MAX_SKIPPED, processWorkers: env.PROCESS_WORKERS, compressionWorkers: env.COMPRESSION_WORKERS,
     entityOwner: env.ENTITY_OWNER, destinationChainId: env.DESTINATION_CHAIN_ID, progressInterval: env.PROGRESS_INTERVAL,
-    ...(env.PIPELINE_COMMAND === 'run' ? {} : { packContents: env.PACK_CONTENTS, zstdLevel: env.ZSTD_LEVEL, r2Bucket: env.R2_BUCKET || null, r2Key: env.R2_KEY || null }),
+    ...(['prepare', 'run'].includes(env.PIPELINE_COMMAND!) ? {} : { packContents: env.PACK_CONTENTS, zstdLevel: env.ZSTD_LEVEL, r2Bucket: env.R2_BUCKET || null, r2Key: env.R2_KEY || null }),
   };
 }
 /** Settings that change the published bundle; a completed bundle is only reused under the same ones. */

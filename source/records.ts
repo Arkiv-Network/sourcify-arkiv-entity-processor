@@ -1,9 +1,9 @@
-/** Batched reconstruction of Sourcify contract records from a prepared source (prepare.ts). */
+/** Batched reconstruction of Sourcify API contract records from a prepared source (prepare.ts). */
 import { readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Database, literal, type Row } from './database';
-import type { SourceManifest } from './prepare';
+import { sourceSchema, type SourceManifest } from './prepare';
 import { buildStandardJson } from './standard-json';
 import { checksumAddress } from './api-values';
 
@@ -17,7 +17,7 @@ const indexScans = 'SET index_scan_max_count=1000000';
 export async function openSource(sourceDir: string, memoryLimit: string): Promise<Source> {
   if (!/^[1-9][0-9]*(MB|GB)$/i.test(memoryLimit)) throw new Error('Memory limit must be a positive whole MB or GB value');
   const manifest: SourceManifest = JSON.parse(await readFile(join(sourceDir, 'source-manifest.json'), 'utf8'));
-  if (manifest.schema !== 'sourcify-arkiv.import-source.v2' || manifest.signatures !== true || manifest.status !== 'completed') throw new Error('Source must have a completed v2 source-manifest.json with signatures; regenerate with all 11 Parquet tables');
+  if (manifest.schema !== sourceSchema || manifest.status !== 'completed') throw new Error(`Source must have a completed ${sourceSchema} source-manifest.json; prepare it from PostgreSQL (prepare.ts) in a fresh source directory`);
   const db = await Database.open(join(sourceDir, 'subset.duckdb'), { access_mode: 'READ_ONLY', threads: '1', memory_limit: memoryLimit }, tmpdir(), 'sourcify-source-');
   try { await db.connection.run(indexScans); } catch (error) { await db.close(); throw error; }
   return { db, manifest, close: () => db.close() };
@@ -36,15 +36,19 @@ const grouped = (rows: Row[], key: string) => {
   for (const row of rows) { const id = String(row[key]); const group = map.get(id) ?? []; group.push(row); map.set(id, group); }
   return map;
 };
-function required(map: Map<string, Row>, key: unknown, label: string): Row {
+/** The row for `key`, else an error that names content keys (hashes) but never an internal row ID: the reason
+ * of a skipped record is published in the completion marker and the bundle report. */
+function required(map: Map<string, Row>, key: unknown, label: string, internalKey = false): Row {
   const row = map.get(String(key));
-  if (!row) throw new Error(`Missing ${label}: ${String(key)}`);
+  if (!row) throw new Error(internalKey ? `Missing ${label}` : `Missing ${label}: ${String(key)}`);
   return row;
 }
 
 /** Yields every selected match in ID order: an assembled record, or the error that prevented it.
- * Shared bodies are read once per batch; the next batch is queried while the current one is consumed. */
-export async function* iterateRecords(source: Source, options: { batchSize?: number; afterMatchId?: string } = {}): AsyncGenerator<{ matchId: string; record?: Row; sourcifyIds?: Row; error?: string }> {
+ * Shared bodies are read once per batch; the next batch is queried while the current one is consumed.
+ * The database's internal row IDs (verification, deployment, compilation, contract) only join rows here; they are
+ * never part of a record. */
+export async function* iterateRecords(source: Source, options: { batchSize?: number; afterMatchId?: string } = {}): AsyncGenerator<{ matchId: string; record?: Row; error?: string }> {
   const batchSize = options.batchSize ?? 250;
   if (!Number.isSafeInteger(batchSize) || batchSize < 1 || batchSize > 1000) throw new Error('Source batch size must be between 1 and 1000');
   const cursor = options.afterMatchId ?? '-1';
@@ -93,11 +97,11 @@ export async function* iterateRecords(source: Source, options: { batchSize?: num
         // Let DuckDB completions advance the prefetch query chain between records.
         await new Promise(resolve => setImmediate(resolve));
         try {
-          const verification = required(verifications, match.verified_contract_id, 'verification');
-          const deployment = required(deployments, verification.deployment_id, 'deployment');
+          const verification = required(verifications, match.verified_contract_id, 'verification', true);
+          const deployment = required(deployments, verification.deployment_id, 'deployment', true);
           if (String(deployment.chain_id) !== '1') throw new Error('Selected deployment is not Ethereum mainnet');
-          const compilation = required(compilations, verification.compilation_id, 'compilation');
-          const deployed = required(contracts, deployment.contract_id, 'deployed contract');
+          const compilation = required(compilations, verification.compilation_id, 'compilation', true);
+          const deployed = required(contracts, deployment.contract_id, 'deployed contract', true);
           const meta = metadata.get(String(compilation.id)) ?? [];
           const sourcePaths = paths.get(String(compilation.id)) ?? [];
           const sources = sourcePaths.length ? Object.fromEntries(sourcePaths.map(path => [path.path, { content: required(bodies, path.hash, `source ${path.path}`).content }])) : null;
@@ -105,14 +109,14 @@ export async function* iterateRecords(source: Source, options: { batchSize?: num
           for (const ref of signatureRefs.get(String(compilation.id)) ?? []) {
             if (!Object.hasOwn(signatureGroups, ref.signature_type)) throw new Error(`Unknown signature type: ${ref.signature_type}`);
             const signature = required(signatures, ref.hash, 'signature');
-            signatureGroups[ref.signature_type].push({ signature: signature.signature, signatureHash32: signature.hash32, signatureHash4: signature.hash4 });
+            signatureGroups[ref.signature_type].push({ order: Number(signature.signature_order), signature: { signature: signature.signature, signatureHash32: signature.hash32, signatureHash4: signature.hash4 } });
           }
-          // Production Sourcify orders each signature group by signature text.
-          for (const group of Object.values(signatureGroups) as Row[][]) {
-            group.sort((a, b) => Buffer.compare(Buffer.from(a.signature), Buffer.from(b.signature)));
+          // Sourcify orders each signature group by signature text in the database's collation (prepare.ts).
+          for (const [type, group] of Object.entries(signatureGroups) as [string, Row[]][]) {
+            signatureGroups[type] = group.sort((a, b) => a.order - b.order).map(entry => entry.signature);
           }
           const code = (hash: string | null) => hash ? required(codes, hash, 'bytecode').bytecode : null;
-          yield { matchId, sourcifyIds: { compilationId: String(compilation.id), deploymentId: String(deployment.id), verificationId: String(verification.id), contractId: String(deployed.id) }, record: assembleContract({ match, verification, deployment, compilation, deployed, metadataRows: meta, sources, code, signatures: signatureGroups }) };
+          yield { matchId, record: assembleContract({ match, verification, deployment, compilation, deployed, metadataRows: meta, sources, code, signatures: signatureGroups }) };
         } catch (error) {
           yield { matchId, error: error instanceof Error ? error.message : String(error) };
         }
@@ -151,10 +155,13 @@ export function assembleContract({ match, verification, deployment, compilation,
   const apiCompilation = { language: languages[compilation.language.toLowerCase()] ?? compilation.language, compiler: compilation.compiler, compilerVersion: compilation.version, compilerSettings: json(compilation.compiler_settings), name: compilation.name, fullyQualifiedName: compilation.fully_qualified_name };
   const creationBytecode = bytecode('creation'), runtimeBytecode = bytecode('runtime');
   const additionalInput = json(compilation.additional_input);
+  const createdAt = String(match.created_at);
+  // prepare.ts stores UTC timestamps without a zone; anything else would render a shifted verifiedAt.
+  if (!/^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d(\.\d+)?$/.test(createdAt)) throw new Error(`Unexpected match timestamp ${createdAt}`);
   return {
     chainId: '1', address: checksumAddress(deployment.address), matchId: String(match.id), creationMatch, runtimeMatch,
     match: [creationMatch, runtimeMatch].includes('exact_match') ? 'exact_match' : [creationMatch, runtimeMatch].includes('match') ? 'match' : null,
-    verifiedAt: String(match.created_at).replace(' ', 'T').slice(0, 19) + 'Z',
+    verifiedAt: createdAt.replace(' ', 'T').slice(0, 19) + 'Z',
     compilation: apiCompilation,
     deployment: { transactionHash: nonempty(deployment.transaction_hex), blockNumber: integer(deployment.block_number), transactionIndex: integer(deployment.transaction_index), deployer: checksumAddress(nonempty(deployment.deployer_hex)) },
     sources, creationBytecode, runtimeBytecode,

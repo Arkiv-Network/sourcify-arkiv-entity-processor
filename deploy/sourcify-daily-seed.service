@@ -1,0 +1,15 @@
+# Daily Sourcify prefill seed (pipeline/daily.sh). Install: see README.md, "Daily seed".
+[Unit]
+Description=Daily Sourcify Ethereum prefill seed: mirror database -> bundle -> R2
+Wants=network-online.target docker.service
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+# Docker access; every container still runs as PIPELINE_UID with the Compose limits.
+User=root
+Environment=MIRROR_DIR=/home/sourcify/argotorg/sourcify/local-node
+ExecStart=/home/sourcify/arkiv-network/sorcify-arkiv-entity-processor/pipeline/daily.sh
+# The wrapper itself is light; the work runs in capped containers.
+Nice=10
+TimeoutStartSec=6h

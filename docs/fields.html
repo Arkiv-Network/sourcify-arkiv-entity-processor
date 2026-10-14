@@ -9,7 +9,7 @@
 <a href="sources.html">Sources</a></div></nav>
 <main id="main"><section>
 <h1>Sourcify field → processor entity</h1>
-<p>Sourcify API names are comparison vocabulary here, not processor endpoints. The paths below describe hydrated JSON, not direct offsets into the stripped stored envelope. Every supplied input field is restored at its original path. In stored v3 envelopes, data contains local values and references names the JSON Pointer destinations of shared values. Use the example explorer to inspect actual stored payloads. Parquet adapter limitations below apply before processing; an API input preserves those fields when supplied.</p>
+<p>Sourcify API names are comparison vocabulary here, not processor endpoints. The paths below describe hydrated JSON, not direct offsets into the stripped stored envelope. Every supplied input field is restored at its original path. In stored v3 envelopes, data contains local values and references names the JSON Pointer destinations of shared values. Use the example explorer to inspect actual stored payloads. Database adapter limitations below apply before processing; an API input preserves those fields when supplied.</p>
 <div class="searchbar">
 <label for="search">Find a field or concept</label>
 <input id="search" type="search" placeholder="Try metadata, sourceMap, Vyper, signatures…" autocomplete="off">
@@ -67,14 +67,14 @@
 <td>address</td>
 <td>verified_contract</td>
 <td>address</td>
-<td>Parquet adapter and typed address index use checksum casing.</td>
+<td>Database adapter and typed address index use checksum casing.</td>
 <td>sourcify_matches + verified_contracts + contract_deployments</td>
 </tr>
 <tr>
 <td>verifiedAt</td>
 <td>verified_contract</td>
 <td>verifiedAt</td>
-<td>Exact input timestamp preserved. The Parquet adapter normalizes to UTC seconds before processing; the query index uses Unix seconds.</td>
+<td>Exact input timestamp preserved. The database adapter normalizes to UTC seconds before processing; the query index uses Unix seconds.</td>
 <td>sourcify_matches + verified_contracts + contract_deployments</td>
 </tr>
 <tr>
@@ -137,28 +137,28 @@
 <td>deployment.transactionHash</td>
 <td>verified_contract</td>
 <td>deployment.transactionHash</td>
-<td>Original input value and type preserved. The Parquet adapter supplies null for missing values and represents numeric values as strings.</td>
+<td>Original input value and type preserved. The database adapter supplies null for missing values and represents numeric values as strings.</td>
 <td>contract_deployments</td>
 </tr>
 <tr>
 <td>deployment.blockNumber</td>
 <td>verified_contract</td>
 <td>deployment.blockNumber</td>
-<td>Original input value and type preserved. The Parquet adapter supplies null for missing values and represents numeric values as strings.</td>
+<td>Original input value and type preserved. The database adapter supplies null for missing values and represents numeric values as strings.</td>
 <td>contract_deployments</td>
 </tr>
 <tr>
 <td>deployment.transactionIndex</td>
 <td>verified_contract</td>
 <td>deployment.transactionIndex</td>
-<td>Original input value and type preserved. The Parquet adapter supplies null for missing values and represents numeric values as strings.</td>
+<td>Original input value and type preserved. The database adapter supplies null for missing values and represents numeric values as strings.</td>
 <td>contract_deployments</td>
 </tr>
 <tr>
 <td>deployment.deployer</td>
 <td>verified_contract</td>
 <td>deployment.deployer</td>
-<td>Original input value and type preserved. The Parquet adapter supplies null for missing values and represents numeric values as strings.</td>
+<td>Original input value and type preserved. The database adapter supplies null for missing values and represents numeric values as strings.</td>
 <td>contract_deployments</td>
 </tr>
 <tr>
@@ -172,42 +172,42 @@
 <td>metadata</td>
 <td>compilation → verified_contract</td>
 <td>metadata</td>
-<td>Exact input value restored from the shared compilation. Parquet supplies only available export artifacts; missing/non-Solidity metadata becomes null.</td>
+<td>Exact input value restored from the shared compilation. The database adapter supplies only stored artifacts; missing/non-Solidity metadata becomes null.</td>
 <td>compiled_contracts_metadata.metadata</td>
 </tr>
 <tr>
 <td>storageLayout</td>
 <td>compilation → verified_contract</td>
 <td>storageLayout</td>
-<td>Exact input value restored from the shared compilation. Parquet supplies only available export artifacts; missing/non-Solidity metadata becomes null.</td>
+<td>Exact input value restored from the shared compilation. The database adapter supplies only stored artifacts; missing/non-Solidity metadata becomes null.</td>
 <td>compiled_contracts.compilation_artifacts.storageLayout</td>
 </tr>
 <tr>
 <td>transientStorageLayout</td>
 <td>compilation → verified_contract</td>
 <td>transientStorageLayout</td>
-<td>Exact input value restored from the shared compilation. Parquet supplies only available export artifacts; missing/non-Solidity metadata becomes null.</td>
+<td>Exact input value restored from the shared compilation. The database adapter supplies only stored artifacts; missing/non-Solidity metadata becomes null.</td>
 <td>compiled_contracts.compilation_artifacts.transientStorageLayout</td>
 </tr>
 <tr>
 <td>userdoc</td>
 <td>compilation → verified_contract</td>
 <td>userdoc</td>
-<td>Exact input value restored from the shared compilation. Parquet supplies only available export artifacts; missing/non-Solidity metadata becomes null.</td>
+<td>Exact input value restored from the shared compilation. The database adapter supplies only stored artifacts; missing/non-Solidity metadata becomes null.</td>
 <td>compiled_contracts.compilation_artifacts.userdoc</td>
 </tr>
 <tr>
 <td>devdoc</td>
 <td>compilation → verified_contract</td>
 <td>devdoc</td>
-<td>Exact input value restored from the shared compilation. Parquet supplies only available export artifacts; missing/non-Solidity metadata becomes null.</td>
+<td>Exact input value restored from the shared compilation. The database adapter supplies only stored artifacts; missing/non-Solidity metadata becomes null.</td>
 <td>compiled_contracts.compilation_artifacts.devdoc</td>
 </tr>
 <tr>
 <td>sourceIds</td>
 <td>compilation → verified_contract</td>
 <td>sourceIds</td>
-<td>Exact input value restored from the shared compilation. Parquet supplies only available export artifacts; missing/non-Solidity metadata becomes null.</td>
+<td>Exact input value restored from the shared compilation. The database adapter supplies only stored artifacts; missing/non-Solidity metadata becomes null.</td>
 <td>compiled_contracts.compilation_artifacts.sources</td>
 </tr>
 <tr>
@@ -361,15 +361,8 @@
 <td>proxyResolution</td>
 <td>verified_contract</td>
 <td>proxyResolution</td>
-<td>Preserved exactly when supplied; absent stays absent. Parquet provides no live resolution. Missing resolution does not mean isProxy:false.</td>
+<td>Preserved exactly when supplied; absent stays absent. The database adapter provides no live resolution. Missing resolution does not mean isProxy:false.</td>
 <td>Upstream resolves dynamically when requested</td>
-</tr>
-<tr>
-<td>sourcifyIds (wrapper only)</td>
-<td>verified_contract attributes</td>
-<td>sourcifycompilationid / sourcifydeploymentid / sourcifyverificationid / sourcifycontractid</td>
-<td>Exported IDs retained as string attributes, outside the contract payload. Not API v2 response fields.</td>
-<td>Original exported relational IDs</td>
 </tr>
 </tbody>
 </table>

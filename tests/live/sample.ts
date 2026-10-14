@@ -27,7 +27,6 @@ export interface SampleItem {
   address?: string;
   chainId?: string;
   verifiedAt?: string;
-  sourcifyIds?: Record<string, string>;
   error?: string;
 }
 export interface SampleManifest {
@@ -68,9 +67,9 @@ export async function selectMatchIds(source: Source, seed: string, count: number
 
 function provenance(manifest: SourceManifest): Partial<SourceManifest> {
   // Preserve source identity without copying SQL statements or arbitrary manifest extensions.
-  const { schema, status, signatures, all, limit, selectedCount, firstMatchId, lastMatchId,
+  const { schema, status, database, all, limit, selectedCount, firstMatchId, lastMatchId,
     startedAt, finishedAt, databaseBytes, counts } = manifest;
-  return { schema, status, signatures, all, limit, selectedCount, firstMatchId, lastMatchId,
+  return { schema, status, database, all, limit, selectedCount, firstMatchId, lastMatchId,
     startedAt, finishedAt, databaseBytes, counts };
 }
 async function save(file: FileHandle, manifest: SampleManifest) {
@@ -134,10 +133,10 @@ export async function sampleSource(options: SampleOptions): Promise<SampleManife
           if (selected.done || selected.value.matchId !== sample.matchId) throw new Error(`Selected match ${sample.matchId} was not returned by the existing assembler`);
           const item = selected.value;
           if (item.error) throw new Error(item.error);
-          if (!item.record || !item.sourcifyIds || String(item.record.matchId) !== sample.matchId) throw new Error(`Selected match ${sample.matchId} has no complete reconstructed record`);
-          await records.writeFile(JSON.stringify({ record: item.record, sourcifyIds: item.sourcifyIds }) + '\n');
+          if (!item.record || String(item.record.matchId) !== sample.matchId) throw new Error(`Selected match ${sample.matchId} has no complete reconstructed record`);
+          await records.writeFile(JSON.stringify({ record: item.record }) + '\n');
           Object.assign(sample, { status: 'completed', address: item.record.address, chainId: item.record.chainId,
-            verifiedAt: item.record.verifiedAt, sourcifyIds: item.sourcifyIds });
+            verifiedAt: item.record.verifiedAt });
           manifest.completedCount += 1;
         } catch (error) {
           sample.status = 'failed'; sample.error = message(error);

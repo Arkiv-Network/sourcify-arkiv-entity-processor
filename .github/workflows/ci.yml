@@ -70,9 +70,23 @@ jobs:
         run: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests/live -p 'test_*.py'
 
   pipeline:
-    name: pipeline end-to-end (Bun + DuckDB + processor)
+    name: pipeline end-to-end (PostgreSQL + Bun + DuckDB + processor)
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    # The tests load tests/fixture into a schema of their own (tests/fixture/postgres.ts).
+    services:
+      postgres:
+        image: postgres:15.14-bookworm
+        env:
+          POSTGRES_PASSWORD: test
+        ports: ["5432:5432"]
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: "5432"
+      PGDATABASE: postgres
+      PGUSER: postgres
+      PGPASSWORD: test
     steps:
       - uses: actions/checkout@v7
 
@@ -101,20 +115,36 @@ jobs:
     name: docker image on the fixture
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:15.14-bookworm
+        env:
+          POSTGRES_PASSWORD: test
+        ports: ["5432:5432"]
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v7
 
       - name: Build image
         run: docker build --build-arg REVISION="${GITHUB_SHA::7}" -t arkiv-entity-processor:ci .
 
+      - name: Load the fixture into PostgreSQL
+        run: |
+          { echo 'CREATE SCHEMA fixture; SET search_path TO fixture;'; cat tests/fixture/schema.sql tests/fixture/fixture.sql; } |
+            docker exec -i "${{ job.services.postgres.id }}" psql -v ON_ERROR_STOP=1 -q -U postgres -d postgres
+
       - name: Run the pipeline on the fixture
         run: |
           work="$RUNNER_TEMP/work"
           mkdir -p "$work"
-          docker run --rm --network none -u "$(id -u):$(id -g)" \
-            -v "$PWD/tests/fixture/parquet:/parquet:ro" -v "$work:/work" \
-            -e ENTITY_OWNER="$(jq -r .owner tests/fixture/expected.json)" \
-            -e PREPARE_MEMORY_LIMIT=2GB -e SOURCE_MEMORY_LIMIT=1GB \
+          owner="$(jq -r .owner tests/fixture/expected.json)"
+          # prepare is the only phase that reaches the database; run then needs no network.
+          docker run --rm --network host -u "$(id -u):$(id -g)" -v "$work:/work" \
+            -e PGHOST=127.0.0.1 -e PGPORT=5432 -e PGDATABASE=postgres -e PGUSER=postgres -e PGPASSWORD=test -e PG_SCHEMA=fixture \
+            -e ENTITY_OWNER="$owner" -e PREPARE_MEMORY_LIMIT=2GB \
+            arkiv-entity-processor:ci prepare
+          docker run --rm --network none -u "$(id -u):$(id -g)" -v "$work:/work" \
+            -e ENTITY_OWNER="$owner" -e PG_SCHEMA=fixture -e SOURCE_MEMORY_LIMIT=1GB \
             arkiv-entity-processor:ci run
           # The current bundle retains complete input contract payloads and nullable records.
           # Pipeline tests decode gzip/spill entities and compare every adapter input.

@@ -1,6 +1,7 @@
-# Sourcify Parquet export -> Arkiv prefill seed bundle -> R2. See README.md, "Run with Docker Compose".
+# Sourcify PostgreSQL database -> Arkiv prefill seed bundle -> R2. See README.md, "Run with Docker Compose".
 #
-#   docker compose up pipeline                       # offline: prepare -> process -> verify (no network)
+#   docker compose --profile prepare run --rm prepare   # database -> WORK_DIR/source (only this one reaches the database)
+#   docker compose up pipeline                          # offline: process -> verify (no network)
 #   docker compose --profile publish run --rm publish   # pack -> upload to R2 -> read back and check
 #
 # Settings come from .env (copy .env.example). Rerunning a command resumes; completed phases are reused.
@@ -9,8 +10,8 @@ name: arkiv-entity-processor
 x-environment: &environment
   # docker stop signals the whole job (DuckDB, Bun, Rust), so the failure is recorded in timings.json.
   TINI_KILL_PROCESS_GROUP: "1"
-  PARQUET_DIR: /parquet
   WORK_DIR: /work
+  PG_SCHEMA: "${PG_SCHEMA:-public}"
   ENTITY_OWNER: "${ENTITY_OWNER:?Set ENTITY_OWNER in .env to the public owner address of every entity}"
   DESTINATION_CHAIN_ID: "${DESTINATION_CHAIN_ID:-7706815}"
   PREPARE_LIMIT: "${PREPARE_LIMIT:-}"
@@ -39,17 +40,32 @@ x-pipeline: &pipeline
   # No swap beyond the memory limit: an over-budget phase fails (and resumes) instead of thrashing.
   memswap_limit: "${PIPELINE_MEMORY:-48g}"
   pids_limit: 512
+  # On a shared host the kernel picks these containers first, should it ever run out of memory.
+  oom_score_adj: 500
   stop_grace_period: 30s
   volumes:
-    - type: bind
-      source: "${PARQUET_DIR:-./data/parquet}"
-      target: /parquet
-      read_only: true
     - type: bind
       source: "${WORK_DIR:-./data/work}"
       target: /work
 
 services:
+  # Reads the Sourcify database (a role with SELECT on its tables suffices) on its Docker network; no ports.
+  prepare:
+    <<: *pipeline
+    profiles: [prepare]
+    command: ["prepare"]
+    networks: [source]
+    environment:
+      <<: *environment
+      PGHOST: "${PGHOST:-db}"
+      PGPORT: "${PGPORT:-5432}"
+      PGDATABASE: "${PGDATABASE:-sourcify}"
+      PGUSER: "${PGUSER:-sourcify_export}"
+      PGPASSFILE: /run/secrets/pgpass
+    secrets:
+      - source: pgpass
+        target: pgpass
+
   pipeline:
     <<: *pipeline
     command: ["run"]
@@ -75,7 +91,17 @@ services:
       - source: r2
         target: r2
 
+networks:
+  source:
+    # The network of the database service, e.g. the sourcify-mirror-node's Compose project.
+    external: true
+    name: "${SOURCE_NETWORK:-sourcify-node_default}"
+
 secrets:
+  pgpass:
+    # libpq password file (host:port:database:user:password, mode 600, readable by PIPELINE_UID). Mounted read-only;
+    # never part of the image, logs, environment or command lines.
+    file: "${PG_PASSFILE:-./pgpass}"
   r2:
     # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_ENDPOINT_URL_S3 (and optionally AWS_DEFAULT_REGION) lines;
     # readable by PIPELINE_UID. Mounted read-only; never part of the image, logs or command lines.

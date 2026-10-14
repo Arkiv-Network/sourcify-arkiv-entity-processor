@@ -40,7 +40,6 @@ bytes and JSONL framing (attributes plus base64). The compact original JSON byte
 count uses a stated serialization, not the HTTP file size. Single-sample figures
 do not establish full-dataset savings.
 
-This is API-input evidence. The offline Parquet adapter cannot resolve current
-proxies, and its exported metadata text can differ from a live API JSON string.
-The API has no relational sourcifyIds, so none are fabricated here. The Parquet
-adapter carries those separately as supplementary attributes.
+This is API-input evidence. The database adapter cannot resolve current proxies
+(it leaves out proxyResolution). Like every source record, the API response
+carries no internal database IDs; none are stored.

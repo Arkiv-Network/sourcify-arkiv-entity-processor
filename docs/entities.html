@@ -26,7 +26,7 @@
 <td>One verification/deployment record</td>
 <td>sourcify.verified-contract.v3</td>
 <td>Envelope {schema, data, references}: contract-specific data and explicit references to shared values. Hydration restores the full original JSON.</td>
-<td>Original database IDs are supplementary sourcifycompilationid, sourcifydeploymentid, sourcifyverificationid and sourcifycontractid string attributes. compilationref is a typed key attribute; code-hash attributes index bytecode. The references manifest identifies shared data by kind and content hash, with exact destination JSON Pointer paths.</td>
+<td>No source database row IDs are stored; matchid is the Sourcify API matchId. compilationref is a typed key attribute; code-hash attributes index bytecode. The references manifest identifies shared data by kind and content hash, with exact destination JSON Pointer paths.</td>
 </tr>
 <tr>
 <td>compilation</td>

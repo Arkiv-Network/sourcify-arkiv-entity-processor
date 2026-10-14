@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# Sourcify Parquet export -> Arkiv prefill seed bundle -> (optionally) R2 object.
+# Sourcify PostgreSQL database -> Arkiv prefill seed bundle -> (optionally) R2 object.
 #
-#   run.sh run      prepare -> process -> verify       offline: reads PARQUET_DIR, writes only WORK_DIR
+#   run.sh prepare  prepare                            reads the database (PG* variables), writes WORK_DIR/source
+#   run.sh run      prepare -> process -> verify       a completed prepared source is reused, so with one this runs
+#                                                      offline; otherwise it needs the database too
 #   run.sh publish  pack -> upload                     needs network and R2 credentials
 #   run.sh all      run, then publish
 #
@@ -10,10 +12,10 @@
 set -euo pipefail
 
 COMMAND=${1:-run}
-[[ $COMMAND =~ ^(run|publish|all)$ ]] || { echo "usage: run.sh [run|publish|all]" >&2; exit 2; }
+[[ $COMMAND =~ ^(prepare|run|publish|all)$ ]] || { echo "usage: run.sh [prepare|run|publish|all]" >&2; exit 2; }
 export PIPELINE_COMMAND=$COMMAND
 export APP_DIR=${APP_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}
-export WORK_DIR=${WORK_DIR:-/work} PARQUET_DIR=${PARQUET_DIR:-/parquet}
+export WORK_DIR=${WORK_DIR:-/work} PG_SCHEMA=${PG_SCHEMA:-public}
 export PREPARE_LIMIT=${PREPARE_LIMIT:-} PREPARE_THREADS=${PREPARE_THREADS:-8} PREPARE_MEMORY_LIMIT=${PREPARE_MEMORY_LIMIT:-24GB}
 export SOURCE_BATCH_SIZE=${SOURCE_BATCH_SIZE:-250} SOURCE_MEMORY_LIMIT=${SOURCE_MEMORY_LIMIT:-6GB}
 export CONTRACT_LIMIT=${CONTRACT_LIMIT:-} SKIP_MISSING_REFERENCES=${SKIP_MISSING_REFERENCES:-1} MAX_SKIPPED=${MAX_SKIPPED:-100000}
@@ -106,12 +108,13 @@ for number in PREPARE_LIMIT CONTRACT_LIMIT; do
   [[ -z ${!number} || ${!number} =~ ^[1-9][0-9]*$ ]] || die "$number must be empty or a positive integer"
 done
 [[ $ENTITY_OWNER =~ ^0x[0-9a-fA-F]{40}$ ]] || die "ENTITY_OWNER must be a 0x-prefixed 20-byte address"
-if [[ $COMMAND != publish ]]; then
-  for table in code compiled_contracts compiled_contracts_metadata compiled_contracts_sources compiled_contracts_signatures contract_deployments contracts signatures sources sourcify_matches verified_contracts; do
-    compgen -G "$PARQUET_DIR/$table/*.parquet" >/dev/null || die "missing Parquet files: $PARQUET_DIR/$table/*.parquet"
-  done
+[[ $PG_SCHEMA =~ ^[a-z_][a-z0-9_]*$ ]] || die "PG_SCHEMA must be a lowercase SQL identifier"
+if [[ $COMMAND != publish ]] && ! completed "$SOURCE"; then
+  # libpq settings; the password comes from PGPASSWORD or a password file (PGPASSFILE).
+  [[ -n ${PGHOST:-} && -n ${PGDATABASE:-} && -n ${PGUSER:-} ]] ||
+    die "no completed prepared source in $SOURCE: preparing it reads the Sourcify database and needs PGHOST, PGDATABASE and PGUSER (run.sh prepare)"
 fi
-if [[ $COMMAND != run ]]; then
+if [[ $COMMAND =~ ^(publish|all)$ ]]; then
   [[ -n $R2_BUCKET && -n $R2_KEY ]] || die "publish needs R2_BUCKET and R2_KEY"
   [[ -r $R2_CREDENTIALS_FILE ]] || die "publish needs a readable R2 credentials file at $R2_CREDENTIALS_FILE"
 fi
@@ -127,13 +130,13 @@ flock -n 9 || die "another pipeline is using $WORK_DIR"
 phase_prepare() {
   current_phase=prepare
   state start prepare
-  local status=completed args=(--parquet-dir "$PARQUET_DIR" --source-dir "$SOURCE" --threads "$PREPARE_THREADS" --memory-limit "$PREPARE_MEMORY_LIMIT")
+  local status=completed args=(--source-dir "$SOURCE" --pg-schema "$PG_SCHEMA" --threads "$PREPARE_THREADS" --memory-limit "$PREPARE_MEMORY_LIMIT")
   if completed "$SOURCE"; then status=reused; else rm -rf "$SOURCE"/sourcify-spill-*; fi # Stale spill of an interrupted attempt (lock held).
   if [[ -n $PREPARE_LIMIT ]]; then args+=(--limit "$PREPARE_LIMIT"); else args+=(--all); fi
   echo "{\"pipelineAttempt\":\"$(date -u +%FT%TZ)\"}" >>"$LOGS/prepare.log"
   start_monitor monitor prepare
   if ! bun --no-env-file "$APP_DIR/source/prepare.ts" "${args[@]}" 2>&1 | tee -a "$LOGS/prepare.log"; then
-    die "source preparation failed (see $LOGS/prepare.log). An interrupted preparation resumes on rerun; $SOURCE only accepts its original PREPARE_LIMIT and PARQUET_DIR selection."
+    die "source preparation failed (see $LOGS/prepare.log). An interrupted preparation resumes on rerun; $SOURCE only accepts its original PREPARE_LIMIT and database selection."
   fi
   stop_monitor
   state end prepare "$status"
@@ -227,6 +230,7 @@ phase_upload() {
 
 state init "$COMMAND"
 initialized=1
-if [[ $COMMAND != publish ]]; then phase_prepare; phase_process; phase_verify; fi
-if [[ $COMMAND != run ]]; then phase_pack; phase_upload; fi
+if [[ $COMMAND == prepare ]]; then phase_prepare; fi
+if [[ $COMMAND =~ ^(run|all)$ ]]; then phase_prepare; phase_process; phase_verify; fi
+if [[ $COMMAND =~ ^(publish|all)$ ]]; then phase_pack; phase_upload; fi
 state finish completed

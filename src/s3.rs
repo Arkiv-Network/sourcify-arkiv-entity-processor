@@ -402,16 +402,29 @@ pub fn retry<T>(
 }
 
 /// Text of the first `<tag>` element (XML entities decoded), shortened for display.
-fn xml_text(body: &str, tag: &str) -> Option<String> {
+/// The exact (unescaped) text of the first `<tag>` element, e.g. an UploadId (R2's are 343 characters).
+fn xml_value(body: &str, tag: &str) -> Option<String> {
     let start = body.find(&format!("<{tag}>"))? + tag.len() + 2;
     let end = start + body[start..].find(&format!("</{tag}>"))?;
-    let text = body[start..end]
-        .replace("&lt;", "<")
-        .replace("&gt;", ">")
-        .replace("&quot;", "\"")
-        .replace("&apos;", "'")
-        .replace("&amp;", "&");
-    Some(text.chars().filter(|c| !c.is_control()).take(300).collect())
+    Some(
+        body[start..end]
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .replace("&quot;", "\"")
+            .replace("&apos;", "'")
+            .replace("&amp;", "&"),
+    )
+}
+
+/// An element's text for error messages: without control characters, at most 300 characters.
+fn xml_text(body: &str, tag: &str) -> Option<String> {
+    Some(
+        xml_value(body, tag)?
+            .chars()
+            .filter(|c| !c.is_control())
+            .take(300)
+            .collect(),
+    )
 }
 
 fn xml_escape(s: &str) -> String {
@@ -576,7 +589,7 @@ impl Client {
             0,
         )?;
         let body = read_small(response)?;
-        xml_text(&body, "UploadId")
+        xml_value(&body, "UploadId")
             .filter(|id| !id.is_empty())
             .ok_or_else(|| malformed("CreateMultipartUpload response without UploadId"))
     }
@@ -921,6 +934,11 @@ mod tests {
         let body = "<?xml version=\"1.0\"?><Error><Code>SlowDown</Code><Message>Please &amp; reduce &lt;rate&gt;</Message><RequestId>1</RequestId><StringToSign>x</StringToSign></Error>";
         assert_eq!(xml_text(body, "Code").unwrap(), "SlowDown");
         assert_eq!(xml_text(body, "Message").unwrap(), "Please & reduce <rate>");
+        // Identifiers are kept whole: R2 multipart UploadIds are 343 characters.
+        let id = format!("{}+/=", "A".repeat(340));
+        let body = format!("<InitiateMultipartUploadResult><UploadId>{id}</UploadId></InitiateMultipartUploadResult>");
+        assert_eq!(xml_value(&body, "UploadId").unwrap(), id);
+        assert_eq!(xml_text(&body, "UploadId").unwrap().len(), 300);
         let status = |status, code: &str| S3Error::Status {
             status,
             code: code.into(),
