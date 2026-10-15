@@ -9,7 +9,7 @@ Type=oneshot
 # Docker access; every container still runs as PIPELINE_UID with the Compose limits.
 User=root
 Environment=MIRROR_DIR=/home/sourcify/argotorg/sourcify/local-node
-ExecStart=/home/sourcify/arkiv-network/sorcify-arkiv-entity-processor/pipeline/daily.sh
+ExecStart=/home/sourcify/arkiv-network/sourcify-arkiv-entity-processor/pipeline/daily.sh
 # The wrapper itself is light; the work runs in capped containers.
 Nice=10
 TimeoutStartSec=6h

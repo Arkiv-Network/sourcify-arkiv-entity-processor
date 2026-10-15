@@ -22,7 +22,7 @@ import urllib.request
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_USER_AGENT = (
     "arkiv-sourcify-conformance/0.1 "
-    "(+https://github.com/Arkiv-Network/sorcify-arkiv-entity-processor)"
+    "(+https://github.com/Arkiv-Network/sourcify-arkiv-entity-processor)"
 )
 API_BASE = "https://sourcify.dev/server"
 OPTIONAL_FIELDS = {
