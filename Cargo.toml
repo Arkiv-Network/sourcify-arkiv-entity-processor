@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 rust-version = "1.90"
 description = "Offline processor turning Sourcify Ethereum contract records (NDJSON) into a deduplicated Arkiv prefill seed bundle"
-repository = "https://github.com/Arkiv-Network/sorcify-arkiv-entity-processor"
+repository = "https://github.com/Arkiv-Network/sourcify-arkiv-entity-processor"
 readme = "README.md"
 publish = false
 
