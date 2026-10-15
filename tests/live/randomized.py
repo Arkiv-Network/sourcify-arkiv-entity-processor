@@ -152,7 +152,7 @@ class Client:
             try:
                 request = urllib.request.Request(url, headers={
                     "Accept-Encoding": encoding,
-                    "User-Agent": "arkiv-randomized-conformance/1.0 (+https://github.com/Arkiv-Network/sorcify-arkiv-entity-processor)",
+                    "User-Agent": "arkiv-randomized-conformance/1.0 (+https://github.com/Arkiv-Network/sourcify-arkiv-entity-processor)",
                 })
                 try:
                     response = self.opener.open(request, timeout=min(self.timeout, self.deadline - started))

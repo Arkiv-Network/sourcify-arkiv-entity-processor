@@ -11,7 +11,7 @@ import json, sys, time, urllib.error, urllib.request
 
 FIELDS = ("creationBytecode,runtimeBytecode,deployment,sources,compilation,abi,metadata,storageLayout,transientStorageLayout,"
           "userdoc,devdoc,sourceIds,additionalInput,stdJsonInput,stdJsonOutput,signatures")
-UA = {"User-Agent": "sourcify-arkiv-entity-processor record check (https://github.com/Arkiv-Network/sorcify-arkiv-entity-processor)"}
+UA = {"User-Agent": "sourcify-arkiv-entity-processor record check (https://github.com/Arkiv-Network/sourcify-arkiv-entity-processor)"}
 
 
 def get(url):
