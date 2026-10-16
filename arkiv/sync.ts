@@ -32,8 +32,9 @@
  * PGPORT, PGDATABASE, PGUSER, PGPASSWORD or PGPASSFILE (the mirror, SELECT only); SYNC_DIR (required, one per chain),
  * SYNC_BATCH (matches per batch, default 200), SYNC_POLL_SECONDS (default 60), SYNC_MAX_TX_BYTES (calldata per
  * transaction, default 120000, at least 4000; a larger entity travels alone), SYNC_MAX_GAS_PRICE_GWEI (default 2), SYNC_IN_FLIGHT
- * (unmined transactions at a time, default 4), SYNC_GAS (computed or estimate, see send()), ARKIV_PROCESSOR_BIN
- * (default ./target/release/arkiv-entity-processor).
+ * (unmined transactions at a time, default 4), SYNC_BATCH_DELAY_SECONDS (pause after each batch that sent transactions,
+ * default 0; with SYNC_BATCH=1 a pause between contracts), SYNC_GAS (computed or estimate, see send()),
+ * ARKIV_PROCESSOR_BIN (default ./target/release/arkiv-entity-processor).
  */
 import { createWalletClient, ENTITY_EVENTS_ABI, ExpirationTime, randomSalt, resolveExpiry } from '@arkiv-network/sdk';
 import { addr, bool, bytes32, i32, key, str, u64 } from '@arkiv-network/sdk/attr';
@@ -55,6 +56,7 @@ const settings = {
   maxTxBytes: Number(env.SYNC_MAX_TX_BYTES || 120_000),
   maxGasPrice: BigInt(Math.round(Number(env.SYNC_MAX_GAS_PRICE_GWEI || 2) * 1e9)),
   inFlight: Number(env.SYNC_IN_FLIGHT || 4),
+  batchDelaySeconds: Number(env.SYNC_BATCH_DELAY_SECONDS || 0),
   gas: env.SYNC_GAS || 'computed',
   processor: resolve(APP_DIR, env.ARKIV_PROCESSOR_BIN || 'target/release/arkiv-entity-processor'),
   keyFile: resolve(APP_DIR, env.ARKIV_PRIVATE_KEY_FILE || 'arkiv-writer.key'),
@@ -143,6 +145,7 @@ async function main() {
   if (!Number.isSafeInteger(settings.batch) || settings.batch < 1 || settings.batch > 5000) throw new Error('SYNC_BATCH must be 1..5000');
   if (!Number.isSafeInteger(settings.maxTxBytes) || settings.maxTxBytes < 4_000) throw new Error('SYNC_MAX_TX_BYTES must be at least 4000');
   if (!Number.isSafeInteger(settings.inFlight) || settings.inFlight < 1 || settings.inFlight > 16) throw new Error('SYNC_IN_FLIGHT must be 1..16');
+  if (!Number.isFinite(settings.batchDelaySeconds) || settings.batchDelaySeconds < 0 || settings.batchDelaySeconds > 3600) throw new Error('SYNC_BATCH_DELAY_SECONDS must be 0..3600');
   if (!['computed', 'estimate'].includes(settings.gas)) throw new Error('SYNC_GAS must be computed or estimate');
   const maxBatches = values.once ? 1 : values.batches !== undefined ? Number(values.batches) : Infinity;
   if (maxBatches !== Infinity && (!Number.isSafeInteger(maxBatches) || maxBatches < 1)) throw new Error('--batches must be a positive whole number');
@@ -174,7 +177,7 @@ async function main() {
     release(); process.exit(code);
   });
   try {
-    log('start', { rpcUrl, chainId: chain.id, writer: account.address, dir: settings.dir, batch: settings.batch, dryRun: values['dry-run'] });
+    log('start', { rpcUrl, chainId: chain.id, writer: account.address, dir: settings.dir, batch: settings.batch, batchDelaySeconds: settings.batchDelaySeconds, dryRun: values['dry-run'] });
     await report({ status: 'starting', rpcUrl, chainId: chain.id, writer: account.address });
 
     // Queries return at most two rows: more than one entity for a lookup is ambiguous for the server too.
@@ -237,6 +240,8 @@ async function main() {
       await report({ status: 'syncing', lastMatchId: cursor, lastBatchAt: new Date().toISOString(), error: undefined, failures: undefined });
       done++;
       if (values['dry-run']) break;
+      // A chain that cannot take writes at full speed gets a pause after each batch that wrote to it.
+      if (settings.batchDelaySeconds && result.transactions && done < maxBatches) await Bun.sleep(settings.batchDelaySeconds * 1000);
     }
   } catch (error) {
     await report({ status: 'failed', error: describeError(error) }).catch(() => {});

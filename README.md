@@ -262,7 +262,9 @@ Entities never expire (`expiresAt` 2^64-1, like a seed's). Creates are packed in
 `SYNC_MAX_TX_BYTES` (120,000) bytes of calldata, `SYNC_IN_FLIGHT` (4) of them unmined at a time. A chain that cannot
 take large transactions gets smaller ones in its target file (e.g. `SYNC_MAX_TX_BYTES=16000`, `SYNC_IN_FLIGHT=1`);
 an entity larger than the limit still travels alone, as payloads are up to 122,880 bytes (the seed's entity format;
-of 110,000 sampled from a seed, 2.5% were above 16 kB, 0.09% above 32 kB and none above 64 kB).
+of 110,000 sampled from a seed, 2.5% were above 16 kB, 0.09% above 32 kB and none above 64 kB). A chain that cannot take
+writes at full speed also gets a pause after each batch that sent transactions: `SYNC_BATCH_DELAY_SECONDS` (0), with
+`SYNC_BATCH=1` a pause between contracts. Batches that only find their entities on the chain do not wait.
 
 The chain is the record of what was written: a rerun after any failure (or a crash between two transactions) looks
 the entities up again instead of creating them twice. That needs one writer whose transactions are all mined, so the
