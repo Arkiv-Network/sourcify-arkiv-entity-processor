@@ -44,9 +44,10 @@ chain_identity() {
   done
 }
 
-# One sync per chain: two would sign with one key and create everything twice.
+# One sync per chain: two would sign with one key and create everything twice. A chain whose identity cannot be read
+# cannot be told apart, so it is refused (a sync could not start there either).
 check_target() {
-  local name=$1 rpc chain_id key other identity
+  local name=$1 rpc chain_id key other identity other_identity
   [[ -f $APP_DIR/.env ]] || die "no $APP_DIR/.env"
   for key in ARKIV_RPC_URL ARKIV_CHAIN_ID; do
     [[ -z $(env_value "$APP_DIR/.env" $key) ]] || die "$key is set in .env: chain settings belong in targets/NAME.env"
@@ -57,22 +58,25 @@ check_target() {
   key=$(cd "$APP_DIR" && realpath -m "${key:-./arkiv-writer.key}")
   [[ -r $key ]] || die "the writer key file $key is not readable"
   identity=$(chain_identity "$rpc")
-  [[ -n $identity ]] || echo "sync-targets: warning: $rpc did not return block 1 or 0; compared by URL only" >&2
+  [[ -n $identity ]] || die "$rpc does not answer eth_getBlockByNumber (block 1 or 0)"
   for other in "$TARGETS_DIR"/*.env; do
     other=$(basename "$other" .env)
     [[ $other == "$name" ]] && continue
     [[ $(setting "$other" ARKIV_RPC_URL) != "$rpc" ]] || die "target $other already syncs $rpc"
-    [[ -z $identity || $(setting "$other" ARKIV_CHAIN_ID) != "$chain_id" ]] && continue
-    [[ $(chain_identity "$(setting "$other" ARKIV_RPC_URL)") != "$identity" ]] || die "target $other already syncs this chain (block hash $identity) at $(setting "$other" ARKIV_RPC_URL)"
+    [[ $(setting "$other" ARKIV_CHAIN_ID) == "$chain_id" ]] || continue
+    other_identity=$(chain_identity "$(setting "$other" ARKIV_RPC_URL)")
+    [[ -n $other_identity ]] || die "target $other has chain ID $chain_id as well and its RPC does not answer, so it may be this chain (pipeline/sync-targets.sh rm $other if it is gone)"
+    [[ $other_identity != "$identity" ]] || die "target $other already syncs this chain (block hash $identity) at $(setting "$other" ARKIV_RPC_URL)"
   done
 }
 
-data_dir() {
-  local dir=$DATA_DIR/$1 uid gid
+# Directories below data/sync belong to PIPELINE_UID, the containers' user.
+own() {
+  local uid gid dir
   uid=$(env_value "$APP_DIR/.env" PIPELINE_UID) gid=$(env_value "$APP_DIR/.env" PIPELINE_GID)
-  mkdir -p "$dir"
-  if ((EUID == 0)); then chown "${uid:-1000}:${gid:-1000}" "$DATA_DIR" "$dir"
-  elif [[ $(stat -c %u "$dir") != "${uid:-1000}" ]]; then die "$dir must belong to PIPELINE_UID ${uid:-1000} (run with sudo)"; fi
+  mkdir -p "$@"
+  if ((EUID == 0)); then chown "${uid:-1000}:${gid:-1000}" "$@"; return; fi
+  for dir; do [[ $(stat -c %u "$dir") == "${uid:-1000}" ]] || die "$dir must belong to PIPELINE_UID ${uid:-1000} (run with sudo)"; done
 }
 
 cmd_ls() {
@@ -92,7 +96,7 @@ cmd_ls() {
 }
 
 cmd_up() {
-  local name=$1 start_after='' since
+  local name=$1 start_after='' since restarts
   shift
   while (($#)); do
     case $1 in
@@ -102,7 +106,7 @@ cmd_up() {
   done
   target_file "$name"
   check_target "$name"
-  data_dir "$name"
+  own "$DATA_DIR" "$DATA_DIR/$name"
   since=$(date -u +%FT%T.%3NZ)
   if [[ -n $start_after ]]; then
     [[ ! -f $DATA_DIR/$name/state.json ]] || die "data/sync/$name/state.json already holds a cursor; --start-after is for a target's first start"
@@ -111,6 +115,11 @@ cmd_up() {
   compose_target "$name" up -d sync
   # Show where it starts: the sync writes status.json once it has its cursor (or found nothing to start from).
   for _ in $(seq 60); do
+    restarts=$(docker inspect -f '{{.RestartCount}}' "arkiv-sync-$name-sync-1" 2>/dev/null || echo 0)
+    if ((${restarts:-0} > 0)); then
+      docker logs --tail 3 "arkiv-sync-$name-sync-1" >&2
+      die "$name's sync exits and restarts; stop it with: pipeline/sync-targets.sh down $name"
+    fi
     if jq -e --arg since "$since" '.at >= $since and (.start != null or .status == "failed" or .status == "syncing" or .status == "caught-up")' \
       "$DATA_DIR/$name/status.json" >/dev/null 2>&1; then
       jq -c '{status, start, error}' "$DATA_DIR/$name/status.json"; return
@@ -125,7 +134,7 @@ cmd_rm() {
   target_file "$name"
   compose_target "$name" down
   archive=$DATA_DIR/_removed/$name-$(date -u +%Y%m%dT%H%M%SZ)
-  mkdir -p "$DATA_DIR/_removed"
+  own "$DATA_DIR/_removed"
   if [[ -d $DATA_DIR/$name ]]; then mv "$DATA_DIR/$name" "$archive"; else mkdir "$archive"; fi
   mv "$TARGETS_DIR/$name.env" "$archive/target.env"
   echo "removed $name; its settings, cursor and logs are in $archive"
