@@ -18,7 +18,10 @@
  * them twice. That needs a single writer whose transactions are all mined, so the sync takes SYNC_DIR/sync.lock and
  * starts only once the writer has no pending transaction. Never run another signer with the same key.
  *
- * Settings (environment): ARKIV_RPC_URL, ARKIV_RPC_API_KEY, ARKIV_CHAIN_ID, ARKIV_PRIVATE_KEY_FILE (see cli.ts); PGHOST,
+ * The writer must be the seed's owner (ENTITY_OWNER, when set): the chain lookups only see the writer's own entities, so
+ * a chain prefilled by another owner would get everything a second time, and the server reads one owner.
+ *
+ * Settings (environment): ARKIV_RPC_URL, ARKIV_RPC_API_KEY, ARKIV_CHAIN_ID, ARKIV_PRIVATE_KEY_FILE (see cli.ts), ENTITY_OWNER; PGHOST,
  * PGPORT, PGDATABASE, PGUSER, PGPASSWORD or PGPASSFILE (the mirror, SELECT only); SYNC_DIR (default ./data/sync),
  * SYNC_BATCH (matches per batch, default 200), SYNC_POLL_SECONDS (default 60), SYNC_MAX_TX_BYTES (calldata per
  * transaction, default 120000), SYNC_MAX_GAS_PRICE_GWEI (default 2), SYNC_IN_FLIGHT
@@ -133,6 +136,7 @@ async function main() {
   const database = sourceDatabase(env);
   const account = writerAccount(settings.keyFile);
   const owner = account.address.toLowerCase();
+  if (env.ENTITY_OWNER && env.ENTITY_OWNER.toLowerCase() !== owner) throw new Error(`the writer key is for ${account.address}, but ENTITY_OWNER (the seeds' owner) is ${env.ENTITY_OWNER}`);
   const { chain, client, transport, rpcUrl } = await connect(env);
   // Receipts are polled every second (viem's default is 4 s, two blocks here).
   const wallet = createWalletClient({ chain, transport, account, pollingInterval: 1000 });
