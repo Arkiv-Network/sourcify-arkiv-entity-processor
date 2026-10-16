@@ -15,6 +15,7 @@
  * read: each table is loaded with an explicit ID list instead of scanned. The derived tables are the same.
  */
 import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { Database, literal } from './database';
@@ -49,6 +50,26 @@ export function sourceDatabase(env: Record<string, string | undefined>, schema =
   for (const name of ['PGHOST', 'PGDATABASE', 'PGUSER']) if (!env[name]) throw new Error(`${name} is required (libpq environment variables PGHOST, PGPORT, PGDATABASE, PGUSER, PGPASSWORD)`);
   if (!/^[a-z_][a-z0-9_]*$/.test(schema)) throw new Error('--pg-schema must be a lowercase SQL identifier');
   return { host: env.PGHOST!, port: env.PGPORT || '5432', database: env.PGDATABASE!, user: env.PGUSER!, schema };
+}
+
+/** The newest Ethereum match ID at or below `atOrBelow` (default: the newest mirrored one), or the one `offset`
+ * Ethereum matches before it; undefined when there is none. One query (an index scan backwards). It counts every
+ * Ethereum match, also one a preparation leaves out (another match of the same address, see matchRank). */
+export async function newestEthereumMatchId(database: SourceDatabase, options: { atOrBelow?: string; offset?: number } = {}): Promise<string | undefined> {
+  const atOrBelow = options.atOrBelow ?? String(localMatchIdStart - 1n), offset = options.offset ?? 0;
+  if (!/^(0|[1-9][0-9]{0,18})$/.test(atOrBelow) || BigInt(atOrBelow) >= localMatchIdStart) throw new Error(`Match ID must be a whole number below ${localMatchIdStart}`);
+  if (!Number.isSafeInteger(offset) || offset < 0) throw new Error('Offset must be a whole number');
+  const db = await Database.open(':memory:', { threads: '1', memory_limit: '256MB' }, tmpdir(), 'sourcify-newest-');
+  try {
+    await db.connection.run('INSTALL postgres');
+    await db.connection.run('LOAD postgres');
+    await db.connection.run("ATTACH '' AS pg (TYPE postgres, READ_ONLY)");
+    const s = database.schema;
+    const sql = `SELECT m.id FROM ${s}.sourcify_matches m JOIN ${s}.verified_contracts v ON v.id=m.verified_contract_id JOIN ${s}.contract_deployments d ON d.id=v.deployment_id ` +
+      `WHERE d.chain_id=1 AND m.id<=${atOrBelow} ORDER BY m.id DESC LIMIT 1 OFFSET ${offset}`;
+    const rows = await db.rows(`SELECT id::VARCHAR AS id FROM postgres_query('pg', ${literal(sql)})`);
+    return rows[0]?.id;
+  } finally { await db.close(); }
 }
 
 /** Materialize a bounded sample or all current Ethereum matches; reconstruction stays batched (records.ts).
