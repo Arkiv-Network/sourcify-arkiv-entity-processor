@@ -9,7 +9,7 @@ import { hostname } from 'node:os';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { localMatchIdStart, newestEthereumMatchId, prepareSource } from '../source/prepare';
-import { createParams, highestMatchId, lock, pack, startCursor } from '../arkiv/sync';
+import { blockTime, createParams, highestMatchId, lock, pack, startCursor } from '../arkiv/sync';
 import { createFixtureDatabase, type FixtureDatabase } from './fixture/postgres';
 
 const root = resolve(import.meta.dir, '..');
@@ -238,5 +238,16 @@ describe('sync lock', () => {
     release();
     expect(readFileSync(path, 'utf8')).toBe('9@another-container');
     rmSync(path);
+  });
+});
+
+describe('block time for the log', () => {
+  test('a block the node does not serve yet is asked again, then left out instead of failing the batch', async () => {
+    let calls = 0;
+    const late = { getBlock: async () => { if (++calls < 3) throw new Error('Block at number "7" could not be found.'); return { timestamp: 1_760_000_000n }; } };
+    expect(await blockTime(late, 7n, 3, 1)).toBe('2025-10-09T08:53:20.000Z');
+    expect(calls).toBe(3);
+    const missing = { getBlock: async () => { throw new Error('Block at number "8" could not be found.'); } };
+    expect(await blockTime(missing, 8n, 3, 1)).toBeUndefined();
   });
 });
