@@ -242,9 +242,10 @@ journalctl -u sourcify-daily-seed.service               # progress (JSON lines)
 
 ## Postgres → Arkiv sync
 
-[`arkiv/sync.ts`](arkiv/sync.ts) keeps a live Arkiv chain up to date after a seed. It writes the matches the
-mirror gained after a cursor (a `matchId`, kept in `SYNC_DIR/state.json`) as the same entities a seed holds, so the
-Arkiv-backed server reads both alike. One batch (`SYNC_BATCH`, default 200 matches):
+[`arkiv/sync.ts`](arkiv/sync.ts) keeps live Arkiv chains up to date after a seed, one sync per chain (a
+[target](#sync-targets)), all reading the same mirror. It writes the matches the mirror gained after a cursor (a
+`matchId`, kept in `SYNC_DIR/state.json`) as the same entities a seed holds, so the Arkiv-backed server reads both
+alike. One batch (`SYNC_BATCH`, default 200 matches):
 
 1. `prepare --after-match-id` reads only the selected matches' rows, then `stream.ts` and `process` as for a seed;
 2. dependencies (`sourcefile`, `code`, `compilation`, `blob`): one already on the chain (same owner, kind, hash and
@@ -262,22 +263,54 @@ Entities never expire (`expiresAt` 2^64-1, like a seed's). Creates are packed in
 
 The chain is the record of what was written: a rerun after any failure (or a crash between two transactions) looks
 the entities up again instead of creating them twice. That needs one writer whose transactions are all mined, so the
-sync holds `SYNC_DIR/sync.lock` and starts only once the writer has no pending transaction. **Never sign with the
-writer key anywhere else while the sync runs.**
+sync holds `SYNC_DIR/sync.lock` and starts only once the writer has no pending transaction. **One sync per chain
+signs with the writer key; never sign with it elsewhere on that chain while it runs.**
 
 The writer must be `ENTITY_OWNER`, the owner the seeds are exported with, and the sync refuses any other key: its lookups
 only see the writer's own entities, so on a chain prefilled from a seed of another owner it would write everything again,
 and the server reads a single owner.
 
+The server accepts the keys the chain assigns: entity identity is the staging ID it recomputes from the content.
+
+### Sync targets
+
+Each chain the mirror is synced to is a target: `targets/NAME.env` holds the chain's settings (`ARKIV_RPC_URL`,
+`ARKIV_CHAIN_ID`, optionally `ARKIV_WRITER_KEY_FILE` and `SYNC_*`; start from
+[`sync-target.env.example`](sync-target.env.example)), and `data/sync/NAME/` its cursor (`state.json`), `status.json`,
+logs (`sync.jsonl`, `skipped.jsonl`) and work files. What all targets share stays in `.env`: the database (`PG*`,
+`PG_PASSFILE`, `SOURCE_NETWORK`), `PIPELINE_UID`, `ENTITY_OWNER` and `ARKIV_WRITER_KEY_FILE`. Each target runs as the
+Compose project `arkiv-sync-NAME` ([`sync.compose.yaml`](sync.compose.yaml); 1 CPU, 2 GB, no swap by default), managed
+with [`pipeline/sync-targets.sh`](pipeline/sync-targets.sh):
+
 ```sh
-# .env: ARKIV_RPC_URL, ARKIV_CHAIN_ID, ARKIV_WRITER_KEY_FILE (ENTITY_OWNER's 32-byte hex private key, mode 600); PG* as for prepare
-docker compose --profile sync run --rm sync --once --start-after 56107622   # first batch after the seed's lastMatchId
-docker compose --profile sync up -d sync                                     # then continuously (polls every 60 s)
-docker compose --profile sync run --rm sync --dry-run                        # plan the next batch, write nothing
+cp sync-target.env.example targets/prefill-dev.env    # the chain's RPC URL and chain ID
+pipeline/sync-targets.sh up prefill-dev                # start (or recreate after an image build); prints where it starts
+pipeline/sync-targets.sh ls                            # every target: container, status, cursor
+pipeline/sync-targets.sh compose prefill-dev logs -f   # any compose command, e.g. run --rm sync --dry-run (plan the next batch)
+pipeline/sync-targets.sh down prefill-dev              # stop; cursor and logs stay
+pipeline/sync-targets.sh rm prefill-dev                # stop, and move its settings and data to data/sync/_removed/
 ```
 
-`--start-after chain` takes the highest `matchid` of the writer's `verified_contract` entities instead. The server
-accepts these chain-assigned keys: entity identity is the staging ID it recomputes from the content.
+`up` refuses a second target for one chain (the same RPC URL, or the same hash of block 1 at another URL).
+
+### Where a sync starts
+
+A sync reads its position off the chain when it starts: the writer's highest `verified_contract` `matchid`. A chain
+prefilled from any seed of `ENTITY_OWNER` needs no cursor: the sync continues after that seed, whichever day it is
+from. Only the batch in flight when a sync stopped can have holes below that `matchid` (batches run in order and the
+cursor moves after a whole one), so it starts 1,000 Ethereum matches (at least 2 × `SYNC_BATCH`) before it; the
+lookups find what is already there and count it as synced, which takes seconds. With a `state.json`, the cursor stays
+unless the chain is behind it, and then the chain decides. Each start logs its decision (`progress`: the mirror's
+newest match, `state`, `chain`, the `cursor` and where it is `from`) and keeps it in `status.json`.
+
+The node answers `matchid > X` in time that grows with the entities above X, of every owner (about 30,000 a second on
+the dev chain; with an upper bound as well, or `matchid > 0` on a prefilled chain, it times out). So the search only
+asks within 2^21 match IDs (about a month) below the mirror's newest match. A chain without the writer's contracts
+there and no `state.json` waits (`needs-seed`, checked every 10 minutes), unless its first start names the cursor:
+`pipeline/sync-targets.sh up NAME --start-after <the seed's lastMatchId>`.
+
+A running sync retries a failed batch after 1, 2, 4, ... minutes (at most 15) instead of exiting; `status.json` shows
+`retrying` and the error.
 
 Measured on the dev chain (2 s blocks; 2026-10-15), the RPC endpoint's block import is the limit:
 

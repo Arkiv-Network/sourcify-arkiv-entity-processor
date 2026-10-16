@@ -6,3 +6,4 @@ r2.env
 __pycache__/
 pgpass
 arkiv-writer.key
+/targets/

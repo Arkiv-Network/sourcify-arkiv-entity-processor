@@ -3,7 +3,7 @@
  * Postgres -> Arkiv sync: writes the Ethereum matches a Sourcify mirror gained after a cursor (a matchId) to a live Arkiv
  * chain as the same entities a prefill seed holds, so the Arkiv-backed server reads both alike.
  *
- *   bun arkiv/sync.ts [--once | --batches N] [--start-after MATCH_ID|chain] [--dry-run]
+ *   bun arkiv/sync.ts [--once | --batches N] [--start-after MATCH_ID] [--dry-run]
  *
  * One batch: prepare (source/prepare.ts --after-match-id, only the selected rows) -> records (source/stream.ts) ->
  * entities (arkiv-entity-processor process) -> Arkiv:
@@ -14,6 +14,13 @@
  *     is skipped and logged (changed contracts are not updated yet, see issue #13).
  * Every created entity is read back and compared. The cursor (SYNC_DIR/state.json) advances only after a whole batch.
  *
+ * A start checks the cursor against the chain (startCursor): the writer's highest verified_contract matchid there, from a
+ * seed the chain was prefilled with or from syncing, less a margin of matches. Without state.json that is the cursor;
+ * with one, it moves the cursor back only when the chain is behind it. When the writer has no contract near the mirror's
+ * newest matches and there is no state.json, a continuous run waits for the chain to be seeded, or --start-after
+ * MATCH_ID sets the first cursor. A continuous run retries a failed batch with backoff and keeps SYNC_DIR/status.json.
+ * pipeline/sync-targets.sh runs one sync per chain, each with its own SYNC_DIR.
+ *
  * The chain is the record of what was written: a rerun after any failure looks entities up again instead of creating
  * them twice. That needs a single writer whose transactions are all mined, so the sync takes SYNC_DIR/sync.lock and
  * starts only once the writer has no pending transaction. Never run another signer with the same key.
@@ -22,7 +29,7 @@
  * a chain prefilled by another owner would get everything a second time, and the server reads one owner.
  *
  * Settings (environment): ARKIV_RPC_URL, ARKIV_RPC_API_KEY, ARKIV_CHAIN_ID, ARKIV_PRIVATE_KEY_FILE (see cli.ts), ENTITY_OWNER; PGHOST,
- * PGPORT, PGDATABASE, PGUSER, PGPASSWORD or PGPASSFILE (the mirror, SELECT only); SYNC_DIR (default ./data/sync),
+ * PGPORT, PGDATABASE, PGUSER, PGPASSWORD or PGPASSFILE (the mirror, SELECT only); SYNC_DIR (required, one per chain),
  * SYNC_BATCH (matches per batch, default 200), SYNC_POLL_SECONDS (default 60), SYNC_MAX_TX_BYTES (calldata per
  * transaction, default 120000), SYNC_MAX_GAS_PRICE_GWEI (default 2), SYNC_IN_FLIGHT
  * (unmined transactions at a time, default 4), SYNC_GAS (computed or estimate, see send()), ARKIV_PROCESSOR_BIN
@@ -35,13 +42,13 @@ import { closeSync, openSync, readFileSync, rmSync, writeSync } from 'node:fs';
 import { appendFile, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
-import { prepareSource, sourceDatabase, type SourceManifest } from '../source/prepare';
+import { newestEthereumMatchId, prepareSource, sourceDatabase, type SourceDatabase, type SourceManifest } from '../source/prepare';
 import { ARKIV_ADDRESS, connect, describeError, executeCalldata, sdkInternals, writerAccount } from './chain';
 
 const APP_DIR = resolve(dirname(import.meta.path), '..');
 const env = process.env;
 const settings = {
-  dir: resolve(env.SYNC_DIR || join(APP_DIR, 'data/sync')),
+  dir: env.SYNC_DIR ? resolve(env.SYNC_DIR) : '',
   batch: Number(env.SYNC_BATCH || 200),
   pollSeconds: Number(env.SYNC_POLL_SECONDS || 60),
   maxTxBytes: Number(env.SYNC_MAX_TX_BYTES || 120_000),
@@ -53,6 +60,8 @@ const settings = {
 };
 const DEPENDENCY_KINDS = new Set(['sourcefile', 'code', 'compilation', 'blob']);
 const READ_CONCURRENCY = 8;
+const NEEDS_SEED_POLL_SECONDS = 600;
+const RETRY_MAX_SECONDS = 900;
 
 /** One line of a bundle's entities/*.jsonl: $-fields and "name": "type:value" attributes (see src/main.rs). */
 type Wire = Record<string, any>;
@@ -127,12 +136,16 @@ async function main() {
     'dry-run': { type: 'boolean', default: false }, help: { type: 'boolean', short: 'h', default: false },
   } });
   if (values.help) { console.log(readFileSync(import.meta.path, 'utf8').split('*/')[0]!.replace(/^#!.*\n\/\*\*\n/, '').replace(/^ \* ?/gm, '')); return; }
+  if (!settings.dir) throw new Error('SYNC_DIR is required: the directory of this chain\'s cursor and logs');
   if (!Number.isSafeInteger(settings.batch) || settings.batch < 1 || settings.batch > 5000) throw new Error('SYNC_BATCH must be 1..5000');
   if (!Number.isSafeInteger(settings.maxTxBytes) || settings.maxTxBytes < 10_000) throw new Error('SYNC_MAX_TX_BYTES must be at least 10000');
   if (!Number.isSafeInteger(settings.inFlight) || settings.inFlight < 1 || settings.inFlight > 16) throw new Error('SYNC_IN_FLIGHT must be 1..16');
   if (!['computed', 'estimate'].includes(settings.gas)) throw new Error('SYNC_GAS must be computed or estimate');
   const maxBatches = values.once ? 1 : values.batches !== undefined ? Number(values.batches) : Infinity;
   if (maxBatches !== Infinity && (!Number.isSafeInteger(maxBatches) || maxBatches < 1)) throw new Error('--batches must be a positive whole number');
+  if (values['start-after'] !== undefined && !/^(0|[1-9][0-9]*)$/.test(values['start-after'])) throw new Error('--start-after must be a match ID');
+  // A continuous run waits out what can pass (a chain not seeded yet, a failed batch) instead of exiting.
+  const continuous = maxBatches === Infinity && !values['dry-run'];
   const database = sourceDatabase(env);
   const account = writerAccount(settings.keyFile);
   const owner = account.address.toLowerCase();
@@ -142,8 +155,17 @@ async function main() {
   const wallet = createWalletClient({ chain, transport, account, pollingInterval: 1000 });
   await mkdir(settings.dir, { recursive: true });
   const release = lock(join(settings.dir, 'sync.lock'));
+  // What a continuous run is doing, for pipeline/sync-targets.sh ls.
+  let status: Record<string, unknown> = {};
+  const report = async (fields: Record<string, unknown>) => {
+    if (!continuous) return;
+    status = { ...status, ...fields, at: new Date().toISOString() };
+    const path = join(settings.dir, 'status.json');
+    await writeFile(`${path}.tmp`, JSON.stringify(status, (_, v) => typeof v === 'bigint' ? v.toString() : v, 2) + '\n'); await rename(`${path}.tmp`, path);
+  };
   try {
     log('start', { rpcUrl, chainId: chain.id, writer: account.address, dir: settings.dir, batch: settings.batch, dryRun: values['dry-run'] });
+    await report({ status: 'starting', rpcUrl, chainId: chain.id, writer: account.address });
 
     // Queries return at most two rows: more than one entity for a lookup is ambiguous for the server too.
     const find = async (selector: string): Promise<Found[]> => {
@@ -157,36 +179,88 @@ async function main() {
     const statePath = join(settings.dir, 'state.json');
     let state: { lastMatchId: string; updatedAt?: string } | undefined;
     try { state = JSON.parse(await readFile(statePath, 'utf8')); } catch (error: any) { if (error.code !== 'ENOENT') throw error; }
+    let cursor: string | undefined;
     if (values['start-after'] !== undefined) {
       if (state) throw new Error(`--start-after given, but ${statePath} already holds cursor ${state.lastMatchId}; remove it to restart deliberately`);
-      const start = values['start-after'] === 'chain' ? await highestMatchId(find) : values['start-after'];
-      if (!/^(0|[1-9][0-9]*)$/.test(start)) throw new Error('--start-after must be a match ID or "chain"');
-      state = { lastMatchId: start };
-      log('cursor', { lastMatchId: start, from: values['start-after'] === 'chain' ? 'chain' : 'argument' });
+      cursor = values['start-after'];
+      log('cursor', { lastMatchId: cursor, from: 'argument' });
     }
-    if (!state) throw new Error(`No cursor yet: pass --start-after MATCH_ID (e.g. the seed's lastMatchId) or --start-after chain`);
+    while (cursor === undefined) {
+      const start = await startingPoint(state?.lastMatchId, database, find);
+      await report({ status: start.cursor === undefined ? 'needs-seed' : 'starting', start });
+      if ((cursor = start.cursor) !== undefined) break;
+      if (!continuous) throw new Error('No cursor: the writer has no verified_contract near the mirror\'s newest matches; prefill the chain with a seed or pass --start-after MATCH_ID');
+      log('needs-seed', { retryInSeconds: NEEDS_SEED_POLL_SECONDS });
+      await Bun.sleep(NEEDS_SEED_POLL_SECONDS * 1000);
+    }
     const saveState = async (lastMatchId: string) => {
-      state = { lastMatchId, updatedAt: new Date().toISOString() };
-      await writeFile(`${statePath}.tmp`, JSON.stringify(state, null, 2) + '\n'); await rename(`${statePath}.tmp`, statePath);
+      cursor = lastMatchId;
+      await writeFile(`${statePath}.tmp`, JSON.stringify({ lastMatchId, updatedAt: new Date().toISOString() }, null, 2) + '\n'); await rename(`${statePath}.tmp`, statePath);
     };
-    if (!values['dry-run']) await saveState(state.lastMatchId);
+    if (!values['dry-run']) await saveState(cursor);
+    await report({ lastMatchId: cursor });
 
-    for (let done = 0; done < maxBatches;) {
-      if (!values['dry-run']) await waitForSettledNonce(client, account.address);
-      const result = await syncBatch({ after: state.lastMatchId, owner, chainId: chain.id, database, client, wallet, find, dryRun: values['dry-run'] });
+    for (let done = 0, failures = 0; done < maxBatches;) {
+      let result: Awaited<ReturnType<typeof syncBatch>>;
+      try {
+        if (!values['dry-run']) await waitForSettledNonce(client, account.address);
+        result = await syncBatch({ after: cursor, owner, chainId: chain.id, database, client, wallet, find, dryRun: values['dry-run'] });
+      } catch (error) {
+        if (!continuous) throw error;
+        // The cursor did not move, and the rerun looks up whatever the failed attempt wrote.
+        const seconds = Math.min(RETRY_MAX_SECONDS, settings.pollSeconds * 2 ** failures++);
+        log('retry', { error: describeError(error), failures, inSeconds: seconds });
+        await report({ status: 'retrying', error: describeError(error), failures });
+        await Bun.sleep(seconds * 1000); continue;
+      }
+      failures = 0;
       if (result.selected === 0) {
-        log('caught-up', { lastMatchId: state.lastMatchId });
-        if (values.once || values.batches !== undefined) break;
+        log('caught-up', { lastMatchId: cursor });
+        await report({ status: 'caught-up', error: undefined, failures: undefined });
+        if (!continuous) break;
         await Bun.sleep(settings.pollSeconds * 1000); continue;
       }
       if (!values['dry-run']) await saveState(result.lastMatchId);
       await appendFile(join(settings.dir, 'sync.jsonl'), json({ at: new Date().toISOString(), ...result, skippedContracts: result.skippedContracts.length }) + '\n');
       if (result.skippedContracts.length) await appendFile(join(settings.dir, 'skipped.jsonl'), result.skippedContracts.map(s => json({ at: new Date().toISOString(), ...s })).join('\n') + '\n');
       log('batch', { ...result, skippedContracts: result.skippedContracts.length });
+      await report({ status: 'syncing', lastMatchId: cursor, lastBatchAt: new Date().toISOString(), error: undefined, failures: undefined });
       done++;
       if (values['dry-run']) break;
     }
+  } catch (error) {
+    await report({ status: 'failed', error: describeError(error) }).catch(() => {});
+    throw error;
   } finally { release(); }
+}
+
+/** Where a start continues (startCursor), from state.json's cursor, the mirror's newest match and the chain. */
+async function startingPoint(state: string | undefined, database: SourceDatabase, find: (selector: string) => Promise<Found[]>) {
+  const newest = await newestEthereumMatchId(database);
+  const chain = await highestMatchId(async after => {
+    let highest: bigint | undefined;
+    for (const { matchid } of await find(`kind = str('verified_contract') AND matchid > u64(${after})`)) {
+      if (matchid === undefined) throw new Error('a verified_contract entity on the chain has no matchid');
+      if (highest === undefined || BigInt(matchid) > highest) highest = BigInt(matchid);
+    }
+    return highest;
+  }, BigInt(newest ?? state ?? 0));
+  // Back from the chain's progress: twice a batch, at least 1,000 Ethereum matches (SYNC_BATCH may have been larger).
+  const stepBack = chain === undefined ? undefined : await newestEthereumMatchId(database, { atOrBelow: String(chain), offset: Math.max(2 * settings.batch, 1000) }) ?? '0';
+  const start = { mirrorNewest: newest, state, chain: chain?.toString(), ...startCursor(state, chain?.toString(), stepBack) };
+  log('progress', start);
+  return start;
+}
+
+/** Where a start continues. `chain` is the writer's highest verified_contract matchid: batches run in order and the
+ * cursor moves only after a whole one, so only the batch in flight when a sync stopped can have holes below it, and
+ * `stepBack` (enough matches before `chain`) is safe. state.json's cursor stays when the chain has reached it. Matches
+ * done again cost only lookups: what is on the chain is found and counted as synced. */
+export function startCursor(state: string | undefined, chain: string | undefined, stepBack: string | undefined): { cursor?: string; from: string } {
+  if (chain === undefined || stepBack === undefined) return state === undefined ? { from: 'needs-seed' } : { cursor: state, from: 'state-unchecked' };
+  if (state === undefined) return { cursor: stepBack, from: 'chain' };
+  if (BigInt(chain) < BigInt(state)) return { cursor: stepBack, from: 'chain-behind-state' };
+  return BigInt(stepBack) > BigInt(state) ? { cursor: stepBack, from: 'chain' } : { cursor: state, from: 'state' };
 }
 
 async function syncBatch(context: { after: string; owner: string; chainId: number; database: any; client: any; wallet: any; find: (s: string) => Promise<Found[]>; dryRun: boolean }) {
@@ -407,14 +481,33 @@ async function waitForSettledNonce(client: any, address: Hex, timeoutSeconds = 6
   }
 }
 
-/** The highest matchId of the writer's verified_contract entities, by bisection over `matchid > X` queries. */
-async function highestMatchId(find: (selector: string) => Promise<Found[]>) {
-  const above = async (value: bigint) => (await find(`kind = str('verified_contract') AND matchid > u64(${value})`)).length > 0;
-  let low = 0n, high = 2n ** 40n;
-  if (!(await above(0n))) throw new Error('the writer has no verified_contract entities on this chain');
-  if (await above(high)) throw new Error('matchIds beyond 2^40 on the chain');
-  while (high - low > 1n) { const middle = (low + high) / 2n; if (await above(middle)) low = middle; else high = middle; }
-  return high.toString();
+/** The highest matchid of the writer's verified_contract entities (`probe(X)` returns the highest of those the node
+ * returns for `matchid > X`), or undefined when it has none within `maxWindow` IDs below `newest`, the mirror's newest
+ * Ethereum match. The node answers `matchid > X` in time that grows with the entities above X, of every owner (about
+ * 30,000 a second; with an upper bound too, or `matchid > 0` on a prefilled chain, it times out), so the search only
+ * asks above values near the top: a window below `newest` doubles from 1,024 IDs, then it bisects. Asking above the
+ * best matchid so far ends it at once when the node returns the highest ones first, as it does. */
+export async function highestMatchId(probe: (after: bigint) => Promise<bigint | undefined>, newest: bigint, maxWindow = 2n ** 21n) {
+  let high = 2n ** 40n; // nothing above high
+  if (await probe(high) !== undefined) throw new Error('matchIds beyond 2^40 on the chain');
+  let low = await probe(newest); // one the writer has
+  if (low === undefined) {
+    high = newest;
+    for (let window = 1024n; low === undefined; window *= 2n) {
+      if (window > maxWindow || high === 0n) return undefined;
+      const after = newest > window ? newest - window : 0n;
+      if ((low = await probe(after)) === undefined) high = after;
+    }
+  }
+  for (;;) {
+    const above = await probe(low);
+    if (above === undefined) return low;
+    low = above;
+    if (high - low > 1n) {
+      const middle = (low + high) / 2n, found = await probe(middle);
+      if (found === undefined) high = middle; else low = found;
+    }
+  }
 }
 
 /** A PID lock file; a stale one (its process gone) is taken over. */

@@ -1,0 +1,75 @@
+# Postgres -> Arkiv sync (arkiv/sync.ts), one Compose project per target chain: arkiv-sync-NAME. Use
+# pipeline/sync-targets.sh, which runs
+#
+#   SYNC_TARGET=NAME docker compose -f sync.compose.yaml -p arkiv-sync-NAME --env-file .env --env-file targets/NAME.env ...
+#
+# Shared settings come from .env (the mirror database: SOURCE_NETWORK, PG*, PG_PASSFILE; PIPELINE_UID/GID; ENTITY_OWNER;
+# ARKIV_WRITER_KEY_FILE), the chain's from targets/NAME.env, which wins. The cursor and logs are in data/sync/NAME.
+# The image is built by compose.yaml (`docker compose build`); this file never builds or pulls it.
+name: "arkiv-sync-${SYNC_TARGET:?Set SYNC_TARGET (use pipeline/sync-targets.sh)}"
+
+services:
+  # Reads the database (SELECT only) on its Docker network and writes to the Arkiv RPC (outbound only, no ports). Safe
+  # to restart at any point: it looks entities up on the chain again instead of creating them twice.
+  sync:
+    image: arkiv-entity-processor:local
+    pull_policy: never
+    entrypoint: ["bun", "/app/arkiv/sync.ts"]
+    command: []
+    init: true
+    restart: unless-stopped
+    user: "${PIPELINE_UID:-1000}:${PIPELINE_GID:-1000}"
+    cpus: "${SYNC_CPUS:-1}"
+    mem_limit: "${SYNC_MEMORY:-2g}"
+    # No swap beyond the memory limit, and the kernel picks this container first should the host run out of memory.
+    memswap_limit: "${SYNC_MEMORY:-2g}"
+    pids_limit: 256
+    oom_score_adj: 500
+    stop_grace_period: 30s
+    networks: [source, default]
+    environment:
+      TINI_KILL_PROCESS_GROUP: "1"
+      PGHOST: "${PGHOST:-db}"
+      PGPORT: "${PGPORT:-5432}"
+      PGDATABASE: "${PGDATABASE:-sourcify}"
+      PGUSER: "${PGUSER:-sourcify_export}"
+      PGPASSFILE: /run/secrets/pgpass
+      ARKIV_RPC_URL: "${ARKIV_RPC_URL:?Set ARKIV_RPC_URL in targets/NAME.env}"
+      ARKIV_CHAIN_ID: "${ARKIV_CHAIN_ID:?Set ARKIV_CHAIN_ID in targets/NAME.env}"
+      ARKIV_PRIVATE_KEY_FILE: /run/secrets/arkiv_writer_key
+      # The sync refuses a writer key of another account: what it writes must have the seeds' owner.
+      ENTITY_OWNER: "${ENTITY_OWNER:?Set ENTITY_OWNER in .env to the public owner address of every entity}"
+      ARKIV_PROCESSOR_BIN: /usr/local/bin/arkiv-entity-processor
+      SYNC_DIR: /sync
+      SYNC_BATCH: "${SYNC_BATCH:-200}"
+      SYNC_POLL_SECONDS: "${SYNC_POLL_SECONDS:-60}"
+      SYNC_MAX_GAS_PRICE_GWEI: "${SYNC_MAX_GAS_PRICE_GWEI:-2}"
+      SYNC_IN_FLIGHT: "${SYNC_IN_FLIGHT:-4}"
+    volumes:
+      # Created by pipeline/sync-targets.sh, writable by PIPELINE_UID.
+      - type: bind
+        source: "./data/sync/${SYNC_TARGET}"
+        target: /sync
+    secrets:
+      - source: pgpass
+        target: pgpass
+      - source: arkiv_writer_key
+        target: arkiv_writer_key
+
+networks:
+  default: {}
+  source:
+    # The network of the database service, e.g. the sourcify-mirror-node's Compose project.
+    external: true
+    name: "${SOURCE_NETWORK:-sourcify-node_default}"
+
+secrets:
+  pgpass:
+    # libpq password file (host:port:database:user:password, mode 600, readable by PIPELINE_UID). Mounted read-only;
+    # never part of the image, logs, environment or command lines.
+    file: "${PG_PASSFILE:-./pgpass}"
+  arkiv_writer_key:
+    # The writer: a 32-byte hex private key (mode 600, readable by PIPELINE_UID). Its address owns every entity the sync
+    # creates and must be ENTITY_OWNER, the owner of the seeds and the one the server reads. One sync per chain signs
+    # with it; never run another signer with this key on a chain a sync writes to.
+    file: "${ARKIV_WRITER_KEY_FILE:-./arkiv-writer.key}"

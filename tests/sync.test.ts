@@ -1,14 +1,14 @@
 /**
  * The Postgres -> Arkiv sync's offline parts: the incremental source selection (prepare.ts --after-match-id) against
- * the PostgreSQL fixture (see tests/fixture/postgres.ts), and the bundle-entity conversion and transaction packing of
- * arkiv/sync.ts. Nothing here talks to an Arkiv chain.
+ * the PostgreSQL fixture (see tests/fixture/postgres.ts), the bundle-entity conversion and transaction packing of
+ * arkiv/sync.ts, and how a start finds its cursor (against a simulated chain). Nothing here talks to an Arkiv chain.
  */
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { localMatchIdStart, prepareSource } from '../source/prepare';
-import { createParams, pack } from '../arkiv/sync';
+import { localMatchIdStart, newestEthereumMatchId, prepareSource } from '../source/prepare';
+import { createParams, highestMatchId, pack, startCursor } from '../arkiv/sync';
 import { createFixtureDatabase, type FixtureDatabase } from './fixture/postgres';
 
 const root = resolve(import.meta.dir, '..');
@@ -53,6 +53,15 @@ describe('incremental source selection', () => {
       expect(streamed(sourceDir)).toEqual(expected);
     }
   }, 120_000);
+
+  test('the newest Ethereum match, and the one N matches before a given ID', async () => {
+    const ids = full.map(item => item.matchId);
+    expect(await newestEthereumMatchId(fixture.database)).toBe(ids.at(-1));
+    expect(await newestEthereumMatchId(fixture.database, { atOrBelow: ids[6]!, offset: 2 })).toBe(ids[4]);
+    expect(await newestEthereumMatchId(fixture.database, { atOrBelow: String(BigInt(ids[6]!) + 1n), offset: 0 })).toBe(ids[6]);
+    expect(await newestEthereumMatchId(fixture.database, { atOrBelow: ids[1]!, offset: 5 })).toBeUndefined();
+    await expect(newestEthereumMatchId(fixture.database, { atOrBelow: String(localMatchIdStart) })).rejects.toThrow('below');
+  }, 30_000);
 
   test('a caught-up cursor selects nothing, and completes', async () => {
     const manifest = await prepareSource({ afterMatchId: full.at(-1)!.matchId, limit: 10, database: fixture.database, sourceDir: join(scratch, 'caught-up'), threads: 1, memoryLimit: '1GB' });
@@ -144,5 +153,60 @@ describe('sync entity conversion', () => {
     expect(batches.map(batch => batch.items.map(entry => entry.index))).toEqual([[0, 1, 2], [3], [4, 5]]);
     for (const batch of batches) if (batch.items.length > 1) expect(batch.bytes).toBeLessThanOrEqual(100_000);
     expect(batches[1]!.bytes).toBeGreaterThan(120_000);
+  });
+});
+
+describe('start cursor', () => {
+  /** A chain whose writer has verified_contract entities with these matchids; the node answers `matchid > X` with the
+   * two highest (as it does) or the two lowest. Records each X asked about. */
+  const chain = (matchIds: number[], order: 'highest' | 'lowest' = 'highest') => {
+    const asked: bigint[] = [];
+    const sorted = matchIds.map(BigInt).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+    const probe = async (after: bigint) => {
+      asked.push(after);
+      const above = sorted.filter(id => id > after);
+      const returned = order === 'highest' ? above.slice(-2) : above.slice(0, 2);
+      return returned.length ? returned.reduce((a, b) => (a > b ? a : b)) : undefined;
+    };
+    return { probe, asked };
+  };
+  const range = (from: number, to: number, step = 1) => Array.from({ length: Math.floor((to - from) / step) + 1 }, (_, i) => from + i * step);
+
+  test('finds the writer\'s highest matchid below or above the mirror\'s newest, asking only near the top', async () => {
+    for (const order of ['highest', 'lowest'] as const) {
+      // A seed up to 56,195,245 with holes, then nothing synced yet; the mirror is 33,000 IDs further.
+      const seeded = chain([...range(56_000_000, 56_195_000, 7), 56_195_245], order);
+      expect(await highestMatchId(seeded.probe, 56_228_537n)).toBe(56_195_245n);
+      // Never above anything far below: the node's time grows with the entities above X.
+      expect(seeded.asked.every(after => after >= 56_228_537n - 65_536n)).toBe(true);
+      if (order === 'highest') expect(seeded.asked.length).toBeLessThan(12);
+      // Synced past the mirror's newest match (another mirror ahead of this one).
+      expect(await highestMatchId(chain([...range(100, 5_000, 3), 5_003], order).probe, 4_000n)).toBe(5_003n);
+      // Caught up exactly.
+      expect(await highestMatchId(chain([1, 2, 3, 900], order).probe, 900n)).toBe(900n);
+    }
+  });
+
+  test('nothing within the window, or nothing at all, is undefined; matchids beyond 2^40 are refused', async () => {
+    const far = chain([1_000, 2_000]);
+    expect(await highestMatchId(far.probe, 50_000_000n)).toBeUndefined();
+    expect(far.asked.every(after => after >= 50_000_000n - 2n ** 21n)).toBe(true);
+    expect(await highestMatchId(chain([]).probe, 1_000n)).toBeUndefined();
+    expect(await highestMatchId(chain([5]).probe, 1_000n)).toBe(5n);
+    await expect(highestMatchId(chain([2 ** 41]).probe, 1_000n)).rejects.toThrow('2^40');
+  });
+
+  test('state.json is kept when the chain reached it; otherwise the chain\'s progress less a margin', () => {
+    // No state file: from the chain (a seeded chain, or one synced before), else wait for a seed.
+    expect(startCursor(undefined, '56195245', '56170000')).toEqual({ cursor: '56170000', from: 'chain' });
+    expect(startCursor(undefined, undefined, undefined)).toEqual({ from: 'needs-seed' });
+    // The chain holds the cursor, possibly part of the next batch: the cursor stays.
+    expect(startCursor('56228394', '56228394', '56211171')).toEqual({ cursor: '56228394', from: 'state' });
+    expect(startCursor('56228394', '56228500', '56211200')).toEqual({ cursor: '56228394', from: 'state' });
+    // The chain is far ahead (prefilled again from a newer seed), or behind (reset, an older seed): from the chain.
+    expect(startCursor('56000000', '56228394', '56211171')).toEqual({ cursor: '56211171', from: 'chain' });
+    expect(startCursor('56228394', '56195245', '56170000')).toEqual({ cursor: '56170000', from: 'chain-behind-state' });
+    // Nothing of the writer near the top: the state file is all there is.
+    expect(startCursor('50000000', undefined, undefined)).toEqual({ cursor: '50000000', from: 'state-unchecked' });
   });
 });

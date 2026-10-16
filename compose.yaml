@@ -3,8 +3,8 @@
 #   docker compose --profile prepare run --rm prepare   # database -> WORK_DIR/source (only this one reaches the database)
 #   docker compose up pipeline                          # offline: process -> verify (no network)
 #   docker compose --profile publish run --rm publish   # pack -> upload to R2 -> read back and check
-#   docker compose --profile sync up -d sync            # Postgres -> Arkiv: new matches after the cursor, continuously
 #
+# The Postgres -> Arkiv syncs, one per chain, are separate Compose projects: sync.compose.yaml, pipeline/sync-targets.sh.
 # Settings come from .env (copy .env.example). Rerunning a command resumes; completed phases are reused.
 name: arkiv-entity-processor
 
@@ -92,47 +92,6 @@ services:
       - source: r2
         target: r2
 
-  # Postgres -> Arkiv sync (arkiv/sync.ts): reads the database like prepare, writes to the Arkiv RPC (outbound only,
-  # no ports). Safe to restart at any point: it looks entities up on the chain again instead of creating them twice.
-  sync:
-    <<: *pipeline
-    profiles: [sync]
-    entrypoint: ["bun", "/app/arkiv/sync.ts"]
-    command: []
-    restart: unless-stopped
-    cpus: "${SYNC_CPUS:-2}"
-    mem_limit: "${SYNC_MEMORY:-3g}"
-    memswap_limit: "${SYNC_MEMORY:-3g}"
-    pids_limit: 256
-    networks: [source, default]
-    environment:
-      TINI_KILL_PROCESS_GROUP: "1"
-      PGHOST: "${PGHOST:-db}"
-      PGPORT: "${PGPORT:-5432}"
-      PGDATABASE: "${PGDATABASE:-sourcify}"
-      PGUSER: "${PGUSER:-sourcify_export}"
-      PGPASSFILE: /run/secrets/pgpass
-      ARKIV_RPC_URL: "${ARKIV_RPC_URL:?Set ARKIV_RPC_URL in .env to the Arkiv RPC the sync writes to}"
-      ARKIV_CHAIN_ID: "${ARKIV_CHAIN_ID:-}"
-      ARKIV_PRIVATE_KEY_FILE: /run/secrets/arkiv_writer_key
-      # The sync refuses a writer key of another account: what it writes must have the seeds' owner.
-      ENTITY_OWNER: "${ENTITY_OWNER:?Set ENTITY_OWNER in .env to the public owner address of every entity}"
-      ARKIV_PROCESSOR_BIN: /usr/local/bin/arkiv-entity-processor
-      SYNC_DIR: /sync
-      SYNC_BATCH: "${SYNC_BATCH:-200}"
-      SYNC_POLL_SECONDS: "${SYNC_POLL_SECONDS:-60}"
-      SYNC_MAX_GAS_PRICE_GWEI: "${SYNC_MAX_GAS_PRICE_GWEI:-2}"
-      SYNC_IN_FLIGHT: "${SYNC_IN_FLIGHT:-4}"
-    volumes:
-      - type: bind
-        source: "${SYNC_DIR:-./data/sync}"
-        target: /sync
-    secrets:
-      - source: pgpass
-        target: pgpass
-      - source: arkiv_writer_key
-        target: arkiv_writer_key
-
 networks:
   default: {}
   source:
@@ -149,7 +108,3 @@ secrets:
     # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_ENDPOINT_URL_S3 (and optionally AWS_DEFAULT_REGION) lines;
     # readable by PIPELINE_UID. Mounted read-only; never part of the image, logs or command lines.
     file: "${R2_CREDENTIALS_FILE:-./r2.env}"
-  arkiv_writer_key:
-    # The sync's writer: a 32-byte hex private key (mode 600, readable by PIPELINE_UID). Its address owns every entity
-    # the sync creates and must be ENTITY_OWNER, the owner of the seeds and the one the server reads. Never run another signer with this key.
-    file: "${ARKIV_WRITER_KEY_FILE:-./arkiv-writer.key}"
