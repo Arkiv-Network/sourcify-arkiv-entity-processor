@@ -430,8 +430,7 @@ async function send(items: { wire: Wire; params: any }[], context: { client: any
     const verification = pool(batch.map((item, i) => ({ item, key: keys[index]![i]! })), READ_CONCURRENCY, ({ item, key }) => verify(client, key, item, context.owner));
     verification.catch(() => {});
     verifications.push(verification);
-    const minedAt = Number((await client.getBlock({ blockNumber: receipt.blockNumber })).timestamp) * 1000;
-    log('transaction', { txHash, creates: batch.length, calldataBytes: bytes, gasUsed: receipt.gasUsed, block: receipt.blockNumber, sentAt: new Date(sentAt).toISOString(), minedAt: new Date(minedAt).toISOString() });
+    log('transaction', { txHash, creates: batch.length, calldataBytes: bytes, gasUsed: receipt.gasUsed, block: receipt.blockNumber, sentAt: new Date(sentAt).toISOString(), minedAt: await blockTime(client, receipt.blockNumber) });
   };
   const window: Promise<void>[] = [];
   try {
@@ -455,6 +454,16 @@ async function send(items: { wire: Wire; params: any }[], context: { client: any
 }
 
 /** Polls for a receipt every 500 ms (viem's waitForTransactionReceipt noticed blocks 5-10 s late here). */
+/** A block's time (ISO) for the log, or undefined: a node behind a load balancer can return a receipt before it serves
+ * the block itself ("Block at number ... could not be found"), which must not fail a batch whose transaction is mined. */
+export async function blockTime(client: any, blockNumber: bigint, attempts = 3, delayMs = 500) {
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try { return new Date(Number((await client.getBlock({ blockNumber })).timestamp) * 1000).toISOString(); }
+    catch { if (attempt < attempts) await Bun.sleep(delayMs); }
+  }
+  return undefined;
+}
+
 async function receiptOf(client: any, hash: Hex, timeoutMs = 300_000) {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
