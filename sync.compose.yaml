@@ -44,6 +44,7 @@ services:
       SYNC_BATCH: "${SYNC_BATCH:-200}"
       SYNC_POLL_SECONDS: "${SYNC_POLL_SECONDS:-60}"
       SYNC_MAX_GAS_PRICE_GWEI: "${SYNC_MAX_GAS_PRICE_GWEI:-2}"
+      SYNC_MAX_TX_BYTES: "${SYNC_MAX_TX_BYTES:-120000}"
       SYNC_IN_FLIGHT: "${SYNC_IN_FLIGHT:-4}"
     volumes:
       # Created by pipeline/sync-targets.sh, writable by PIPELINE_UID.
