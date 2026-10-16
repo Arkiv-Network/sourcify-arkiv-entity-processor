@@ -115,6 +115,8 @@ services:
       ARKIV_RPC_URL: "${ARKIV_RPC_URL:?Set ARKIV_RPC_URL in .env to the Arkiv RPC the sync writes to}"
       ARKIV_CHAIN_ID: "${ARKIV_CHAIN_ID:-}"
       ARKIV_PRIVATE_KEY_FILE: /run/secrets/arkiv_writer_key
+      # The sync refuses a writer key of another account: what it writes must have the seeds' owner.
+      ENTITY_OWNER: "${ENTITY_OWNER:?Set ENTITY_OWNER in .env to the public owner address of every entity}"
       ARKIV_PROCESSOR_BIN: /usr/local/bin/arkiv-entity-processor
       SYNC_DIR: /sync
       SYNC_BATCH: "${SYNC_BATCH:-200}"
@@ -149,5 +151,5 @@ secrets:
     file: "${R2_CREDENTIALS_FILE:-./r2.env}"
   arkiv_writer_key:
     # The sync's writer: a 32-byte hex private key (mode 600, readable by PIPELINE_UID). Its address owns every entity
-    # the sync creates and must be the owner the server reads. Never run another signer with this key.
+    # the sync creates and must be ENTITY_OWNER, the owner of the seeds and the one the server reads. Never run another signer with this key.
     file: "${ARKIV_WRITER_KEY_FILE:-./arkiv-writer.key}"

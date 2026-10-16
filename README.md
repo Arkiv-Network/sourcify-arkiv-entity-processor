@@ -265,8 +265,12 @@ the entities up again instead of creating them twice. That needs one writer whos
 sync holds `SYNC_DIR/sync.lock` and starts only once the writer has no pending transaction. **Never sign with the
 writer key anywhere else while the sync runs.**
 
+The writer must be `ENTITY_OWNER`, the owner the seeds are exported with, and the sync refuses any other key: its lookups
+only see the writer's own entities, so on a chain prefilled from a seed of another owner it would write everything again,
+and the server reads a single owner.
+
 ```sh
-# .env: ARKIV_RPC_URL, ARKIV_CHAIN_ID, ARKIV_WRITER_KEY_FILE (32-byte hex private key, mode 600); PG* as for prepare
+# .env: ARKIV_RPC_URL, ARKIV_CHAIN_ID, ARKIV_WRITER_KEY_FILE (ENTITY_OWNER's 32-byte hex private key, mode 600); PG* as for prepare
 docker compose --profile sync run --rm sync --once --start-after 56107622   # first batch after the seed's lastMatchId
 docker compose --profile sync up -d sync                                     # then continuously (polls every 60 s)
 docker compose --profile sync run --rm sync --dry-run                        # plan the next batch, write nothing
