@@ -114,14 +114,15 @@ cmd_up() {
     compose_target "$name" run --rm sync --once --start-after "$start_after"
   fi
   compose_target "$name" up -d sync
-  # Show where it starts: the sync writes status.json once it has its cursor (or found nothing to start from).
+  # Show where it starts: the sync writes status.json once it has its cursor (or found nothing to start from). A
+  # container that up replaces writes "stopped" (with its own start) first: that is the old one's.
   for _ in $(seq 60); do
     restarts=$(docker inspect -f '{{.RestartCount}}' "arkiv-sync-$name-sync-1" 2>/dev/null || echo 0)
     if ((${restarts:-0} > 0)); then
       docker logs --tail 3 "arkiv-sync-$name-sync-1" >&2
       die "$name's sync exits and restarts; stop it with: pipeline/sync-targets.sh down $name"
     fi
-    if jq -e --arg since "$since" '.at >= $since and (.start != null or .status == "failed" or .status == "syncing" or .status == "caught-up")' \
+    if jq -e --arg since "$since" '.at >= $since and .status != "stopped" and (.start != null or .status == "failed" or .status == "syncing" or .status == "caught-up")' \
       "$DATA_DIR/$name/status.json" >/dev/null 2>&1; then
       jq -c '{status, start, error}' "$DATA_DIR/$name/status.json"; return
     fi
