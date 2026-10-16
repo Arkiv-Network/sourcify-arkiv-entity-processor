@@ -31,7 +31,7 @@
  * Settings (environment): ARKIV_RPC_URL, ARKIV_RPC_API_KEY, ARKIV_CHAIN_ID, ARKIV_PRIVATE_KEY_FILE (see cli.ts), ENTITY_OWNER; PGHOST,
  * PGPORT, PGDATABASE, PGUSER, PGPASSWORD or PGPASSFILE (the mirror, SELECT only); SYNC_DIR (required, one per chain),
  * SYNC_BATCH (matches per batch, default 200), SYNC_POLL_SECONDS (default 60), SYNC_MAX_TX_BYTES (calldata per
- * transaction, default 120000), SYNC_MAX_GAS_PRICE_GWEI (default 2), SYNC_IN_FLIGHT
+ * transaction, default 120000, at least 4000; a larger entity travels alone), SYNC_MAX_GAS_PRICE_GWEI (default 2), SYNC_IN_FLIGHT
  * (unmined transactions at a time, default 4), SYNC_GAS (computed or estimate, see send()), ARKIV_PROCESSOR_BIN
  * (default ./target/release/arkiv-entity-processor).
  */
@@ -138,7 +138,7 @@ async function main() {
   if (values.help) { console.log(readFileSync(import.meta.path, 'utf8').split('*/')[0]!.replace(/^#!.*\n\/\*\*\n/, '').replace(/^ \* ?/gm, '')); return; }
   if (!settings.dir) throw new Error('SYNC_DIR is required: the directory of this chain\'s cursor and logs');
   if (!Number.isSafeInteger(settings.batch) || settings.batch < 1 || settings.batch > 5000) throw new Error('SYNC_BATCH must be 1..5000');
-  if (!Number.isSafeInteger(settings.maxTxBytes) || settings.maxTxBytes < 10_000) throw new Error('SYNC_MAX_TX_BYTES must be at least 10000');
+  if (!Number.isSafeInteger(settings.maxTxBytes) || settings.maxTxBytes < 4_000) throw new Error('SYNC_MAX_TX_BYTES must be at least 4000');
   if (!Number.isSafeInteger(settings.inFlight) || settings.inFlight < 1 || settings.inFlight > 16) throw new Error('SYNC_IN_FLIGHT must be 1..16');
   if (!['computed', 'estimate'].includes(settings.gas)) throw new Error('SYNC_GAS must be computed or estimate');
   const maxBatches = values.once ? 1 : values.batches !== undefined ? Number(values.batches) : Infinity;
