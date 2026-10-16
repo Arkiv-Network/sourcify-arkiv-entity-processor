@@ -1,0 +1,99 @@
+# Sync dashboard (dashboard/status.ts): the read-only status page of the Postgres -> Arkiv syncs, one Compose project:
+#
+#   docker compose -f dashboard.compose.yaml --env-file .env up -d
+#
+# Every 15 s it writes status.json (and on start the page: index.html, app.js, style.css) to DASHBOARD_OUT (default
+# /var/www/arkiv-sync; it must exist and be writable by PIPELINE_UID). It reads targets/*.env (with .env), data/sync,
+# data/runs/status.jsonl, the mirror database (SELECT only, at most once a minute) on SOURCE_NETWORK and each target's RPC
+# (read-only calls). Of an RPC URL only the hostname is published; error texts are sanitized. No ports: nginx serves the
+# directory, in the server block of sourcify-mirror.arkiv-global.net (add_header here replaces the server's own):
+#
+#   location = /sync { return 301 /sync/; }
+#   location ^~ /sync/ {
+#       limit_except GET { deny all; }   # GET also allows HEAD
+#       alias /var/www/arkiv-sync/;
+#       index index.html;
+#       disable_symlinks on;
+#       gzip on;
+#       gzip_vary on;
+#       gzip_types application/json application/javascript text/css;
+#       add_header Cache-Control "no-cache" always;
+#       add_header X-Content-Type-Options "nosniff" always;
+#       add_header Referrer-Policy "no-referrer" always;
+#       add_header Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" always;
+#   }
+#
+# The image is built by compose.yaml (`docker compose build`, which also takes a new dashboard/); this file never builds
+# or pulls it. Recreate the container (`up -d`) after a build or an edit of .env; targets/ is read on every refresh.
+name: arkiv-sync-dashboard
+
+services:
+  dashboard:
+    image: arkiv-entity-processor:local
+    pull_policy: never
+    entrypoint: ["bun", "/app/dashboard/status.ts"]
+    command: []
+    init: true
+    restart: unless-stopped
+    user: "${PIPELINE_UID:-1000}:${PIPELINE_GID:-1000}"
+    cpus: 0.25
+    mem_limit: 256m
+    # No swap beyond the memory limit, and the kernel picks this container first should the host run out of memory.
+    memswap_limit: 256m
+    pids_limit: 64
+    oom_score_adj: 500
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+    # DuckDB's spill directory (its queries are small and never spill).
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    networks: [source, default]
+    environment:
+      PGHOST: "${PGHOST:-db}"
+      PGPORT: "${PGPORT:-5432}"
+      PGDATABASE: "${PGDATABASE:-sourcify}"
+      PGUSER: "${PGUSER:-sourcify_export}"
+      PGPASSFILE: /run/secrets/pgpass
+      MIRROR_PUBLIC_URL: "${MIRROR_PUBLIC_URL:-https://sourcify-mirror.arkiv-global.net}"
+    volumes:
+      # The defaults of dashboard/status.ts's DASHBOARD_* paths. Read-only, except the published directory.
+      - type: bind
+        source: ./targets
+        target: /targets
+        read_only: true
+      - type: bind
+        source: ./.env
+        target: /config/.env
+        read_only: true
+      - type: bind
+        source: ./data/sync
+        target: /sync
+        read_only: true
+      # Only status.jsonl is read (the runs' work directories are large).
+      - type: bind
+        source: ./data/runs
+        target: /runs
+        read_only: true
+      - type: bind
+        source: "${DASHBOARD_OUT:-/var/www/arkiv-sync}"
+        target: /out
+    secrets:
+      - source: pgpass
+        target: pgpass
+
+networks:
+  default: {}
+  source:
+    # The network of the database service, e.g. the sourcify-mirror-node's Compose project.
+    external: true
+    name: "${SOURCE_NETWORK:-sourcify-node_default}"
+
+secrets:
+  pgpass:
+    # libpq password file (host:port:database:user:password, mode 600, readable by PIPELINE_UID). Mounted read-only;
+    # never part of the image, logs, environment or command lines.
+    file: "${PG_PASSFILE:-./pgpass}"

@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="description" content="Live status of the Sourcify mirror and of its sync of verified Ethereum contracts to Arkiv chains.">
+<title>Sourcify → Arkiv sync</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="style.css">
+<script type="module" src="app.js"></script>
+</head>
+<body>
+<header class="top wrap">
+  <div>
+    <h1>Sourcify <span aria-hidden="true">→</span><span class="sr">to</span> Arkiv sync</h1>
+    <p class="tag">Verified Ethereum contracts, mirrored and written to Arkiv chains</p>
+  </div>
+  <p class="ticker"><span id="tdot" class="tdot" aria-hidden="true"></span><span id="tick">connecting…</span></p>
+  <p id="verdict" class="verdict lv-info"><span id="vi" class="vi" aria-hidden="true">↻</span><span id="vtext">Loading status…</span></p>
+</header>
+<div class="wrap"><p id="banner" class="banner" role="status" hidden></p></div>
+<main id="app" class="wrap"></main>
+<footer class="foot wrap">
+  <p id="meta"></p>
+  <p>A read-only view of the public Sourcify mirror (verified smart contracts, mirrored into Postgres and served at
+    <code>/v2/contract/{chainId}/{address}</code>) and of one sync per Arkiv chain, which writes the mirror’s Ethereum
+    contracts to that chain as Arkiv entities. A daily seed export runs at 02:00 UTC.</p>
+</footer>
+<noscript><p class="wrap">This page renders live data from status.json and needs JavaScript.</p></noscript>
+</body>
+</html>
