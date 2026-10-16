@@ -80,15 +80,16 @@ own() {
 }
 
 cmd_ls() {
-  local file name status
+  local file name status container
   printf '%-16s %-9s %-22s %-14s %-11s %-24s %s\n' TARGET CHAIN CONTAINER STATUS CURSOR UPDATED RPC
   for file in "$TARGETS_DIR"/*.env; do
     [[ -f $file ]] || continue
     name=$(basename "$file" .env)
     status=$DATA_DIR/$name/status.json
-    printf '%-16s %-9s %-22s %-14s %-11s %-24s %s\n' "$name" "$(setting "$name" ARKIV_CHAIN_ID)" \
-      "$(docker ps -a --filter "label=com.docker.compose.project=arkiv-sync-$name" --format '{{.State}}' | head -n 1 | grep . || echo none)" \
-      "$(jq -r '.status // "-"' "$status" 2>/dev/null || echo -)" \
+    container=$(docker ps -a --filter "label=com.docker.compose.project=arkiv-sync-$name" --format '{{.State}}' | head -n 1 | grep . || echo none)
+    # Without a container, status.json only tells what the sync last did.
+    printf '%-16s %-9s %-22s %-14s %-11s %-24s %s\n' "$name" "$(setting "$name" ARKIV_CHAIN_ID)" "$container" \
+      "$([[ $container != none ]] && jq -r '.status // "-"' "$status" 2>/dev/null || echo stopped)" \
       "$(jq -r '.lastMatchId // "-"' "$DATA_DIR/$name/state.json" 2>/dev/null || echo -)" \
       "$(jq -r '.at // "-"' "$status" 2>/dev/null || echo -)" "$(setting "$name" ARKIV_RPC_URL)"
     jq -r 'select(.error) | "  error: \(.error)"' "$status" 2>/dev/null || true

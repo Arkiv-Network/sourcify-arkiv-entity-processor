@@ -38,8 +38,9 @@
 import { createWalletClient, ENTITY_EVENTS_ABI, ExpirationTime, randomSalt, resolveExpiry } from '@arkiv-network/sdk';
 import { addr, bool, bytes32, i32, key, str, u64 } from '@arkiv-network/sdk/attr';
 import { decodeEventLog, TransactionReceiptNotFoundError, type Hex } from 'viem';
-import { closeSync, openSync, readFileSync, rmSync, writeSync } from 'node:fs';
+import { closeSync, openSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync, writeSync } from 'node:fs';
 import { appendFile, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { hostname } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { newestEthereumMatchId, prepareSource, sourceDatabase, type SourceDatabase, type SourceManifest } from '../source/prepare';
@@ -62,6 +63,8 @@ const DEPENDENCY_KINDS = new Set(['sourcefile', 'code', 'compilation', 'blob']);
 const READ_CONCURRENCY = 8;
 const NEEDS_SEED_POLL_SECONDS = 600;
 const RETRY_MAX_SECONDS = 900;
+const LOCK_REFRESH_MS = 30_000;
+const LOCK_STALE_MS = 120_000;
 
 /** One line of a bundle's entities/*.jsonl: $-fields and "name": "type:value" attributes (see src/main.rs). */
 type Wire = Record<string, any>;
@@ -154,15 +157,22 @@ async function main() {
   // Receipts are polled every second (viem's default is 4 s, two blocks here).
   const wallet = createWalletClient({ chain, transport, account, pollingInterval: 1000 });
   await mkdir(settings.dir, { recursive: true });
-  const release = lock(join(settings.dir, 'sync.lock'));
+  const release = await lock(join(settings.dir, 'sync.lock'), continuous);
   // What a continuous run is doing, for pipeline/sync-targets.sh ls.
   let status: Record<string, unknown> = {};
+  const statusPath = join(settings.dir, 'status.json');
+  const statusJson = () => JSON.stringify(status, (_, v) => typeof v === 'bigint' ? v.toString() : v, 2) + '\n';
   const report = async (fields: Record<string, unknown>) => {
     if (!continuous) return;
     status = { ...status, ...fields, at: new Date().toISOString() };
-    const path = join(settings.dir, 'status.json');
-    await writeFile(`${path}.tmp`, JSON.stringify(status, (_, v) => typeof v === 'bigint' ? v.toString() : v, 2) + '\n'); await rename(`${path}.tmp`, path);
+    await writeFile(`${statusPath}.tmp`, statusJson()); await rename(`${statusPath}.tmp`, statusPath);
   };
+  // docker stop: no lock is left behind. Whatever was in flight is looked up again by the next start.
+  for (const [signal, code] of [['SIGTERM', 143], ['SIGINT', 130]] as const) process.on(signal, () => {
+    log('stopped', { signal });
+    if (continuous) { status = { ...status, status: 'stopped', at: new Date().toISOString() }; try { writeFileSync(statusPath, statusJson()); } catch {} }
+    release(); process.exit(code);
+  });
   try {
     log('start', { rpcUrl, chainId: chain.id, writer: account.address, dir: settings.dir, batch: settings.batch, dryRun: values['dry-run'] });
     await report({ status: 'starting', rpcUrl, chainId: chain.id, writer: account.address });
@@ -510,23 +520,32 @@ export async function highestMatchId(probe: (after: bigint) => Promise<bigint | 
   }
 }
 
-/** A PID lock file; a stale one (its process gone) is taken over. */
-function lock(path: string) {
-  for (let attempt = 0; attempt < 2; attempt++) {
+/** A lock file holding "pid@host" (host: the container), refreshed every 30 s while held. One whose process is gone
+ * from this host, or that was not refreshed for 2 minutes (its container stopped or was replaced), is taken over; PIDs
+ * alone say nothing across containers. A continuous run waits for a held lock to be released or go stale. */
+export async function lock(path: string, wait: boolean) {
+  const me = `${process.pid}@${hostname()}`;
+  for (;;) {
     try {
-      const fd = openSync(path, 'wx'); writeSync(fd, String(process.pid)); closeSync(fd);
-      return () => rmSync(path, { force: true });
-    } catch (error: any) {
-      if (error.code !== 'EEXIST') throw error;
-      const pid = Number(readFileSync(path, 'utf8'));
-      let alive = false;
-      try { process.kill(pid, 0); alive = true; } catch (e: any) { alive = e.code === 'EPERM'; }
-      if (alive && pid !== process.pid) throw new Error(`another sync (pid ${pid}) holds ${path}`);
-      rmSync(path, { force: true }); // stale: its process is gone; take it over
-
+      const fd = openSync(path, 'wx'); writeSync(fd, me); closeSync(fd);
+      const timer = setInterval(() => { try { const now = new Date(); utimesSync(path, now, now); } catch {} }, LOCK_REFRESH_MS);
+      timer.unref();
+      return () => { clearInterval(timer); try { if (readFileSync(path, 'utf8').trim() === me) rmSync(path, { force: true }); } catch {} };
+    } catch (error: any) { if (error.code !== 'EEXIST') throw error; }
+    let holder: string, age: number;
+    try { holder = readFileSync(path, 'utf8').trim(); age = Date.now() - statSync(path).mtimeMs; }
+    catch (error: any) { if (error.code === 'ENOENT') continue; throw error; }
+    const [pid, host] = holder.split('@');
+    let gone = age > LOCK_STALE_MS;
+    if (!gone && host === hostname()) {
+      try { process.kill(Number(pid), 0); } catch (error: any) { gone = error.code !== 'EPERM'; }
+      if (Number(pid) === process.pid) gone = true;
     }
+    if (gone) { rmSync(path, { force: true }); continue; }
+    if (!wait) throw new Error(`another sync (${holder}) holds ${path}, refreshed ${Math.round(age / 1000)} s ago`);
+    log('waiting-for-lock', { holder, refreshedSecondsAgo: Math.round(age / 1000) });
+    await Bun.sleep(10_000);
   }
-  throw new Error(`cannot take ${path}`);
 }
 
 /** Runs a command to completion; stdout/stderr to files. Fails with the command's exit code and its log's tail. */

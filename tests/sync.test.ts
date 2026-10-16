@@ -4,11 +4,12 @@
  * arkiv/sync.ts, and how a start finds its cursor (against a simulated chain). Nothing here talks to an Arkiv chain.
  */
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { hostname } from 'node:os';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { localMatchIdStart, newestEthereumMatchId, prepareSource } from '../source/prepare';
-import { createParams, highestMatchId, pack, startCursor } from '../arkiv/sync';
+import { createParams, highestMatchId, lock, pack, startCursor } from '../arkiv/sync';
 import { createFixtureDatabase, type FixtureDatabase } from './fixture/postgres';
 
 const root = resolve(import.meta.dir, '..');
@@ -208,5 +209,34 @@ describe('start cursor', () => {
     expect(startCursor('56228394', '56195245', '56170000')).toEqual({ cursor: '56170000', from: 'chain-behind-state' });
     // Nothing of the writer near the top: the state file is all there is.
     expect(startCursor('50000000', undefined, undefined)).toEqual({ cursor: '50000000', from: 'state-unchecked' });
+  });
+});
+
+describe('sync lock', () => {
+  test('held by a live sync elsewhere it is refused; a dead process on this host, or no refresh for 2 minutes, is taken over', async () => {
+    const path = join(scratch, 'sync.lock');
+    const holdBy = (holder: string, secondsAgo = 0) => { writeFileSync(path, holder); const t = new Date(Date.now() - secondsAgo * 1000); utimesSync(path, t, t); };
+    // Another container's sync, refreshed recently: PIDs say nothing across containers.
+    holdBy('8@another-container', 20);
+    await expect(lock(path, false)).rejects.toThrow('another sync (8@another-container)');
+    // The same holder after 2 minutes without a refresh (its container stopped); the old PID-only format alike.
+    for (const holder of ['8@another-container', '8']) {
+      holdBy(holder, 180);
+      const release = await lock(path, false);
+      expect(readFileSync(path, 'utf8')).toBe(`${process.pid}@${hostname()}`);
+      release();
+      expect(existsSync(path)).toBe(false);
+    }
+    holdBy('8', 20);
+    await expect(lock(path, false)).rejects.toThrow('another sync');
+    // A process gone from this host, at once.
+    holdBy(`999999999@${hostname()}`);
+    (await lock(path, false))();
+    // Released only by its holder: a lock taken over meanwhile stays.
+    const release = await lock(path, false);
+    holdBy('9@another-container');
+    release();
+    expect(readFileSync(path, 'utf8')).toBe('9@another-container');
+    rmSync(path);
   });
 });
