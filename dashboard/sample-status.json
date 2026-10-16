@@ -1,0 +1,154 @@
+{
+  "schema": 1,
+  "generatedAt": "2026-10-16T18:35:00.000Z",
+  "revision": "df41fb3d6a7e795ad2b36352d2383a5280506c0d",
+  "refreshSeconds": 15,
+  "mirror": {
+    "publicUrl": "https://sourcify-mirror.arkiv-global.net",
+    "newestMatchId": "56242690",
+    "newestMatchAt": "2026-10-16T18:33:12.000Z",
+    "matchesLastHour": 129,
+    "matchesLast24h": 3152,
+    "hourly": [
+      { "hour": "2026-10-15T19:00:00.000Z", "matches": 141 }, { "hour": "2026-10-15T20:00:00.000Z", "matches": 122 },
+      { "hour": "2026-10-15T21:00:00.000Z", "matches": 98 }, { "hour": "2026-10-15T22:00:00.000Z", "matches": 87 },
+      { "hour": "2026-10-15T23:00:00.000Z", "matches": 90 }, { "hour": "2026-10-16T00:00:00.000Z", "matches": 104 },
+      { "hour": "2026-10-16T01:00:00.000Z", "matches": 112 }, { "hour": "2026-10-16T02:00:00.000Z", "matches": 131 },
+      { "hour": "2026-10-16T03:00:00.000Z", "matches": 125 }, { "hour": "2026-10-16T04:00:00.000Z", "matches": 119 },
+      { "hour": "2026-10-16T05:00:00.000Z", "matches": 143 }, { "hour": "2026-10-16T06:00:00.000Z", "matches": 160 },
+      { "hour": "2026-10-16T07:00:00.000Z", "matches": 171 }, { "hour": "2026-10-16T08:00:00.000Z", "matches": 166 },
+      { "hour": "2026-10-16T09:00:00.000Z", "matches": 158 }, { "hour": "2026-10-16T10:00:00.000Z", "matches": 149 },
+      { "hour": "2026-10-16T11:00:00.000Z", "matches": 152 }, { "hour": "2026-10-16T12:00:00.000Z", "matches": 147 },
+      { "hour": "2026-10-16T13:00:00.000Z", "matches": 139 }, { "hour": "2026-10-16T14:00:00.000Z", "matches": 151 },
+      { "hour": "2026-10-16T15:00:00.000Z", "matches": 138 }, { "hour": "2026-10-16T16:00:00.000Z", "matches": 133 },
+      { "hour": "2026-10-16T17:00:00.000Z", "matches": 129 }, { "hour": "2026-10-16T18:00:00.000Z", "matches": 64 }
+    ],
+    "queriedAt": "2026-10-16T18:34:30.000Z",
+    "error": null
+  },
+  "seed": {
+    "latest": { "day": "20261016", "result": "completed", "startedAt": "2026-10-16T02:00:01Z", "seconds": 7039, "key": "seed-inputs/sourcify-ethereum-20261016.tar.zst" },
+    "recent": [
+      { "day": "20261016", "result": "completed", "startedAt": "2026-10-16T02:00:01Z", "seconds": 7039 },
+      { "day": "20261015", "result": "completed", "startedAt": "2026-10-15T02:00:00Z", "seconds": 7089 },
+      { "day": "20261014", "result": "completed", "startedAt": "2026-10-14T16:22:48Z", "seconds": 1547 },
+      { "day": "20261014", "result": "failed", "startedAt": "2026-10-14T16:16:22Z", "seconds": 198 }
+    ]
+  },
+  "targets": [
+    {
+      "name": "prefill-dev",
+      "chainId": 7706815,
+      "rpcHost": "sourcify-prefill.arkiv-global.net",
+      "writer": "0x73d44f158a6990B50b9951532eA2032983A9fc72",
+      "state": "caught-up",
+      "statusAt": "2026-10-16T18:34:39.719Z",
+      "live": true,
+      "error": null,
+      "failures": 0,
+      "cursor": {
+        "matchId": "56242690",
+        "at": "2026-10-16T18:34:39.399Z",
+        "address": "0x8a5c1f2e3b4d6a7c8e9f0a1b2c3d4e5f6a7b8c9d",
+        "contractUrl": "https://sourcify-mirror.arkiv-global.net/v2/contract/1/0x8a5c1f2e3b4d6a7c8e9f0a1b2c3d4e5f6a7b8c9d"
+      },
+      "behind": 0,
+      "etaSeconds": 0,
+      "settings": { "batch": 200, "inFlight": 4, "maxTxBytes": 120000, "batchDelaySeconds": 0, "pollSeconds": 60 },
+      "rates": { "contractsLastHour": 131, "matchesLastHour": 133, "contractsLast24h": 3140, "secondsPerContract": 0.9 },
+      "hourly": [
+        { "hour": "2026-10-15T19:00:00.000Z", "contracts": 139, "matches": 141, "transactions": 30, "gasUsed": "28400000", "calldataBytes": 1820000 },
+        { "hour": "2026-10-15T20:00:00.000Z", "contracts": 120, "matches": 122, "transactions": 26, "gasUsed": "24600000", "calldataBytes": 1590000 },
+        { "hour": "2026-10-15T21:00:00.000Z", "contracts": 97, "matches": 98, "transactions": 22, "gasUsed": "19900000", "calldataBytes": 1270000 },
+        { "hour": "2026-10-15T22:00:00.000Z", "contracts": 86, "matches": 87, "transactions": 19, "gasUsed": "17800000", "calldataBytes": 1130000 },
+        { "hour": "2026-10-15T23:00:00.000Z", "contracts": 88, "matches": 90, "transactions": 20, "gasUsed": "18300000", "calldataBytes": 1170000 },
+        { "hour": "2026-10-16T00:00:00.000Z", "contracts": 103, "matches": 104, "transactions": 23, "gasUsed": "21200000", "calldataBytes": 1350000 },
+        { "hour": "2026-10-16T01:00:00.000Z", "contracts": 110, "matches": 112, "transactions": 24, "gasUsed": "22800000", "calldataBytes": 1460000 },
+        { "hour": "2026-10-16T02:00:00.000Z", "contracts": 130, "matches": 131, "transactions": 28, "gasUsed": "26700000", "calldataBytes": 1700000 },
+        { "hour": "2026-10-16T03:00:00.000Z", "contracts": 124, "matches": 125, "transactions": 27, "gasUsed": "25400000", "calldataBytes": 1620000 },
+        { "hour": "2026-10-16T04:00:00.000Z", "contracts": 117, "matches": 119, "transactions": 25, "gasUsed": "24200000", "calldataBytes": 1550000 },
+        { "hour": "2026-10-16T05:00:00.000Z", "contracts": 142, "matches": 143, "transactions": 31, "gasUsed": "29100000", "calldataBytes": 1860000 },
+        { "hour": "2026-10-16T06:00:00.000Z", "contracts": 158, "matches": 160, "transactions": 34, "gasUsed": "32500000", "calldataBytes": 2080000 },
+        { "hour": "2026-10-16T07:00:00.000Z", "contracts": 170, "matches": 171, "transactions": 36, "gasUsed": "34800000", "calldataBytes": 2220000 },
+        { "hour": "2026-10-16T08:00:00.000Z", "contracts": 165, "matches": 166, "transactions": 35, "gasUsed": "33700000", "calldataBytes": 2160000 },
+        { "hour": "2026-10-16T09:00:00.000Z", "contracts": 156, "matches": 158, "transactions": 33, "gasUsed": "32100000", "calldataBytes": 2050000 },
+        { "hour": "2026-10-16T10:00:00.000Z", "contracts": 148, "matches": 149, "transactions": 32, "gasUsed": "30300000", "calldataBytes": 1940000 },
+        { "hour": "2026-10-16T11:00:00.000Z", "contracts": 151, "matches": 152, "transactions": 32, "gasUsed": "30900000", "calldataBytes": 1980000 },
+        { "hour": "2026-10-16T12:00:00.000Z", "contracts": 146, "matches": 147, "transactions": 31, "gasUsed": "29900000", "calldataBytes": 1910000 },
+        { "hour": "2026-10-16T13:00:00.000Z", "contracts": 138, "matches": 139, "transactions": 30, "gasUsed": "28300000", "calldataBytes": 1810000 },
+        { "hour": "2026-10-16T14:00:00.000Z", "contracts": 150, "matches": 151, "transactions": 32, "gasUsed": "30700000", "calldataBytes": 1960000 },
+        { "hour": "2026-10-16T15:00:00.000Z", "contracts": 0, "matches": 0, "transactions": 0, "gasUsed": "0", "calldataBytes": 0 },
+        { "hour": "2026-10-16T16:00:00.000Z", "contracts": 268, "matches": 271, "transactions": 58, "gasUsed": "55100000", "calldataBytes": 3520000 },
+        { "hour": "2026-10-16T17:00:00.000Z", "contracts": 128, "matches": 129, "transactions": 28, "gasUsed": "26200000", "calldataBytes": 1680000 },
+        { "hour": "2026-10-16T18:00:00.000Z", "contracts": 63, "matches": 64, "transactions": 14, "gasUsed": "12900000", "calldataBytes": 830000 }
+      ],
+      "totals": {
+        "since": "2026-10-14T23:36:22.626Z", "batches": 2197, "matches": 47930, "contracts": 47512, "alreadySynced": 312, "skipped": 4,
+        "entitiesCreated": 102340, "entitiesReused": 98110, "transactions": 9120, "gasUsed": "9341200000", "calldataBytes": 601000000
+      },
+      "lastBatch": { "at": "2026-10-16T18:29:39.399Z", "matchId": "56242690", "contracts": 2, "alreadySynced": 0, "created": 5, "reused": 14, "transactions": 1, "calldataBytes": 41200, "seconds": 2.1 },
+      "chain": {
+        "head": 9123456, "headAt": "2026-10-16T18:34:58.000Z", "blockSeconds": 2.0, "gasPriceGwei": 1.0,
+        "balanceEth": "812.4417", "nonce": 9120, "pendingNonce": 9120, "spentEthLast24h": "0.6821", "runwayDays": 1191,
+        "queriedAt": "2026-10-16T18:34:59.000Z", "error": null
+      }
+    },
+    {
+      "name": "sorbet",
+      "chainId": 7706815,
+      "rpcHost": "rpc.sorbet.db-chain.testnet.arkiv.network",
+      "writer": "0x73d44f158a6990B50b9951532eA2032983A9fc72",
+      "state": "syncing",
+      "statusAt": "2026-10-16T18:34:58.659Z",
+      "live": true,
+      "error": null,
+      "failures": 0,
+      "cursor": {
+        "matchId": "56141120",
+        "at": "2026-10-16T18:34:58.659Z",
+        "address": "0xd5b9ded450eab3f4c5fb7df209cdaea9d0abe6a9",
+        "contractUrl": "https://sourcify-mirror.arkiv-global.net/v2/contract/1/0xd5b9ded450eab3f4c5fb7df209cdaea9d0abe6a9"
+      },
+      "behind": 5288,
+      "etaSeconds": 51500,
+      "settings": { "batch": 1, "inFlight": 1, "maxTxBytes": 16000, "batchDelaySeconds": 0, "pollSeconds": 60 },
+      "rates": { "contractsLastHour": 498, "matchesLastHour": 498, "contractsLast24h": 640, "secondsPerContract": 7.2 },
+      "hourly": [
+        { "hour": "2026-10-15T19:00:00.000Z", "contracts": 0, "matches": 0, "transactions": 0, "gasUsed": "0", "calldataBytes": 0 },
+        { "hour": "2026-10-15T20:00:00.000Z", "contracts": 0, "matches": 0, "transactions": 0, "gasUsed": "0", "calldataBytes": 0 },
+        { "hour": "2026-10-15T21:00:00.000Z", "contracts": 0, "matches": 0, "transactions": 0, "gasUsed": "0", "calldataBytes": 0 },
+        { "hour": "2026-10-15T22:00:00.000Z", "contracts": 0, "matches": 0, "transactions": 0, "gasUsed": "0", "calldataBytes": 0 },
+        { "hour": "2026-10-15T23:00:00.000Z", "contracts": 0, "matches": 0, "transactions": 0, "gasUsed": "0", "calldataBytes": 0 },
+        { "hour": "2026-10-16T00:00:00.000Z", "contracts": 0, "matches": 0, "transactions": 0, "gasUsed": "0", "calldataBytes": 0 },
+        { "hour": "2026-10-16T01:00:00.000Z", "contracts": 0, "matches": 0, "transactions": 0, "gasUsed": "0", "calldataBytes": 0 },
+        { "hour": "2026-10-16T02:00:00.000Z", "contracts": 0, "matches": 0, "transactions": 0, "gasUsed": "0", "calldataBytes": 0 },
+        { "hour": "2026-10-16T03:00:00.000Z", "contracts": 0, "matches": 0, "transactions": 0, "gasUsed": "0", "calldataBytes": 0 },
+        { "hour": "2026-10-16T04:00:00.000Z", "contracts": 0, "matches": 0, "transactions": 0, "gasUsed": "0", "calldataBytes": 0 },
+        { "hour": "2026-10-16T05:00:00.000Z", "contracts": 0, "matches": 0, "transactions": 0, "gasUsed": "0", "calldataBytes": 0 },
+        { "hour": "2026-10-16T06:00:00.000Z", "contracts": 0, "matches": 0, "transactions": 0, "gasUsed": "0", "calldataBytes": 0 },
+        { "hour": "2026-10-16T07:00:00.000Z", "contracts": 0, "matches": 0, "transactions": 0, "gasUsed": "0", "calldataBytes": 0 },
+        { "hour": "2026-10-16T08:00:00.000Z", "contracts": 0, "matches": 0, "transactions": 0, "gasUsed": "0", "calldataBytes": 0 },
+        { "hour": "2026-10-16T09:00:00.000Z", "contracts": 0, "matches": 0, "transactions": 0, "gasUsed": "0", "calldataBytes": 0 },
+        { "hour": "2026-10-16T10:00:00.000Z", "contracts": 0, "matches": 0, "transactions": 0, "gasUsed": "0", "calldataBytes": 0 },
+        { "hour": "2026-10-16T11:00:00.000Z", "contracts": 0, "matches": 0, "transactions": 0, "gasUsed": "0", "calldataBytes": 0 },
+        { "hour": "2026-10-16T12:00:00.000Z", "contracts": 0, "matches": 0, "transactions": 0, "gasUsed": "0", "calldataBytes": 0 },
+        { "hour": "2026-10-16T13:00:00.000Z", "contracts": 0, "matches": 0, "transactions": 0, "gasUsed": "0", "calldataBytes": 0 },
+        { "hour": "2026-10-16T14:00:00.000Z", "contracts": 0, "matches": 0, "transactions": 0, "gasUsed": "0", "calldataBytes": 0 },
+        { "hour": "2026-10-16T15:00:00.000Z", "contracts": 0, "matches": 0, "transactions": 0, "gasUsed": "0", "calldataBytes": 0 },
+        { "hour": "2026-10-16T16:00:00.000Z", "contracts": 0, "matches": 0, "transactions": 0, "gasUsed": "0", "calldataBytes": 0 },
+        { "hour": "2026-10-16T17:00:00.000Z", "contracts": 52, "matches": 52, "transactions": 84, "gasUsed": "24100000", "calldataBytes": 690000 },
+        { "hour": "2026-10-16T18:00:00.000Z", "contracts": 241, "matches": 241, "transactions": 512, "gasUsed": "150300000", "calldataBytes": 4310000 }
+      ],
+      "totals": {
+        "since": "2026-10-16T17:32:56.828Z", "batches": 293, "matches": 293, "contracts": 293, "alreadySynced": 0, "skipped": 0,
+        "entitiesCreated": 1024, "entitiesReused": 2311, "transactions": 596, "gasUsed": "174400000", "calldataBytes": 5000000
+      },
+      "lastBatch": { "at": "2026-10-16T18:34:58.659Z", "matchId": "56141120", "contracts": 1, "alreadySynced": 0, "created": 3, "reused": 10, "transactions": 2, "calldataBytes": 15624, "seconds": 3.9 },
+      "chain": {
+        "head": 35801, "headAt": "2026-10-16T18:34:58.000Z", "blockSeconds": 2.0, "gasPriceGwei": 1.0,
+        "balanceEth": "4999.8256", "nonce": 602, "pendingNonce": 602, "spentEthLast24h": "0.1744", "runwayDays": 28669,
+        "queriedAt": "2026-10-16T18:34:59.000Z", "error": null
+      }
+    }
+  ]
+}

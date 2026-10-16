@@ -234,7 +234,8 @@ async function main() {
         await Bun.sleep(settings.pollSeconds * 1000); continue;
       }
       if (!values['dry-run']) await saveState(result.lastMatchId);
-      await appendFile(join(settings.dir, 'sync.jsonl'), json({ at: new Date().toISOString(), ...result, skippedContracts: result.skippedContracts.length }) + '\n');
+      // A dry run's line is marked: it planned the batch but sent nothing (dashboard/status.ts leaves it out).
+      await appendFile(join(settings.dir, 'sync.jsonl'), json({ at: new Date().toISOString(), ...(values['dry-run'] ? { dryRun: true } : {}), ...result, skippedContracts: result.skippedContracts.length }) + '\n');
       if (result.skippedContracts.length) await appendFile(join(settings.dir, 'skipped.jsonl'), result.skippedContracts.map(s => json({ at: new Date().toISOString(), ...s })).join('\n') + '\n');
       log('batch', { ...result, skippedContracts: result.skippedContracts.length });
       await report({ status: 'syncing', lastMatchId: cursor, lastBatchAt: new Date().toISOString(), error: undefined, failures: undefined });

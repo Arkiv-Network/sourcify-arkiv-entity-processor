@@ -62,6 +62,7 @@ the HTTP server derives serving signatures from ABI. See the
 | `source/` | Bun + DuckDB source stage: `prepare.ts` (PostgreSQL → DuckDB), `stream.ts` (DuckDB → NDJSON records) |
 | `pipeline/` | `run.sh` (resumable phases, progress, `timings.json`), `state.ts` (its bookkeeping) |
 | `arkiv/` | [Postgres → Arkiv sync](#postgres--arkiv-sync) (`sync.ts`) and a helper CLI (`cli.ts`), Bun + `@arkiv-network/sdk` |
+| `dashboard/` | [Sync dashboard](#sync-dashboard): `status.ts` (writes `status.json`) and the static page nginx serves |
 | `Dockerfile`, `compose.yaml`, `.env.example` | container deployment |
 | `tests/` | end-to-end tests on a small real-data PostgreSQL fixture; [opt-in live contract comparison](docs/live-conformance.md) |
 
@@ -328,6 +329,49 @@ Measured on the dev chain (2 s blocks; 2026-10-15), the RPC endpoint's block imp
 
 `arkiv/cli.ts` (`bun run arkiv info|get|query|create|delete`) inspects the chain and tries single writes with the same
 settings; writes are dry runs without `--execute`.
+
+### Sync dashboard
+
+<https://sourcify-mirror.arkiv-global.net/sync/> shows every target: its state (`stale` when the sync stopped
+refreshing `sync.lock` though its status says it runs), cursor and that contract, the Ethereum matches it is behind the
+mirror and an ETA at the last hour's net rate, contracts, transactions, gas and calldata by hour and in total, and its
+chain (head, block time, gas price, the writer's balance and nonces, 24 h spend and runway); also the mirror's newest
+match and hourly inflow, and the last daily seed runs. [`dashboard/status.ts`](dashboard/status.ts) writes it as
+`status.json` (shape: [`dashboard/sample-status.json`](dashboard/sample-status.json)) every 15 s from `targets/*.env`,
+`data/sync/NAME`, `data/runs/status.jsonl`, each target's RPC (read-only calls) and the mirror (SELECT only, at most
+once a minute, scans bounded by match ID), next to the static page it copies on start; the page polls it. It runs as
+the Compose project `arkiv-sync-dashboard` ([`dashboard.compose.yaml`](dashboard.compose.yaml); 0.25 CPU, 256 MB, no
+swap, read-only, no ports), publishing into `DASHBOARD_OUT` (`/var/www/arkiv-sync`), which nginx serves:
+
+```sh
+sudo install -d -o "$PIPELINE_UID" -g "$PIPELINE_GID" -m 755 /var/www/arkiv-sync   # PIPELINE_UID/GID of .env
+docker compose -f dashboard.compose.yaml --env-file .env up -d      # again after an image build
+docker compose -f dashboard.compose.yaml --env-file .env logs -f    # a JSON line when a source starts or stops failing
+```
+
+```nginx
+location = /sync { return 301 /sync/; }
+location ^~ /sync/ {
+    limit_except GET { deny all; }   # GET also allows HEAD
+    alias /var/www/arkiv-sync/;
+    index index.html;
+    disable_symlinks on;
+    gzip on;
+    gzip_vary on;
+    gzip_types application/json application/javascript text/css;
+    add_header Cache-Control "no-cache" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "no-referrer" always;
+    add_header Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" always;
+}
+```
+
+It publishes no secrets: of an RPC URL (one may carry an access token in its path) only the hostname, and every error
+text is sanitized with every RPC URL seen, also a running sync's own (the URL and the token in its path masked, other
+URLs cut to `scheme://host`, no filesystem paths or database credentials, at most 300 characters); the mirror's errors
+only as their kind; never key files, pgpass or a seed run's error text. To try a change, write it once from the local
+directories: `DASHBOARD_TARGETS_DIR=targets DASHBOARD_ENV_FILE=.env DASHBOARD_SYNC_DIR=data/sync DASHBOARD_RUNS_DIR=data/runs
+DASHBOARD_OUT_DIR=/tmp/sync-page PG...=... bun --no-env-file dashboard/status.ts --once`.
 
 ## Checking records against an API
 
