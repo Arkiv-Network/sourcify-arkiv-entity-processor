@@ -266,7 +266,8 @@ of 110,000 sampled from a seed, 2.5% were above 16 kB, 0.09% above 32 kB and non
 
 The chain is the record of what was written: a rerun after any failure (or a crash between two transactions) looks
 the entities up again instead of creating them twice. That needs one writer whose transactions are all mined, so the
-sync holds `SYNC_DIR/sync.lock` and starts only once the writer has no pending transaction. **One sync per chain
+sync holds `SYNC_DIR/sync.lock` (refreshed every 30 s; the lock of a container that stopped without releasing it is
+taken over after 2 minutes) and starts only once the writer has no pending transaction. **One sync per chain
 signs with the writer key; never sign with it elsewhere on that chain while it runs.**
 
 The writer must be `ENTITY_OWNER`, the owner the seeds are exported with, and the sync refuses any other key: its lookups
