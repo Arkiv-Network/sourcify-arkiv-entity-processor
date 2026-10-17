@@ -366,6 +366,10 @@ location ^~ /sync/ {
 }
 ```
 
+On sourcify-mirror.arkiv-global.net these locations are part of the mirror's site configuration,
+[`nginx/sourcify-mirror.conf`](https://github.com/Arkiv-Network/sourcify-mirror-node/blob/main/nginx/sourcify-mirror.conf)
+in sourcify-mirror-node, which also has the API's locations; a change to them goes there as well as to the host.
+
 It publishes no secrets: of an RPC URL (one may carry an access token in its path) only the hostname, and every error
 text is sanitized with every RPC URL seen, also a running sync's own (the URL and the token in its path masked, other
 URLs cut to `scheme://host`, no filesystem paths or database credentials, at most 300 characters); the mirror's errors
