@@ -116,11 +116,19 @@ impl Transport {
         loop {
             let retry = retries > 0;
             match self.attempt(budget, method, params.clone()).await? {
-                Attempt::Busy(_) if retry => {}
-                Attempt::Busy(status) => {
-                    bail!(BackendError::Unavailable(format!(
-                        "{method}: HTTP {status}"
-                    )))
+                Attempt::Busy {
+                    cost_limited: false,
+                    ..
+                } if retry => {}
+                Attempt::Busy {
+                    status,
+                    cost_limited,
+                } => {
+                    bail!(BackendError::Unavailable(if cost_limited {
+                        format!("{method}: HTTP {status}, the anonymous cost limit (set ARKIV_RPC_API_KEY)")
+                    } else {
+                        format!("{method}: HTTP {status}")
+                    }))
                 }
                 Attempt::Done(Err(error)) if retry && error["code"] == BUSY_CODE => {}
                 Attempt::Done(result) => return Ok(result),
@@ -161,7 +169,16 @@ impl Transport {
                 .await
                 .map_err(|_| BackendError::Unavailable(format!("{method} transport failed")))?;
             if response.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
-                return Ok(Attempt::Busy(response.status().to_string()));
+                let status = response.status().to_string();
+                // Our node's 429 means busy; Jalebi's anonymous cost limit (its window resets in
+                // minutes) is not worth asking again. Only the first chunk is read.
+                let mut response = response;
+                let head = response.chunk().await.ok().flatten().unwrap_or_default();
+                let cost_limited = head.windows(12).any(|w| w == b"COST_LIMITED");
+                return Ok(Attempt::Busy {
+                    status,
+                    cost_limited,
+                });
             }
             ensure!(
                 response.status().is_success(),
@@ -222,7 +239,10 @@ impl Transport {
 /// The RPC error code of a node that is too busy to answer now (our node's `ServerBusy`).
 const BUSY_CODE: i64 = -32010;
 enum Attempt {
-    /// HTTP 429, with its status text.
-    Busy(String),
+    /// HTTP 429, with its status text and whether the body names a cost limit.
+    Busy {
+        status: String,
+        cost_limited: bool,
+    },
     Done(std::result::Result<Value, Value>),
 }

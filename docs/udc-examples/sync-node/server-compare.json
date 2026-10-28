@@ -1,5 +1,5 @@
 {
- "note": "crates/server --format udc against our node (block range 74,7xx), every synced contract x the 21 queries of crates/server/tests/udc.rs, compared byte for byte (fresh errorId UUIDs masked) with the v3 path serving the same records: UDC_LIVE_SERVER=... UDC_LIVE_RECORDS=... cargo test -p arkiv-sourcify-server --test udc live_server -- --ignored",
+ "note": "crates/server --format udc against our node, every synced contract x the 21 queries of crates/server/tests/udc.rs, compared byte for byte (fresh errorId UUIDs masked) with the v3 path serving the same records, after the review fixes: UDC_LIVE_SERVER=... UDC_LIVE_RECORDS=... cargo test -p arkiv-sourcify-server --test udc live_server -- --ignored",
  "responses": 336,
  "identical": 336,
  "results": [

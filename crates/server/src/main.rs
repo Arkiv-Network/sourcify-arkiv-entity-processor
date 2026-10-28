@@ -42,13 +42,13 @@ struct Args {
     /// v3: validated state root of block 0 containing the completed import (required)
     #[arg(long)]
     genesis_state_root: Option<String>,
-    /// udc: arkiv.schema prefix of the dataset (entities are <prefix>.<kind>)
-    #[arg(long, default_value = "sourcify.v4")]
-    schema_prefix: String,
+    /// udc: arkiv.schema prefix of the dataset (entities are <prefix>.<kind>) [default: sourcify.v4]
+    #[arg(long)]
+    schema_prefix: Option<String>,
     /// udc: pinned (one block per request; a node with history), head (a head-only node such
-    /// as Jalebi) or auto (decided at startup)
-    #[arg(long, value_enum, default_value = "auto")]
-    read_view: ReadView,
+    /// as Jalebi) or auto (decided at startup) [default: auto]
+    #[arg(long, value_enum)]
+    read_view: Option<ReadView>,
     /// udc: expected hash of block 0, checked at the start of every read
     #[arg(long)]
     genesis_hash: Option<String>,
@@ -104,6 +104,10 @@ async fn main() -> anyhow::Result<()> {
                 args.genesis_hash.is_none(),
                 "--genesis-hash applies to --format udc; v3 checks --genesis-state-root"
             );
+            anyhow::ensure!(
+                args.schema_prefix.is_none() && args.read_view.is_none(),
+                "--schema-prefix and --read-view apply to --format udc"
+            );
             let root = args
                 .genesis_state_root
                 .context("--genesis-state-root is required with --format v3")?;
@@ -124,8 +128,8 @@ async fn main() -> anyhow::Result<()> {
             config.api_key = std::env::var("ARKIV_RPC_API_KEY")
                 .ok()
                 .filter(|k| !k.is_empty());
-            config.prefix = args.schema_prefix;
-            config.view = match args.read_view {
+            config.prefix = args.schema_prefix.unwrap_or_else(|| "sourcify.v4".into());
+            config.view = match args.read_view.unwrap_or(ReadView::Auto) {
                 ReadView::Auto => View::Auto,
                 ReadView::Pinned => View::Pinned,
                 ReadView::Head => View::Head,

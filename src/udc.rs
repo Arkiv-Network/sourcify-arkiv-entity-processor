@@ -476,15 +476,16 @@ impl UdcEntity {
                         .with_context(|| format!("unknown key attribute {}", a.name))?,
                 )),
                 Val::Bytes(b) if !chunk => {
-                    if let Some((_, _, keys)) = chunk_manifest(b)? {
-                        out.extend(keys.into_iter().map(|k| (k, "chunk")));
-                    } else if a.name == "sourcerefs" {
+                    if a.name == "sourcerefs" {
+                        // Keys stay readable: sourcerefs is never chunked (re-keying rewrites it).
                         let (&codec, body) = b.split_first().context("empty sourcerefs")?;
                         ensure!(
                             codec == IDENTITY && body.len().is_multiple_of(32) && !body.is_empty(),
                             "malformed sourcerefs"
                         );
                         out.extend(body.chunks(32).map(|k| (k.try_into().unwrap(), "source")));
+                    } else if let Some((_, _, keys)) = chunk_manifest(b)? {
+                        out.extend(keys.into_iter().map(|k| (k, "chunk")));
                     }
                 }
                 _ => {}
@@ -523,15 +524,15 @@ pub const ATTRIBUTES: &[(&str, &str, &str, bool, bool)] = &[
     ("contract", "matchid", "u64", true, true),
     ("contract", "name", "str", true, true),
     ("contract", "optimizer", "bool", true, true),
-    ("contract", "optimizerruns", "i32", true, false),
+    ("contract", "optimizerruns", "i32", true, true),
     ("contract", "proxytype", "str", true, false),
     ("contract", "runtimecodehash", "bytes32", true, false),
     ("contract", "runtimecoderef", "key", false, false),
     ("contract", "verifiedat", "u64", true, true),
     ("contract", "viair", "bool", true, true),
-    ("compilation", "abi", "bytes", false, false),
+    ("compilation", "abi", "bytes", false, true),
     ("compilation", "artifacts", "bytes", false, false),
-    ("compilation", "compilation", "bytes", false, false),
+    ("compilation", "compilation", "bytes", false, true),
     ("compilation", "creationcoderef", "key", false, false),
     ("compilation", "hash", "bytes32", true, true),
     ("compilation", "manifest", "bytes", false, true),
@@ -719,7 +720,9 @@ impl Writer {
         Ok(key)
     }
     /// Encoded bytes fields as attributes. While the entity is over budget, the largest
-    /// chunkable value moves into chunk entities (created first) and keeps a chunk list.
+    /// chunkable value moves into chunk entities (created first) and keeps a chunk list; `pinned`
+    /// values move last. `sourcerefs` never moves: it holds keys, and a chunk list's digest would
+    /// bind them, so re-keying a bundle for another chain or owner could not rewrite them.
     fn place(&mut self, fields: Vec<(&str, Vec<u8>)>, pinned: &[&str]) -> Result<Vec<Attr>> {
         let mut fields: Vec<(&str, Vec<u8>, bool)> =
             fields.into_iter().map(|(n, v)| (n, v, false)).collect();
@@ -732,7 +735,7 @@ impl Writer {
                 .iter()
                 .enumerate()
                 // A chunk list costs 37 bytes plus a key per chunk: only larger values move.
-                .filter(|(_, f)| !f.2 && f.1.len() > 37 + 32)
+                .filter(|(_, f)| !f.2 && f.1.len() > 37 + 32 && f.0 != "sourcerefs")
                 .max_by_key(|(_, f)| (!pinned.contains(&f.0), f.1.len()))
                 .map(|(i, _)| i)
                 .context("entity cannot fit its budget")?;
@@ -945,7 +948,7 @@ impl Writer {
             }
             fields.push(("sourcerefs", keys));
         }
-        let mut attrs = self.place(fields, &["manifest", "sourcerefs"])?;
+        let mut attrs = self.place(fields, &["manifest"])?;
         attrs.push(indexed("hash", Val::Bytes32(hash)));
         for (slot, h) in &slots {
             let key = self
@@ -1157,8 +1160,22 @@ pub struct Reader<'a> {
     /// Fetch calls made and keys fetched in them.
     pub fetches: usize,
     pub fetched: usize,
+    /// Called before each fetch, value decode and reference expansion (deadlines, cancellation).
+    check: Option<&'a mut (dyn FnMut() -> Result<()> + 'a)>,
 }
 impl<'a> Reader<'a> {
+    /// Calls `check` before each fetch, value decode and reference expansion; its error stops
+    /// the hydration (a deadline or a cancelled request).
+    pub fn with_check(mut self, check: &'a mut (dyn FnMut() -> Result<()> + 'a)) -> Self {
+        self.check = Some(check);
+        self
+    }
+    fn tick(&mut self) -> Result<()> {
+        match &mut self.check {
+            Some(check) => check(),
+            None => Ok(()),
+        }
+    }
     pub fn new(prefix: &str, owner: Option<[u8; 20]>, fetch: &'a mut FetchOne<'a>) -> Self {
         Self::with(prefix, owner, Source::One(fetch))
     }
@@ -1174,6 +1191,7 @@ impl<'a> Reader<'a> {
             reads: vec![],
             fetches: 0,
             fetched: 0,
+            check: None,
         }
     }
     /// Fetches, in one call, the keys not cached yet.
@@ -1190,6 +1208,7 @@ impl<'a> Reader<'a> {
         self.fetch(&want, select)
     }
     fn fetch(&mut self, keys: &[[u8; 32]], select: &Select) -> Result<()> {
+        self.tick()?;
         self.fetches += 1;
         self.fetched += keys.len();
         let got = match &mut self.source {
@@ -1250,6 +1269,7 @@ impl<'a> Reader<'a> {
     }
     /// A bytes attribute's decoded value, joining and verifying chunks.
     fn value(&mut self, e: &UdcEntity, name: &str) -> Result<Option<Vec<u8>>> {
+        self.tick()?;
         let Some(raw) = e.bytes(name)? else {
             return Ok(None);
         };
@@ -1398,6 +1418,9 @@ impl<'a> Reader<'a> {
                             "abihash does not match the compilation"
                         );
                     }
+                    if *field == "compilation" {
+                        project_compilation(contract, &value)?;
+                    }
                     insert(&mut data, &pointer, value)?;
                 }
             }
@@ -1466,6 +1489,50 @@ fn project(contract: &UdcEntity, data: &Value) -> Result<()> {
         contract.attr("match")? == Some(&Val::Str(matched)),
         "match attribute mismatch"
     );
+    // The deployment projections, as the v3 transform derives them.
+    let deployment = data
+        .get("deployment")
+        .filter(|d| d.is_object())
+        .cloned()
+        .unwrap_or_else(|| json!({}));
+    let block = match &deployment["blockNumber"] {
+        Value::Null => 0,
+        other => crate::decimal(other)?.parse()?,
+    };
+    ensure!(
+        contract.attr("blocknumber")? == Some(&Val::U64(block)),
+        "blocknumber attribute mismatch"
+    );
+    let deployer: [u8; 20] = fixed(crate::string(
+        &deployment["deployer"],
+        "0x0000000000000000000000000000000000000000",
+    ))?;
+    ensure!(
+        contract.attr("deployer")? == Some(&Val::Addr(deployer)),
+        "deployer attribute mismatch"
+    );
+    Ok(())
+}
+/// The compiler projections (`name`, `compilerversion`, `language`, `evmversion`, `optimizer`,
+/// `optimizerruns`, `viair`) must agree with the hydrated `compilation` field, as the v3
+/// transform derives them.
+fn project_compilation(contract: &UdcEntity, compilation: &Value) -> Result<()> {
+    let derived = crate::compiler_attrs(&json!({ "compilation": compilation }), true);
+    for (name, a) in &derived {
+        if name == "compiler" {
+            continue;
+        }
+        let want = match a["type"].as_str() {
+            Some("str") => Val::Str(index_str(a["value"].as_str().unwrap_or_default())),
+            Some("bool") => Val::Bool(a["value"].as_bool().unwrap_or_default()),
+            Some("i32") => Val::I32(i32::try_from(a["value"].as_i64().unwrap_or_default())?),
+            other => bail!("unexpected compiler attribute type {other:?}"),
+        };
+        ensure!(
+            contract.attr(name)? == Some(&want),
+            "{name} attribute does not match the compilation"
+        );
+    }
     Ok(())
 }
 /// Fields every response carries.
@@ -1640,6 +1707,10 @@ impl Compilation {
         if self.source_keys.is_empty() {
             let key = self.key;
             let e = reader.entity(&key, "compilation", "sourcerefs")?;
+            ensure!(
+                e.bytes("sourcerefs")?.and_then(|b| b.first()) == Some(&IDENTITY),
+                "sourcerefs must be stored inline (codec 0)"
+            );
             let raw = reader.value(&e, "sourcerefs")?.context("sourcerefs")?;
             ensure!(
                 raw.len() == 32 * self.sources.len(),
@@ -1737,6 +1808,7 @@ impl Compilation {
         {
             let path = r["path"].as_str().unwrap();
             if within(path, pointer) {
+                reader.tick()?;
                 let value = self.reference(reader, r, depth)?;
                 insert(&mut data, &path[pointer.len()..], value)?;
             }
@@ -2355,6 +2427,153 @@ mod tests {
             .any(|e| e.schema() == Some("sourcify.v4.source")));
         assert_eq!(created[0].key, entity_key(7706815, &[0x11; 20], 10, 0));
         hydrate_all(&created, created.last().unwrap()).unwrap();
+    }
+
+    /// A node's answer to a key batch: the selected attributes, every name in `attributeSchema`.
+    fn node_rows(
+        store: &[UdcEntity],
+        keys: &[[u8; 32]],
+        select: &Select,
+    ) -> Result<Vec<UdcEntity>> {
+        keys.iter()
+            .map(|k| {
+                let mut e = store
+                    .iter()
+                    .find(|e| &e.key == k)
+                    .cloned()
+                    .context("missing")?;
+                if let Select::Named(names) = select {
+                    let (kept, dropped): (Vec<Attr>, Vec<Attr>) = e
+                        .attributes
+                        .into_iter()
+                        .partition(|a| names.iter().any(|n| n == &a.name));
+                    e.attributes = kept;
+                    e.unselected = dropped.into_iter().map(|a| a.name).collect();
+                }
+                Ok(e)
+            })
+            .collect()
+    }
+
+    /// The batched reader: rounds instead of one fetch per entity, the hot read's narrow
+    /// selection, and a refetch with every attribute when a narrow selection misses one.
+    #[test]
+    fn batched_reads_take_rounds_and_select_attributes() {
+        let record = fixture();
+        let expected = canonical(&record);
+        let mut w = Writer::new(profile(), 0);
+        let entities = w.contract(&transform(&record).unwrap()).unwrap();
+        let contract = entities.last().unwrap().clone();
+        let calls: std::cell::RefCell<Vec<(usize, Select)>> = Default::default();
+        let mut fetch = |keys: &[[u8; 32]], select: &Select| {
+            calls.borrow_mut().push((keys.len(), select.clone()));
+            node_rows(&entities, keys, select)
+        };
+        let full = Reader::batched("sourcify.v4", Some([0x11; 20]), &mut fetch)
+            .hydrate(&contract, None)
+            .unwrap();
+        assert_eq!(full, expected);
+        assert!(calls.borrow().len() <= 3, "{:?}", calls.borrow());
+        assert!(calls.borrow().iter().all(|(_, s)| *s == Select::All));
+        calls.borrow_mut().clear();
+        let hot = Reader::batched("sourcify.v4", Some([0x11; 20]), &mut fetch)
+            .hydrate(&contract, Some(&["abi", "compilation"]))
+            .unwrap();
+        assert_eq!(hot["abi"], expected["abi"]);
+        let calls = calls.into_inner();
+        assert_eq!(calls.len(), 1);
+        let Select::Named(names) = &calls[0].1 else {
+            panic!("the hot read must select names")
+        };
+        assert_eq!(
+            names,
+            &["arkiv.schema", "hash", "manifest", "compilation", "abi"]
+        );
+        // ABI strings equal to a source text are references into `abi`: the narrow selection
+        // misses `sourcerefs`, so the compilation is fetched again with every attribute.
+        let mut r = base();
+        r["abi"] = json!([{"type": "function", "name": "contract A {}"}]);
+        let entities = Writer::new(profile(), 0)
+            .contract(&transform(&r).unwrap())
+            .unwrap();
+        let mut calls = 0;
+        let mut fetch = |keys: &[[u8; 32]], select: &Select| {
+            calls += 1;
+            node_rows(&entities, keys, select)
+        };
+        let hot = Reader::batched("sourcify.v4", Some([0x11; 20]), &mut fetch)
+            .hydrate(entities.last().unwrap(), Some(&["abi"]))
+            .unwrap();
+        assert_eq!(hot["abi"], canonical(&r)["abi"]);
+        assert!(calls >= 2);
+    }
+
+    /// The check hook stops a hydration between steps.
+    #[test]
+    fn the_check_hook_stops_hydration() {
+        let mut w = Writer::new(profile(), 0);
+        let entities = w.contract(&transform(&fixture()).unwrap()).unwrap();
+        let mut fetch = |k: &[u8; 32]| {
+            entities
+                .iter()
+                .find(|e| &e.key == k)
+                .cloned()
+                .context("missing")
+        };
+        let mut calls = 0;
+        let mut check = || -> Result<()> {
+            calls += 1;
+            ensure!(calls < 4, "deadline");
+            Ok(())
+        };
+        let error = Reader::new("sourcify.v4", None, &mut fetch)
+            .with_check(&mut check)
+            .hydrate(entities.last().unwrap(), None)
+            .unwrap_err();
+        assert!(error.to_string().contains("deadline"), "{error}");
+    }
+
+    /// sourcerefs holds keys: the writer never chunks it, and readers refuse a chunked one.
+    #[test]
+    fn sourcerefs_are_never_chunked() {
+        // 3,800 sources: their keys alone exceed the 120,000-byte budget.
+        let mut r = base();
+        let mut sources = Map::new();
+        for i in 0..3800 {
+            sources.insert(
+                format!("S{i}.sol"),
+                json!({ "content": format!("contract S{i} {{}}") }),
+            );
+        }
+        r["sources"] = Value::Object(sources);
+        let mut w = Writer::new(profile(), 0);
+        let error = w.contract(&transform(&r).unwrap()).unwrap_err();
+        assert!(
+            error.to_string().contains("cannot fit its budget"),
+            "{error}"
+        );
+        // A chunked sourcerefs from elsewhere is refused by references() and by the reader.
+        let mut entities = w.contract(&transform(&base()).unwrap()).unwrap();
+        let comp = entities
+            .iter_mut()
+            .find(|e| e.schema() == Some("sourcify.v4.compilation"))
+            .unwrap();
+        for a in comp
+            .attributes
+            .iter_mut()
+            .filter(|a| a.name == "sourcerefs")
+        {
+            let mut list = vec![CHUNKED];
+            list.extend_from_slice(&[0; 36]);
+            list.extend_from_slice(&[7; 32]);
+            a.value = Val::Bytes(list);
+        }
+        assert!(comp
+            .references()
+            .unwrap_err()
+            .to_string()
+            .contains("malformed sourcerefs"));
+        assert!(hydrate_all(&entities, entities.last().unwrap()).is_err());
     }
 
     /// Each reference costs the same however large its parent is (no copy per reference).

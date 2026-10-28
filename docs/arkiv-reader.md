@@ -48,14 +48,19 @@ hydration of the same record byte for byte. A full SafeProxy read takes 3 querie
 
 | Option | Default | Meaning |
 | --- | --- | --- |
-| `--read-view` | `auto` | `pinned`: every query at one block (`--block`, else the head when the read starts) and the block hash checked again at the end, for a node that keeps history (our node); `head`: no `atBlock`, for a head-only node (Jalebi), consistent because only contracts are ever patched and dependencies are checked by content hash; `auto`: asks for the block before the head and pins when the node answers |
+| `--read-view` | `auto` | `pinned`: every query at one block (`--block`, else the head when the read starts) and the block hash checked again at the end, for a node that keeps history (our node); `head`: no `atBlock`, for a head-only node (Jalebi), consistent because only contracts are ever patched and dependencies are checked by content hash; `auto`: asks for a block 64 behind the head and pins when the node answers |
 | `--block` | the head | Pins this block (with any view but `head`) |
 | `--schema-prefix` | `sourcify.v4` | The dataset's prefix |
-| `--fields` | all | Comma-separated top-level fields; the minimal fields are always returned |
+| `--fields` | all | Comma-separated top-level fields of a contract record (others are refused); the minimal fields are always returned |
+| `--max-rpc-response-bytes` | 8 MiB | Per response (v3: 1 MiB); a key batch of 8 entities of up to 120,000 bytes is about 2 MB of hex |
 
 `ARKIV_RPC_API_KEY`, when set, is sent as `X-API-KEY`. Our node answers HTTP 429 / `-32010
-ServerBusy` when about 8 or more requests are in flight; the reader asks again with a backoff (8
-attempts). Statistics on stderr: view, block(s), RPC requests, queries, entities and bytes.
+ServerBusy` when about 8 or more requests are in flight; the reader asks again after 100, 200, 400,
+800 and 1,600 ms (6 attempts, within the deadline), never on Jalebi's `ANON_COST_LIMITED`. The
+contract's search projections are checked against the record: `deployer` and `blocknumber` always,
+the compiler attributes when `compilation` is read. `--schema-prefix`, `--read-view` and `--fields`
+are refused with `--format v3`. Statistics on stderr: view, block(s), RPC requests, queries,
+entities and bytes.
 
 ## Pinned reads and validation
 

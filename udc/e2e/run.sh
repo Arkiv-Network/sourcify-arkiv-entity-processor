@@ -4,7 +4,7 @@
 #
 #   ARKIV_PRIVATE_KEY_FILE=… udc/e2e/run.sh WORK_DIR
 #
-#  1. a disposable PostgreSQL container with tests/fixture (port 55432 on 127.0.0.1);
+#  1. a disposable PostgreSQL container with tests/fixture (127.0.0.1:E2E_PG_PORT, default 55433);
 #  2. arkiv/sync.ts --once --start-after 0 with SYNC_FORMAT=udc: the fixture's matches as v4 entities;
 #  3. udc/e2e/reverify.sql (a re-verification under a newer matchId with a new compilation), then the sync again: the
 #     contract is patched in place, everything else is already synced;
@@ -12,7 +12,8 @@
 #  5. crates/server --format udc against the node, every contract x every query against the v3 path, byte for byte.
 #
 # Settings: ARKIV_RPC_URL (default http://127.0.0.1:18545), ARKIV_CHAIN_ID (7706815), ENTITY_OWNER (the key's address),
-# SYNC_SCHEMA_PREFIX (sourcify-udc-proposal.v4), DOCKER (docker). The container is removed at the end.
+# SYNC_SCHEMA_PREFIX (sourcify-udc-proposal.v4), DOCKER (docker), E2E_PG_PORT (55433), E2E_SERVER_PORT (3101). The container
+# is removed at the end.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 work=${1:?usage: udc/e2e/run.sh WORK_DIR}
@@ -21,12 +22,13 @@ mkdir -p "$work"
 export ARKIV_RPC_URL=${ARKIV_RPC_URL:-http://127.0.0.1:18545} ARKIV_CHAIN_ID=${ARKIV_CHAIN_ID:-7706815}
 export ENTITY_OWNER=${ENTITY_OWNER:?ENTITY_OWNER: the public address of the writer key}
 export SYNC_FORMAT=udc SYNC_SCHEMA_PREFIX=${SYNC_SCHEMA_PREFIX:-sourcify-udc-proposal.v4} SYNC_BATCH=200
-export PGHOST=127.0.0.1 PGPORT=55432 PGDATABASE=postgres PGUSER=postgres PGPASSWORD=test
+export PGHOST=127.0.0.1 PGPORT=${E2E_PG_PORT:-55433} PGDATABASE=postgres PGUSER=postgres PGPASSWORD=test
+port=${E2E_SERVER_PORT:-3101}
 docker=${DOCKER:-docker}
 bin=target/release/arkiv-entity-processor
 cargo build --release --locked --workspace
 container=udc-e2e-fixture-$$
-$docker run -d --name "$container" -p 127.0.0.1:55432:5432 -e POSTGRES_PASSWORD=test postgres:17-alpine >/dev/null
+$docker run -d --name "$container" -p "127.0.0.1:$PGPORT:5432" -e POSTGRES_PASSWORD=test postgres:17-alpine >/dev/null
 trap '$docker rm -f "$container" >/dev/null' EXIT
 until $docker exec "$container" pg_isready -q -U postgres; do sleep 1; done
 psql() { $docker exec -i "$container" psql -q -U postgres -d postgres -v ON_ERROR_STOP=1; }
@@ -64,10 +66,10 @@ while read -r line; do
 done < "$work/records.ndjson"
 
 target/release/arkiv-sourcify-server --format udc --rpc-url "$ARKIV_RPC_URL" --arkiv-chain-id "$ARKIV_CHAIN_ID" --owner "$ENTITY_OWNER" \
-  --schema-prefix "$SYNC_SCHEMA_PREFIX" --listen 127.0.0.1:3101 > "$work/server.log" 2>&1 &
+  --schema-prefix "$SYNC_SCHEMA_PREFIX" --listen "127.0.0.1:$port" > "$work/server.log" 2>&1 &
 server=$!
 trap 'kill $server 2>/dev/null; $docker rm -f "$container" >/dev/null' EXIT
-until curl -sf http://127.0.0.1:3101/_ops/ready >/dev/null; do sleep 1; done
-UDC_LIVE_SERVER=http://127.0.0.1:3101 UDC_LIVE_RECORDS="$work/records.ndjson" UDC_LIVE_OUT="$work/server" \
+until curl -sf "http://127.0.0.1:$port/_ops/ready" >/dev/null; do sleep 1; done
+UDC_LIVE_SERVER="http://127.0.0.1:$port" UDC_LIVE_RECORDS="$work/records.ndjson" UDC_LIVE_OUT="$work/server" \
   cargo test --release --locked -p arkiv-sourcify-server --test udc live_server -- --ignored || failed=1
 exit $failed

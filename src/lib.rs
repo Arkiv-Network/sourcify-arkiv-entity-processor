@@ -162,7 +162,7 @@ fn checksum_address(address: &str) -> Result<String> {
 fn attr(t: &str, v: impl Into<Value>) -> Value {
     json!({"type":t,"value":v.into()})
 }
-fn trunc(s: &str) -> String {
+pub(crate) fn trunc(s: &str) -> String {
     if s.len() <= 128 {
         s.into()
     } else {
@@ -173,7 +173,7 @@ fn trunc(s: &str) -> String {
         format!("{}…", &s[..n])
     }
 }
-fn string<'a>(v: &'a Value, default: &'a str) -> &'a str {
+pub(crate) fn string<'a>(v: &'a Value, default: &'a str) -> &'a str {
     v.as_str().unwrap_or(default)
 }
 fn object(v: &Value) -> Value {
@@ -183,7 +183,7 @@ fn object(v: &Value) -> Value {
         json!({})
     }
 }
-fn truth(v: &Value) -> bool {
+pub(crate) fn truth(v: &Value) -> bool {
     match v {
         Value::Null => false,
         Value::Bool(b) => *b,
@@ -192,7 +192,7 @@ fn truth(v: &Value) -> bool {
         _ => true,
     }
 }
-fn decimal(v: &Value) -> Result<String> {
+pub(crate) fn decimal(v: &Value) -> Result<String> {
     match v {
         Value::String(s) => {
             s.parse::<u64>()?;
@@ -264,7 +264,7 @@ fn fit(
         a,
     )
 }
-fn compiler_attrs(r: &Value, runs: bool) -> Map<String, Value> {
+pub(crate) fn compiler_attrs(r: &Value, runs: bool) -> Map<String, Value> {
     let c = &r["compilation"];
     let s = &c["compilerSettings"];
     let mut a = Map::new();

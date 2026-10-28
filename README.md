@@ -80,7 +80,7 @@ arkiv-entity-processor verify bundle            # also line by line: nonces, key
 arkiv-entity-processor hydrate bundle           # the v3-identical records
 arkiv-entity-processor pack bundle -o seed.tar.zst && arkiv-entity-processor upload seed.tar.zst … --expect-format udc
 arkiv-entity-processor read-arkiv 0x… --format udc --rpc-url … --owner 0x… [--read-view auto|pinned|head]
-arkiv-entity-processor udc-page --rpc-url … --owner 0x… [--descending] [--filter "language = str('Vyper')"]
+arkiv-entity-processor udc-page --rpc-url … --owner 0x… [--descending] [--filter "language = str('Vyper')"] [--block N] [--all]
 SYNC_FORMAT=udc SYNC_SCHEMA_PREFIX=sourcify.v4 bun arkiv/sync.ts --once        # patches re-verified contracts in place
 arkiv-sourcify-server --format udc --rpc-url … --arkiv-chain-id … --owner 0x…  # same HTTP contract as v3
 ```
@@ -309,8 +309,9 @@ The server accepts the keys the chain assigns: entity identity is the staging ID
 With `SYNC_FORMAT=udc` the same loop (cursor, lock, prepare, records) writes the [v4 dataset](docs/udc-proposal.md)
 through [`arkiv/udc.ts`](arkiv/udc.ts): `process --format udc --schema-prefix SYNC_SCHEMA_PREFIX`, then
 
-1. sources, codes and compilations already on the chain (`$owner`, `arkiv.schema` and `hash`) are reused, their chunks
-   not written again; contracts are looked up by address;
+1. sources, codes and compilations already on the chain (`$owner`, `arkiv.schema` and `hash`) are reused when they are
+   permanent and hold the same content, their chunks not written again; contracts are looked up by address; only what a
+   created or patched contract reaches is written;
 2. new entities go in four levels, each mined and read back before the next names it: chunks; sources and codes;
    compilations; contracts. References are rewritten from bundle keys to the chain keys of the receipts
    (`EntityCreated`, salt 0);
@@ -321,7 +322,7 @@ through [`arkiv/udc.ts`](arkiv/udc.ts): `process --format udc --schema-prefix SY
 
 At most `SYNC_MAX_TX_OPS` (16, our node's limit) operations per transaction; gas is estimated unless `SYNC_GAS` says
 otherwise. Our node answers HTTP 429 / `-32010 ServerBusy` when about eight requests are in flight: lookups run four
-at a time and every call is asked again with a backoff. Each target names its own `ENTITY_OWNER` and writer key: the
+at a time and every call is asked again after 100, 200, 400, 800 and 1,600 ms (never on Jalebi's cost limit). Each target names its own `ENTITY_OWNER` and writer key: the
 v4 dataset has one owner per chain.
 
 ### Sync targets

@@ -163,7 +163,7 @@ async function main() {
   if (!['computed', 'estimate'].includes(settings.gas)) throw new Error('SYNC_GAS must be computed or estimate');
   if (!['v3', 'udc'].includes(settings.format)) throw new Error('SYNC_FORMAT must be v3 or udc');
   if (!/^[A-Za-z0-9._-]{1,116}$/.test(settings.prefix)) throw new Error('SYNC_SCHEMA_PREFIX must be letters, digits, ".", "_" or "-"');
-  if (!Number.isSafeInteger(settings.maxTxOps) || settings.maxTxOps < 1 || settings.maxTxOps > 64) throw new Error('SYNC_MAX_TX_OPS must be 1..64');
+  if (!Number.isSafeInteger(settings.maxTxOps) || settings.maxTxOps < 1 || settings.maxTxOps > 16) throw new Error('SYNC_MAX_TX_OPS must be 1..16 (our node takes 16 operations per transaction)');
   const maxBatches = values.once ? 1 : values.batches !== undefined ? Number(values.batches) : Infinity;
   if (maxBatches !== Infinity && (!Number.isSafeInteger(maxBatches) || maxBatches < 1)) throw new Error('--batches must be a positive whole number');
   if (values['start-after'] !== undefined && !/^(0|[1-9][0-9]*)$/.test(values['start-after'])) throw new Error('--start-after must be a match ID');
@@ -410,8 +410,9 @@ async function syncBatchUdc(context: { owner: string; chainId: number; client: a
   // Our node answers ServerBusy with about eight requests in flight: four lookups at a time (and the transport asks again).
   const lookups = await udc.lookup(client, lines, owner, settings.prefix, 4);
   phase('lookup');
-  const plan = udc.plan(lines, lookups);
+  const plan = udc.plan(lines, lookups, owner);
   for (const d of plan.duplicates) log('dependency-duplicate', d);
+  for (const m of plan.mismatched) log('dependency-mismatch', m);
   result.skippedContracts.push(...plan.skipped);
   const sent = await udc.write(plan, { client, wallet, owner, dryRun: context.dryRun, maxTxBytes: settings.maxTxBytes, maxTxOps: settings.maxTxOps,
     inFlight: settings.inFlight, maxGasPrice: settings.maxGasPrice, gas: settings.gas as 'estimate' | 'computed', log });

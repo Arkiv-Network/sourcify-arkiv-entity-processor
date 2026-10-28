@@ -5,15 +5,18 @@
 //! creation position on both (measured), so node order is not `matchid` order and a key set cannot rely on it.
 //! The rule relies on one property only, which both nodes give whatever their order:
 //!
-//! > a window query `… AND matchid > u64(A) AND matchid <= u64(B)` that returns fewer than `limit` rows, or no
-//! > cursor, returned every match in that window.
+//! > a window query `… AND matchid >= u64(A) AND matchid <= u64(B)` (inclusive bounds) that returns no cursor
+//! > returned every match in that window.
 //!
-//! A page of `page` contracts after `A` (ascending): query the window `(A, A + width]`. If it is complete, its rows
-//! sorted by `matchid` are exact; take what the page needs and, while it is short, move to the next window with a
-//! wider width. If it is full (incomplete), its `need`-th smallest `matchid` `M` bounds a window `(A, M]` that holds
-//! the `need` smallest matches overall (a subset's k-th smallest is never below the whole set's), so query that
-//! instead. `M` is strictly below `B` while `need < limit`, so the walk ends. Descending pages mirror it with
-//! `matchid < u64(B) AND matchid >= u64(A)`. Cursors and node order are never used across queries.
+//! A page of `size` contracts after `A` (ascending): query the window `[A + 1, A + width]`. If it is complete, its
+//! rows sorted by `matchid` are exact; take what the page needs and, while it is short, move to the next window with
+//! a wider width. If it is not complete, narrow it towards its near end and ask again: to the `need`-th smallest
+//! `matchid` of the rows returned (a subset's k-th smallest is never below the whole set's, so the narrowed window
+//! still holds the `need` first matches) or to the window's midpoint, whichever is nearer. The midpoint matters
+//! when the rows come from the far end, as a descending walk's do on a prefilled chain (creation order is ascending
+//! there); it also covers a node that returns a cursor with fewer rows than asked. Descending pages mirror it with
+//! the windows below the cursor. Cursors and node order are never used across queries. `matchid`s are unique per
+//! dataset (one contract per Sourcify match): two at a page boundary fail the walk instead of losing one.
 use anyhow::{ensure, Result};
 
 /// One match: its `matchid` and entity key.
@@ -41,8 +44,8 @@ impl Window {
         out.join(" AND ")
     }
 }
-/// Runs one window query: its rows (in any order) and whether the response was complete (fewer
-/// than `limit` rows, or no cursor).
+/// Runs one window query: its rows (in any order) and whether the response was complete (no
+/// cursor: both nodes return one exactly when rows remain).
 pub type Query<'a> = dyn FnMut(Window, usize) -> Result<(Vec<Row>, bool)> + 'a;
 /// A page and where the next one starts: `next` is the last row's `matchid` (exclusive bound of the
 /// next page), None at the end; `width` is a window width that suits the next page.
@@ -96,6 +99,13 @@ fn walk(
     let mut width = width.max(1);
     let mut rows: Vec<Row> = vec![];
     let mut queries = 0;
+    // Rows sorted from the near end (the cursor's side) to the far end.
+    let toward_far = |rows: &mut Vec<Row>| {
+        rows.sort_by_key(|r| r.matchid);
+        if !up {
+            rows.reverse();
+        }
+    };
     // The next unread value (inclusive), moving up or down.
     let mut near = match (up, from) {
         (true, None) => Some(0),
@@ -103,12 +113,31 @@ fn walk(
         (false, None) => Some(u64::MAX),
         (false, Some(b)) => b.checked_sub(1),
     };
+    // The far end (None: open) of the last window that came back full and was narrowed: the rest
+    // of it holds rows, so the walk goes back to exactly that end instead of growing (a binary
+    // search). Only the extent of the next window depends on it, never which rows are read.
+    let mut full_far: Option<Option<u64>> = None;
+    // The near part of the last full window came back empty, so its rest holds its rows: halve the
+    // rest at once instead of asking for all of it first.
+    let mut presumed_full = false;
     while let Some(start) = near {
         let need = size - rows.len();
         // The window's far end is open once it reaches past TOP (ascending; no match ID is expected
         // beyond it) or 0 (descending), so the last window ends the walk in one query wherever the
         // last match is. The near end is always the cursor's.
-        let mut window = if up {
+        let mut window = if let Some(far) = full_far {
+            if up {
+                Window {
+                    lower: Some(start).filter(|s| *s > 0),
+                    upper: far,
+                }
+            } else {
+                Window {
+                    lower: far,
+                    upper: Some(start).filter(|s| *s < u64::MAX),
+                }
+            }
+        } else if up {
             let far = start.saturating_add(width - 1);
             Window {
                 lower: Some(start).filter(|s| *s > 0),
@@ -121,60 +150,91 @@ fn walk(
                 upper: Some(start).filter(|s| *s < u64::MAX),
             }
         };
-        let found = loop {
-            queries += 1;
-            let (mut found, complete) = query(window, limit)?;
-            ensure!(
-                found.iter().all(|r| within(window, r.matchid)),
-                "the node returned a row outside its window"
-            );
+        let mut skip = std::mem::take(&mut presumed_full)
+            && (if up { window.upper } else { window.lower }) != Some(start);
+        let mut found = loop {
+            let (mut found, complete) = if std::mem::take(&mut skip) {
+                (vec![], false)
+            } else {
+                queries += 1;
+                let (found, complete) = query(window, limit)?;
+                ensure!(
+                    found.iter().all(|r| within(window, r.matchid)),
+                    "the node returned a row outside its window"
+                );
+                (found, complete)
+            };
             if complete {
                 break found;
             }
+            // Not complete: narrow towards the near end, to the need-th row from it or to the
+            // midpoint, whichever is nearer; the narrowed window must be strictly smaller.
+            full_far = Some(if up { window.upper } else { window.lower });
+            toward_far(&mut found);
+            let far = if up {
+                window.upper.unwrap_or(u64::MAX)
+            } else {
+                window.lower.unwrap_or(0)
+            };
+            let mid = if up {
+                start + (far - start) / 2
+            } else {
+                start - (start - far) / 2
+            };
+            let by_rows = found.get(need - 1).map(|r| r.matchid);
+            let bound = match by_rows {
+                Some(b) if up => b.min(mid),
+                Some(b) => b.max(mid),
+                None => mid,
+            };
             ensure!(
-                found.len() >= need,
-                "an incomplete window returned too few rows"
-            );
-            // A full window: its need-th row bounds a window that holds the need first matches.
-            found.sort_by_key(|r| r.matchid);
-            if !up {
-                found.reverse();
-            }
-            let bound = found[need - 1].matchid;
-            ensure!(
-                Some(bound) != if up { window.upper } else { window.lower },
-                "a full window did not shrink (duplicate matchids?)"
+                bound != far,
+                "a window could not be narrowed (two contracts with one matchid?)"
             );
             if up {
                 window.upper = Some(bound);
             } else {
                 window.lower = Some(bound);
             }
-            width = bound.abs_diff(start) + 1;
+            width = bound.abs_diff(start).saturating_add(1);
         };
         let empty = found.is_empty();
-        let mut found = found;
-        found.sort_by_key(|r| r.matchid);
-        if !up {
-            found.reverse();
-        }
-        rows.extend(found.into_iter().take(need));
-        if rows.len() >= size {
-            let last = rows.last().unwrap().matchid;
+        toward_far(&mut found);
+        if found.len() >= need {
+            // The page fills here: a tie at its end would lose a row to the next page's cursor.
+            ensure!(
+                found.get(need).map(|r| r.matchid) != Some(found[need - 1].matchid),
+                "two contracts share matchid {}",
+                found[need - 1].matchid
+            );
+            rows.extend(found.into_iter().take(need));
+            let (first, last) = (rows[0].matchid, rows.last().unwrap().matchid);
+            // The next page's first window: twice this page's span, so it usually holds a page.
+            let hint = first.abs_diff(last).saturating_add(1).saturating_mul(2);
             return Ok(Page {
                 rows,
                 next: Some(last),
-                width,
+                width: hint,
                 queries,
             });
         }
-        // Short: continue past this window with a wider one (an open end finishes the walk).
-        near = match (up, window.upper, window.lower) {
-            (true, None, _) | (false, _, None) => None,
-            (true, Some(u), _) => u.checked_add(1),
-            (false, _, Some(l)) => l.checked_sub(1),
+        rows.extend(found);
+        // Short: continue past this window (an open end finishes the walk): back to the rest of a
+        // window that was full, else with a wider one.
+        let end = if up { window.upper } else { window.lower };
+        near = match (up, end) {
+            (_, None) => None,
+            (true, Some(u)) => u.checked_add(1),
+            (false, Some(l)) => l.checked_sub(1),
         };
-        width = width.saturating_mul(if empty { 16 } else { 4 });
+        if full_far == Some(end) {
+            full_far = None;
+        } else if full_far.is_some() && empty {
+            presumed_full = true;
+        }
+        if full_far.is_none() {
+            width = width.saturating_mul(if empty { 16 } else { 4 });
+        }
     }
     Ok(Page {
         rows,
@@ -370,6 +430,155 @@ mod tests {
         let (got, queries) = all_pages(rows, 20, 100, WIDTH, false);
         assert_eq!(got, ids.iter().rev().copied().collect::<Vec<_>>());
         assert!(queries <= 12, "{queries} queries");
+    }
+
+    /// Dense data in creation order (ascending matchid, as on a prefilled chain): descending pages
+    /// bisect towards their near end instead of creeping, and later pages hit at once.
+    #[test]
+    fn dense_creation_order_pages_cheaply_both_ways() {
+        let rows: Vec<Row> = (0..60_000u64)
+            .map(|i| Row {
+                matchid: 1_000 + 3 * i,
+                key: key(i),
+            })
+            .collect();
+        for up in [true, false] {
+            let mut log = vec![];
+            let mut q = node(rows.clone(), &mut log);
+            let (mut cursor, mut width, mut costs, mut got) = (None, WIDTH, vec![], vec![]);
+            for _ in 0..10 {
+                let page = if up {
+                    ascending(&mut q, cursor, 20, 100, width).unwrap()
+                } else {
+                    descending(&mut q, cursor, 20, 100, width).unwrap()
+                };
+                costs.push(page.queries);
+                got.extend(page.rows.iter().map(|r| r.matchid));
+                (cursor, width) = (page.next, page.width);
+            }
+            let mut want = expected(&rows, up);
+            want.truncate(200);
+            assert_eq!(got, want, "up {up}");
+            assert!(costs[0] <= 60, "first page {costs:?}");
+            assert!(
+                costs[1..].iter().all(|c| *c <= 3),
+                "later pages {costs:?} (up {up})"
+            );
+        }
+    }
+
+    #[test]
+    fn a_tie_at_a_page_end_fails_instead_of_losing_a_row() {
+        let rows = vec![
+            Row {
+                matchid: 5,
+                key: key(1),
+            },
+            Row {
+                matchid: 5,
+                key: key(2),
+            },
+            Row {
+                matchid: 9,
+                key: key(3),
+            },
+        ];
+        let mut log = vec![];
+        let mut q = node(rows, &mut log);
+        let error = ascending(&mut q, None, 1, 10, 100).unwrap_err();
+        assert!(error.to_string().contains("share matchid 5"), "{error}");
+    }
+
+    /// A node that returns a cursor with fewer rows than asked (a page trimmed by size) is
+    /// narrowed by bisection and still gives exact pages.
+    #[test]
+    fn trimmed_pages_still_page_exactly() {
+        let rows = dataset(2_000, &[1, 2, 3, 700]);
+        let mut trimmed = |w: Window, limit: usize| -> Result<(Vec<Row>, bool)> {
+            let all: Vec<Row> = rows
+                .iter()
+                .copied()
+                .filter(|r| within(w, r.matchid))
+                .collect();
+            let complete = all.len() <= limit / 4;
+            Ok((all.into_iter().take(limit / 4).collect(), complete))
+        };
+        let (mut cursor, mut out) = (None, vec![]);
+        loop {
+            let page = ascending(&mut trimmed, cursor, 20, 100, WIDTH).unwrap();
+            out.extend(page.rows.iter().map(|r| r.matchid));
+            match page.next {
+                Some(n) if page.rows.len() == 20 => cursor = Some(n),
+                _ => break,
+            }
+        }
+        assert_eq!(out, expected(&rows, true));
+    }
+
+    /// Random datasets, node orders, trims, sizes, limits and widths: every walk returns exactly
+    /// the matches in matchid order and ends.
+    #[test]
+    fn random_walks_are_exact() {
+        let mut seed = 0x2545_f491_4f6c_dd1du64;
+        let mut next = move || {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed
+        };
+        for _ in 0..3_000 {
+            let n = next() % 300;
+            let spread = [1u64, 3, 1_000, 1 << 30, 1 << 41][(next() % 5) as usize];
+            let mut ids: Vec<u64> = (0..n).map(|_| next() % (n * spread + 1)).collect();
+            if next() % 4 == 0 {
+                ids.push(u64::MAX - next() % 3);
+                ids.push(next() % 2);
+            }
+            ids.sort();
+            ids.dedup();
+            let mut rows: Vec<Row> = ids
+                .iter()
+                .map(|&m| Row {
+                    matchid: m,
+                    key: key(m),
+                })
+                .collect();
+            match next() % 3 {
+                0 => {}
+                1 => rows.reverse(),
+                _ => rows.sort_by_key(|r| r.matchid.wrapping_mul(0x9e37_79b9_7f4a_7c15)),
+            }
+            let limit = 2 + (next() % 30) as usize;
+            let size = 1 + (next() % (limit as u64 - 1)) as usize;
+            let trim = 1 + (next() % limit as u64) as usize;
+            let width = 1 + next() % (1 << (next() % 64));
+            let up = next() % 2 == 0;
+            let mut q = |w: Window, limit: usize| -> Result<(Vec<Row>, bool)> {
+                let all: Vec<Row> = rows
+                    .iter()
+                    .copied()
+                    .filter(|r| within(w, r.matchid))
+                    .collect();
+                let shown = all.len().min(limit).min(trim);
+                Ok((all[..shown].to_vec(), shown == all.len()))
+            };
+            let (mut cursor, mut width, mut got) = (None, width, vec![]);
+            for _ in 0..=rows.len() {
+                let page = if up {
+                    ascending(&mut q, cursor, size, limit, width).unwrap()
+                } else {
+                    descending(&mut q, cursor, size, limit, width).unwrap()
+                };
+                assert!(page.queries < 400, "{} queries", page.queries);
+                got.extend(page.rows.iter().map(|r| r.matchid));
+                width = page.width;
+                match page.next {
+                    Some(n) if page.rows.len() == size => cursor = Some(n),
+                    _ => break,
+                }
+            }
+            assert_eq!(got, expected(&rows, up));
+        }
     }
 
     #[test]

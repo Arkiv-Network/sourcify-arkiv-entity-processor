@@ -216,7 +216,7 @@ RUST_LOG=info target/release/arkiv-sourcify-server --format udc \
 | --- | --- | --- |
 | `--format` | `v3` | `udc` selects this backend; `--genesis-state-root` is then not used |
 | `--schema-prefix` | `sourcify.v4` | The dataset's `arkiv.schema` prefix (the proposal's test entities use `sourcify-udc-proposal.v4`) |
-| `--read-view` | `auto` | `pinned`: every query of a request at the head when it started (a node that keeps history, our node); `head`: no `atBlock` (a head-only node, Jalebi); `auto`: decided once at startup by a query at the block before the head (answered: pinned; "not retained": head) |
+| `--read-view` | `auto` | `pinned`: every query of a request at the head when it started (a node that keeps history, our node); `head`: no `atBlock` (a head-only node, Jalebi); `auto`: decided once at startup by a query 64 blocks behind the head (answered: pinned; "not retained": head). With `--format v3`, `--schema-prefix` and `--read-view` are refused |
 | `--genesis-hash` | none | Hash of block 0, checked at the start of every read |
 | `ARKIV_RPC_API_KEY` | unset | Sent as `X-API-KEY` (Jalebi's API keys), never logged |
 
@@ -240,8 +240,11 @@ patched), so a read stays consistent while the head moves.
 Our node sheds load with HTTP 429 or the JSON-RPC error `-32010 ServerBusy` when about 8 to 12
 requests are in flight. The v4 backend asks again after 100, 200, 400, 800 and 1,600 ms (each
 attempt counts against `--max-rpc-requests`, all within the request deadline), then fails with
-`backend_unavailable`; any other error fails at once. Its default `--max-rpc-concurrency` is 4.
-The v3 backend does not retry.
+`backend_unavailable`; any other error fails at once, and so does Jalebi's HTTP 429
+`ANON_COST_LIMITED` (its window resets in minutes). Its default `--max-rpc-concurrency` is 4.
+The v3 backend does not retry. The request deadline is checked before every fetch, value decode
+and reference expansion of the hydration worker, so a timed-out request stops decoding. The API
+key is never printed (not even in a debug dump of the configuration).
 
 ## Operations
 

@@ -252,6 +252,12 @@ async fn rpc(
         .busy
         .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_sub(1));
     if let Ok(left) = busy {
+        if *state.fault.lock().unwrap() == "cost-limited" {
+            return (
+                StatusCode::TOO_MANY_REQUESTS,
+                Json(json!({"error":"ANON_COST_LIMITED"})),
+            );
+        }
         return match left % 2 {
             1 => (StatusCode::TOO_MANY_REQUESTS, Json(json!({"error":"busy"}))),
             _ => error(-32010, "ServerBusy"),
@@ -681,6 +687,56 @@ async fn a_busy_node_is_asked_again_with_backoff_then_the_read_fails_closed() {
     assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
     assert_eq!(json_body(&body)["customCode"], "backend_unavailable");
     assert_eq!(mock.state.requests.lock().unwrap().len(), 6);
+    // Jalebi's anonymous cost limit is not asked again.
+    mock.state.requests.lock().unwrap().clear();
+    mock.fault("cost-limited");
+    mock.state.busy.store(1_000, Ordering::Relaxed);
+    let (status, _) = get(app.router(), &format!("/v2/contract/1/{SAFE_PROXY}")).await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(mock.state.requests.lock().unwrap().len(), 1);
+    mock.fault("");
+    mock.state.busy.store(0, Ordering::Relaxed);
+}
+
+/// Busy retries spend the request's RPC budget and stop at its deadline.
+#[tokio::test]
+async fn busy_retries_stop_at_the_request_budget_and_the_deadline() {
+    let mock = Mock::new().await;
+    // Budget: connect and begin the read (chain ID, genesis, head) fit; a busy node then exhausts it.
+    let mut config = mock.config(View::Pinned);
+    config.max_rpc_requests = 5;
+    let app = Application::new(
+        Arc::new(UdcBackend::connect(config).await.unwrap()),
+        Limits::default(),
+    )
+    .unwrap();
+    mock.state.requests.lock().unwrap().clear();
+    mock.state.busy.store(1_000, Ordering::Relaxed);
+    let (status, body) = get(app.router(), &format!("/v2/contract/1/{SAFE_PROXY}")).await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(json_body(&body)["customCode"], "work_limit");
+    assert!(mock.state.requests.lock().unwrap().len() <= 5);
+    // Deadline: the backoff waits are cut by the request timeout.
+    mock.state.busy.store(0, Ordering::Relaxed);
+    let app = Application::new(
+        Arc::new(UdcBackend::connect(mock.config(View::Head)).await.unwrap()),
+        Limits {
+            request_timeout: std::time::Duration::from_millis(250),
+            ..Limits::default()
+        },
+    )
+    .unwrap();
+    mock.state.busy.store(1_000, Ordering::Relaxed);
+    let started = std::time::Instant::now();
+    let (status, body) = get(app.router(), &format!("/v2/contract/1/{SAFE_PROXY}")).await;
+    assert_eq!(
+        status,
+        StatusCode::GATEWAY_TIMEOUT,
+        "{}",
+        String::from_utf8_lossy(&body)
+    );
+    assert_eq!(json_body(&body)["customCode"], "deadline_exceeded");
+    assert!(started.elapsed() < std::time::Duration::from_millis(1_500));
     mock.state.busy.store(0, Ordering::Relaxed);
 }
 

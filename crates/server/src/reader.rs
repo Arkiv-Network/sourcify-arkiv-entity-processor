@@ -283,8 +283,11 @@ async fn hydrate_udc(
                 .map_err(|_| ApiError::deadline())?;
             response.blocking_recv().map_err(|_| ApiError::deadline())?
         };
-        let record =
-            Reader::batched(&prefix, Some(owner), &mut fetch).hydrate(&contract, Some(&fields))?;
+        // The deadline and cancellation are checked before every fetch, decode and reference.
+        let mut step = || worker_context.check();
+        let record = Reader::batched(&prefix, Some(owner), &mut fetch)
+            .with_check(&mut step)
+            .hydrate(&contract, Some(&fields))?;
         projection::validate(&record, "1", &address)?;
         check()?;
         let result = selection.project(record)?;

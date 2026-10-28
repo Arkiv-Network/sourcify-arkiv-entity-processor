@@ -46,12 +46,12 @@ pub struct ReadArkivArgs {
     /// Fixed historical Arkiv block number, in decimal [v3 default: 0; udc: pins this block]
     #[arg(long)]
     block: Option<u64>,
-    /// udc: arkiv.schema prefix of the dataset
-    #[arg(long, default_value = "sourcify.v4")]
-    schema_prefix: String,
-    /// udc: pinned (one block), head (Jalebi) or auto
-    #[arg(long, value_enum, default_value = "auto")]
-    read_view: ReadView,
+    /// udc: arkiv.schema prefix of the dataset [default: sourcify.v4]
+    #[arg(long)]
+    schema_prefix: Option<String>,
+    /// udc: pinned (one block), head (Jalebi) or auto [default: auto]
+    #[arg(long, value_enum)]
+    read_view: Option<ReadView>,
     /// udc: comma-separated top-level fields to hydrate (minimal fields always) [default: all]
     #[arg(long)]
     fields: Option<String>,
@@ -64,9 +64,10 @@ pub struct ReadArkivArgs {
     /// Total RPC call budget, including queries and block checks
     #[arg(long, default_value_t = 100000)]
     max_rpc_requests: u64,
-    /// Per-RPC JSON envelope bound; does not limit the assembled contract size
-    #[arg(long, default_value_t = 1048576)]
-    max_rpc_response_bytes: u64,
+    /// Per-RPC JSON envelope bound; does not limit the assembled contract size [default: 1 MiB
+    /// for v3, 8 MiB for udc, whose key batches carry up to 8 entities of 120,000 bytes]
+    #[arg(long)]
+    max_rpc_response_bytes: Option<u64>,
 }
 
 pub fn read(args: &ReadArkivArgs) -> Result<()> {
@@ -74,9 +75,27 @@ pub fn read(args: &ReadArkivArgs) -> Result<()> {
     let mut out = BufWriter::new(stdout.lock());
     if args.format == ReadFormat::Udc {
         ensure!(
-            args.block.is_none() || args.read_view != ReadView::Head,
+            args.block.is_none() || args.read_view != Some(ReadView::Head),
             "--block pins a block; it cannot be read with --read-view head"
         );
+        let fields: Option<Vec<String>> = args.fields.as_ref().map(|f| {
+            f.split(',')
+                .filter(|s| !s.is_empty())
+                .map(String::from)
+                .collect()
+        });
+        if let Some(fields) = &fields {
+            use arkiv_entity_processor::udc::{LANES, MINIMAL, TOP_FIELDS};
+            for f in fields {
+                ensure!(
+                    MINIMAL.contains(&f.as_str())
+                        || TOP_FIELDS.contains(&f.as_str())
+                        || LANES.contains(&f.as_str())
+                        || ["deployment", "proxyResolution"].contains(&f.as_str()),
+                    "--fields: {f} is not a top-level field of a contract record"
+                );
+            }
+        }
         let owner = args.owner.to_ascii_lowercase();
         ensure!(
             owner.starts_with("0x") && owner.len() == 42,
@@ -93,23 +112,21 @@ pub fn read(args: &ReadArkivArgs) -> Result<()> {
                     .map_err(|_| anyhow::anyhow!("invalid owner"))
                     .context("owner")?,
                 arkiv_chain_id: args.arkiv_chain_id,
-                prefix: args.schema_prefix.clone(),
-                view: match (args.read_view, args.block) {
+                prefix: args
+                    .schema_prefix
+                    .clone()
+                    .unwrap_or_else(|| "sourcify.v4".into()),
+                view: match (args.read_view.unwrap_or(ReadView::Auto), args.block) {
                     (_, Some(block)) => View::Pinned(Some(block)),
                     (ReadView::Pinned, None) => View::Pinned(None),
                     (ReadView::Head, None) => View::Head,
                     (ReadView::Auto, None) => View::Auto,
                 },
-                fields: args.fields.as_ref().map(|f| {
-                    f.split(',')
-                        .filter(|s| !s.is_empty())
-                        .map(String::from)
-                        .collect()
-                }),
+                fields,
                 timeout: Duration::from_secs(args.timeout_seconds),
                 deadline: Duration::from_secs(args.deadline_seconds),
                 max_rpc_requests: args.max_rpc_requests,
-                max_rpc_response_bytes: args.max_rpc_response_bytes,
+                max_rpc_response_bytes: args.max_rpc_response_bytes.unwrap_or(8 << 20),
             },
             &args.address,
         )?;
@@ -124,6 +141,10 @@ pub fn read(args: &ReadArkivArgs) -> Result<()> {
         );
         return Ok(());
     }
+    ensure!(
+        args.schema_prefix.is_none() && args.read_view.is_none() && args.fields.is_none(),
+        "--schema-prefix, --read-view and --fields apply to --format udc"
+    );
     let result = read_contract(
         ReadConfig {
             rpc_url: args.rpc_url.clone(),
@@ -133,7 +154,7 @@ pub fn read(args: &ReadArkivArgs) -> Result<()> {
             timeout: Duration::from_secs(args.timeout_seconds),
             deadline: Duration::from_secs(args.deadline_seconds),
             max_rpc_requests: args.max_rpc_requests,
-            max_rpc_response_bytes: args.max_rpc_response_bytes,
+            max_rpc_response_bytes: args.max_rpc_response_bytes.unwrap_or(1 << 20),
         },
         &args.address,
     )?;

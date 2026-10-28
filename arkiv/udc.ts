@@ -94,13 +94,15 @@ export function references(line: { kind: Kind; attributes: Attr[] }): { key: Hex
       if (!kind) throw new Error(`unknown key attribute ${a.name}`);
       out.push({ key: lower(a.value), kind });
     } else if (a.type === 'bytes' && line.kind !== 'chunk') {
+      if (a.name === 'sourcerefs') {
+        // Inline only (codec 0): a chunked one would hide its keys inside chunk data, under a digest.
+        const raw = fromHex(a.value);
+        if (raw[0] !== 0 || raw.length < 33 || (raw.length - 1) % 32) throw new Error('malformed sourcerefs');
+        for (let i = 1; i < raw.length; i += 32) out.push({ key: toHex(raw.subarray(i, i + 32)), kind: 'source' });
+        continue;
+      }
       const list = chunkList(a.value);
       if (list) out.push(...list.keys.map(key => ({ key, kind: 'chunk' as Kind })));
-      else if (a.name === 'sourcerefs') {
-        const raw = fromHex(a.value);
-        if (raw[0] !== 0 || (raw.length - 1) % 32) throw new Error('malformed sourcerefs');
-        for (let i = 1; i < raw.length; i += 32) out.push({ key: toHex(raw.subarray(i, i + 32)), kind: 'source' });
-      }
     }
   }
   return out;
@@ -121,8 +123,11 @@ export function remap(line: { kind: Kind; attributes: Attr[] }, keys: Map<string
     if (a.type === 'key') return { ...a, value: map(a.value) };
     if (a.type !== 'bytes' || line.kind === 'chunk') return a;
     const raw = fromHex(a.value);
+    if (a.name === 'sourcerefs') {
+      if (raw[0] !== 0) throw new Error('sourcerefs must be inline (codec 0)');
+      return { ...a, value: swap(raw, 1) };
+    }
     if (raw[0] === 2) return { ...a, value: swap(raw, 37) };
-    if (a.name === 'sourcerefs') return { ...a, value: swap(raw, 1) };
     return a;
   });
 }
@@ -151,8 +156,8 @@ export function patchMutations(current: Attr[], next: Attr[]) {
 }
 
 export type Lookups = {
-  /** Chain keys of the source, code and compilation entities with a bundle line's hash, by bundle key. */
-  dependencies: Map<string, Hex[]>;
+  /** The chain's source, code and compilation entities with a bundle line's hash, by bundle key. */
+  dependencies: Map<string, ChainEntity[]>;
   /** The chain's contract entities for a bundle contract's address, by bundle key. */
   contracts: Map<string, ChainEntity[]>;
 };
@@ -168,38 +173,68 @@ export type Plan = {
   alreadySynced: number;
   skipped: { matchId?: string; address?: string; reason: string }[];
   duplicates: { kind: Kind; hash: string }[];
+  /** Dependencies found on the chain by hash but not reused: not permanent, of another creator, or other content. */
+  mismatched: { kind: Kind; hash: string; key: Hex; reason: string }[];
 };
 const LEVEL: Record<Kind, number> = { chunk: 0, source: 1, code: 1, compilation: 2, contract: 3 };
 
-/** Decides, for one batch, what to create, reuse, patch and skip (no I/O). */
-export function plan(lines: Line[], lookups: Lookups): Plan {
+/** Why a dependency found on the chain by hash cannot stand in for a bundle line, or undefined if it can: it must be
+ * permanent, created by the owner, and hold the line's attributes (names, types, indexed flags, values), comparing
+ * a chunk list by its digest and length and a reference by its kind only (its key is the chain's). */
+export function dependencyMismatch(line: Line, found: ChainEntity, owner?: string): string | undefined {
+  if (found.expiresAt !== undefined && BigInt(found.expiresAt) !== MAX_EXPIRES_AT) return 'not permanent';
+  if (owner && ((found.owner && found.owner !== owner) || (found.creator && found.creator !== owner))) return 'another owner or creator';
+  if (found.attributes.length !== line.attributes.length) return 'other attributes';
+  const theirs = new Map(found.attributes.map(a => [a.name, a]));
+  for (const a of line.attributes) {
+    const b = theirs.get(a.name);
+    if (!b || b.type !== a.type || b.indexed !== a.indexed) return `attribute ${a.name} differs`;
+    if (a.type === 'key') continue;
+    if (a.type === 'bytes' && line.kind !== 'chunk') {
+      const ours = a.name === 'sourcerefs' ? undefined : chunkList(a.value), other = ours && chunkList(b.value);
+      if (ours) {
+        if (!other || other.header !== ours.header || other.keys.length !== ours.keys.length) return `attribute ${a.name} differs`;
+        continue;
+      }
+      if (a.name === 'sourcerefs') {
+        if (String(b.value).length !== String(a.value).length || !String(b.value).startsWith('0x00')) return 'sourcerefs differ';
+        continue;
+      }
+    }
+    if (normal(a) !== normal(b)) return `attribute ${a.name} differs`;
+  }
+  return undefined;
+}
+
+/** Decides, for one batch, what to create, reuse, patch and skip (no I/O). Creates only what a created or patched
+ * contract reaches: the dependencies of a skipped contract are not written. */
+export function plan(lines: Line[], lookups: Lookups, owner?: string): Plan {
   const keys = new Map<string, Hex>();
-  const result: Plan = { levels: [[], [], [], []], keys, reused: 0, alreadySynced: 0, skipped: [], duplicates: [] };
+  const result: Plan = { levels: [[], [], [], []], keys, reused: 0, alreadySynced: 0, skipped: [], duplicates: [], mismatched: [] };
   const byKey = new Map(lines.map(l => [l.key, l]));
-  const needed = new Set<string>();
-  const need = (line: Line) => {
-    needed.add(line.key);
-    for (const r of references(line)) if (r.kind === 'chunk') needed.add(r.key);
-  };
+  // Dependencies first (bundle order: everything a line names comes before it).
+  for (const line of lines) {
+    if (line.kind === 'chunk' || line.kind === 'contract') continue;
+    const found = lookups.dependencies.get(line.key) ?? [];
+    const hash = attr(line, 'hash')!.value;
+    if (found.length > 1) result.duplicates.push({ kind: line.kind, hash });
+    const usable = found.find(f => {
+      const reason = dependencyMismatch(line, f, owner);
+      if (reason) result.mismatched.push({ kind: line.kind, hash, key: f.key, reason });
+      return !reason;
+    });
+    if (usable) { keys.set(line.key, lower(usable.key)); result.reused++; }
+  }
   const addresses = new Set<string>();
   for (const line of lines) {
-    if (line.kind === 'chunk') continue;
-    if (line.kind !== 'contract') {
-      const found = lookups.dependencies.get(line.key) ?? [];
-      if (found.length) {
-        keys.set(line.key, lower(found[0]!));
-        result.reused++;
-        if (found.length > 1) result.duplicates.push({ kind: line.kind, hash: attr(line, 'hash')!.value });
-      } else need(line);
-      continue;
-    }
+    if (line.kind !== 'contract') continue;
     const address = String(attr(line, 'address')!.value).toLowerCase(), matchId = BigInt(attr(line, 'matchid')!.value).toString();
     if (addresses.has(address)) throw new Error(`batch holds two contracts for ${address}`);
     addresses.add(address);
     const skip = (reason: string) => result.skipped.push({ matchId, address, reason });
     const found = lookups.contracts.get(line.key) ?? [];
     if (found.length > 1) { skip('several contract entities for this address on the chain'); continue; }
-    if (found.length === 0) { need(line); result.levels[3]!.push({ op: 'create', line }); continue; }
+    if (found.length === 0) { result.levels[3]!.push({ op: 'create', line }); continue; }
     const chain = found[0]!;
     // Chunks of an unchanged value are the chain's own: same digest and length, same split.
     for (const a of line.attributes) {
@@ -212,21 +247,24 @@ export function plan(lines: Line[], lookups: Lookups): Plan {
     if (mapped && sameAttributes(remap(line, keys), chain.attributes)) { result.alreadySynced++; continue; }
     const theirs = BigInt(attr(chain, 'matchid')?.value ?? -1);
     if (BigInt(matchId) < theirs) { skip(`the chain holds a newer match (matchId ${theirs})`); continue; }
-    need(line);
     result.levels[3]!.push({ op: 'patch', line, target: chain });
   }
-  for (const line of lines) {
-    if (line.kind === 'contract' || !needed.has(line.key)) continue;
-    if (keys.has(line.key)) continue; // a chunk of an unchanged value
-    result.levels[LEVEL[line.kind]]!.push({ op: 'create', line });
-  }
+  // What the contracts written reach, short of what the chain already has.
+  const reach = new Set<string>();
+  const visit = (line: Line) => {
+    for (const r of references(line)) {
+      if (keys.has(r.key) || reach.has(r.key)) continue;
+      const target = byKey.get(r.key);
+      if (!target) throw new Error(`${line.kind} ${line.key} names ${r.key}, which is neither in the batch nor on the chain`);
+      if (target.kind !== r.kind) throw new Error(`${line.kind} ${line.key} names a ${target.kind} as a ${r.kind}`);
+      reach.add(r.key);
+      visit(target);
+    }
+  };
+  for (const { line } of result.levels[3]!) visit(line);
+  for (const line of lines) if (line.kind !== 'contract' && reach.has(line.key)) result.levels[LEVEL[line.kind]]!.push({ op: 'create', line });
   // Creates before patches in the contract level, each in bundle order.
   result.levels[3]!.sort((a, b) => (a.op === b.op ? a.line.nonce - b.line.nonce : a.op === 'create' ? -1 : 1));
-  for (const level of result.levels) for (const { line } of level) for (const r of references(line)) {
-    const target = byKey.get(r.key);
-    if (target && target.kind !== r.kind) throw new Error(`${line.kind} ${line.key} names a ${target.kind} as a ${r.kind}`);
-    if (!target && !keys.has(r.key)) throw new Error(`${line.kind} ${line.key} names ${r.key}, which is neither in the batch nor on the chain`);
-  }
   return result;
 }
 
@@ -277,12 +315,17 @@ export async function packOperations<T extends { operation: unknown }>(items: T[
   return batches;
 }
 
-/** Whether a JSON-RPC answer is our node's "busy, ask again" (HTTP 429, code -32010 ServerBusy). */
-export const isBusy = (status: number, body: any) => status === 429 || body?.error?.code === -32010;
-/** JSON-RPC over HTTP that asks again, with backoff, while the node answers ServerBusy (our node does so with about
- * eight requests in flight); any other error is the caller's. */
-export function busyRetryTransport(rpcUrl: string, apiKey?: string, attempts = 8) {
+/** Whether a JSON-RPC answer is our node's "busy, ask again" (HTTP 429, code -32010 ServerBusy). Jalebi's anonymous
+ * cost limit is also a 429, but its window resets in minutes: not busy. */
+export const isBusy = (status: number, body: any) =>
+  (status === 429 && !JSON.stringify(body ?? '').includes('COST_LIMITED')) || body?.error?.code === -32010;
+/** JSON-RPC over HTTP that asks again while the node answers ServerBusy (our node does so with about eight requests in
+ * flight): six attempts, 100, 200, 400, 800 and 1,600 ms apart, the policy of read-arkiv and the server too. Any other
+ * error is the caller's. */
+export function busyRetryTransport(rpcUrl: string, apiKey?: string, attempts = 6) {
   let id = 0;
+  // viem's own retries stay off: a busy answer is asked again here, and anything else (a sent transaction included)
+  // is the caller's to judge.
   return custom({
     async request({ method, params }: { method: string; params?: unknown }) {
       for (let attempt = 1; ; attempt++) {
@@ -290,13 +333,14 @@ export function busyRetryTransport(rpcUrl: string, apiKey?: string, attempts = 8
           headers: { 'content-type': 'application/json', ...(apiKey ? { 'X-Api-Key': apiKey } : {}) },
           body: JSON.stringify({ jsonrpc: '2.0', id: ++id, method, params: params ?? [] }) });
         const body: any = await response.json().catch(() => undefined);
-        if (isBusy(response.status, body) && attempt < attempts) { await Bun.sleep(Math.min(2_000, 100 * 2 ** attempt)); continue; }
+        if (isBusy(response.status, body) && attempt < attempts) { await Bun.sleep(100 * 2 ** (attempt - 1)); continue; }
+        if (response.status === 429) throw new Error(`${method}: HTTP 429${JSON.stringify(body ?? '').includes('COST_LIMITED') ? ', the anonymous cost limit (set ARKIV_RPC_API_KEY)' : ' (busy)'}`);
         if (body?.error) throw Object.assign(new Error(body.error.message ?? `${method} failed`), { code: body.error.code, data: body.error.data });
         if (!response.ok || !body || !('result' in body)) throw new Error(`${method}: HTTP ${response.status}`);
         return body.result;
       }
     },
-  });
+  }, { retryCount: 0 });
 }
 /** The SDK client pair for a chain (read and write). */
 export function udcClients(rpcUrl: string, chainId: number, account: any, apiKey?: string) {
@@ -311,18 +355,27 @@ export function chainEntity(row: any): ChainEntity {
   return { key: lower(row.key), owner: row.owner?.toLowerCase(), creator: row.creator?.toLowerCase(), expiresAt: row.expiresAt,
     attributes: (row.attributes ?? []).map((a: any) => ({ name: a.name, type: a.type, indexed: a.indexed ?? flags.get(a.name) ?? false, value: a.value })) };
 }
-export async function query(client: any, text: string, limit: number, select: any = SELECT_ALL) {
+/** One `arkiv_query`. A continuation cursor is an error unless `more` is set: then the rows are a first page (enough
+ * for "two or more"), and `more` (the result) says that there are others. */
+export async function query(client: any, text: string, limit: number, select: any = SELECT_ALL, options: { allowMore?: boolean } = {}) {
   const result: any = await client.request({ method: 'arkiv_query', params: [text, { limit: `0x${limit.toString(16)}`, select }] });
-  if (result.cursor) throw new Error(`query continues past its limit: ${text.slice(0, 120)}`);
+  if (result.cursor && !options.allowMore) throw new Error(`query continues past its limit: ${text.slice(0, 120)}`);
   return (result.data ?? []).map(chainEntity) as ChainEntity[];
 }
-/** Entities by key, at most KEY_BATCH per query; every key must be found. */
-export async function byKeys(client: any, keys: Hex[]) {
+/** Entities by key, at most KEY_BATCH per query; every key must be found. A key just written may reach a node behind a
+ * load balancer a little after its receipt, so a missing one is asked again (`attempts` times, a second apart). */
+export async function byKeys(client: any, keys: Hex[], attempts = 1, delayMs = 1000) {
   const out = new Map<string, ChainEntity>();
   for (let i = 0; i < keys.length; i += KEY_BATCH) {
     const batch = keys.slice(i, i + KEY_BATCH);
-    for (const e of await query(client, batch.map(k => `$key = key(${k})`).join(' OR '), batch.length)) out.set(e.key, e);
-    for (const k of batch) if (!out.has(lower(k))) throw new Error(`entity ${k} is not on the chain`);
+    for (let attempt = 1; ; attempt++) {
+      const missing = batch.filter(k => !out.has(lower(k)));
+      for (const e of await query(client, missing.map(k => `$key = key(${k})`).join(' OR '), missing.length)) out.set(e.key, e);
+      const still = batch.filter(k => !out.has(lower(k)));
+      if (!still.length) break;
+      if (attempt >= attempts) throw new Error(`entity ${still[0]} is not on the chain`);
+      await Bun.sleep(delayMs);
+    }
   }
   return out;
 }
@@ -335,16 +388,16 @@ async function pool<T, R>(items: T[], limit: number, work: (item: T) => Promise<
   }));
   return results;
 }
-/** The chain's dependencies with the bundle's hashes, and contracts at the bundle's addresses. */
+/** The chain's dependencies with the bundle's hashes, and contracts at the bundle's addresses (at most two of each:
+ * two contracts are ambiguous, and a second dependency is a fallback when the first does not match). */
 export async function lookup(client: any, lines: Line[], owner: string, prefix: string, concurrency = 8): Promise<Lookups> {
-  const dependencies = new Map<string, Hex[]>(), contracts = new Map<string, ChainEntity[]>();
+  const dependencies = new Map<string, ChainEntity[]>(), contracts = new Map<string, ChainEntity[]>();
   const scope = (kind: Kind) => `$owner = addr(${owner}) AND arkiv.schema = str('${prefix}.${kind}')`;
   await pool(lines.filter(l => l.kind !== 'chunk'), concurrency, async line => {
     if (line.kind === 'contract') {
-      contracts.set(line.key, await query(client, `${scope('contract')} AND chainid = u64(1) AND address = addr(${String(attr(line, 'address')!.value).toLowerCase()})`, 2));
+      contracts.set(line.key, await query(client, `${scope('contract')} AND chainid = u64(1) AND address = addr(${String(attr(line, 'address')!.value).toLowerCase()})`, 2, SELECT_ALL, { allowMore: true }));
     } else {
-      const found = await query(client, `${scope(line.kind)} AND hash = bytes32(${attr(line, 'hash')!.value})`, 2, { key: true });
-      dependencies.set(line.key, found.map(e => e.key));
+      dependencies.set(line.key, await query(client, `${scope(line.kind)} AND hash = bytes32(${attr(line, 'hash')!.value})`, 2, SELECT_ALL, { allowMore: true }));
     }
   });
   return { dependencies, contracts };
@@ -379,7 +432,7 @@ export async function write(p: Plan, context: SendContext): Promise<Sent> {
     items.forEach((item, i) => { if (item.o.op === 'create') p.keys.set(item.o.line.key, keys[i]!); });
     // Read back what this level wrote before anything names it.
     const written = items.map((item, i) => ({ key: item.o.op === 'create' ? keys[i]! : item.o.target.key, attributes: item.attributes }));
-    const found = await byKeys(context.client, written.map(w => w.key));
+    const found = await byKeys(context.client, written.map(w => w.key), 5);
     for (const w of written) {
       const e = found.get(lower(w.key))!;
       const problems: string[] = [];
@@ -455,7 +508,7 @@ async function receiptOf(client: any, hash: Hex, timeoutMs = 300_000) {
 export function matchIdProbe(client: any, owner: string, prefix: string) {
   return async (after: bigint) => {
     let highest: bigint | undefined;
-    for (const e of await query(client, `$owner = addr(${owner}) AND arkiv.schema = str('${prefix}.contract') AND matchid > u64(${after})`, 2, { key: true, attributes: { matchid: true } })) {
+    for (const e of await query(client, `$owner = addr(${owner}) AND arkiv.schema = str('${prefix}.contract') AND matchid > u64(${after})`, 2, { key: true, attributes: { matchid: true } }, { allowMore: true })) {
       const m = e.attributes.find(a => a.name === 'matchid');
       if (!m) throw new Error('a contract entity on the chain has no matchid');
       if (highest === undefined || BigInt(m.value) > highest) highest = BigInt(m.value);

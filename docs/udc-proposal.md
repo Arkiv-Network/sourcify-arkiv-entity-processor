@@ -138,7 +138,7 @@ writes to our node only. Jalebi was never written to; its write limits come from
 | `arkiv_getEntityCount` | `{query, block}`; an `EXISTS` count is refused (limits); `select.count` refused | `{query}` answered; `select.count` refused (measured) |
 | By key | `arkiv_query("$key = key(…)")` (`arkiv_getEntity` is not served) | `arkiv_query`, also `arkiv_getEntity` |
 | Anonymous reads | No limit | 10 cost units per call (`Arkiv-Cost`), at most 50 per second and 1,000 per window (a reset 2,740 s away was reported), then HTTP 429 `ANON_COST_LIMITED` for every method; API keys from hub.arkiv.network (measured) |
-| Load | HTTP 429 with JSON-RPC error `-32010 ServerBusy` when about 8 to 12 requests are in flight (measured: 3 of 12 concurrent queries); readers and the sync ask again with a backoff and keep 4 in flight | 50 calls per second per IP (`RateLimit`) |
+| Load | HTTP 429 with JSON-RPC error `-32010 ServerBusy` when about 8 to 12 requests are in flight (measured: 3 of 12 concurrent queries); readers and the sync keep 4 in flight and ask again after 100, 200, 400, 800 and 1,600 ms | 50 calls per second per IP (`RateLimit`); a spent budget is HTTP 429 `ANON_COST_LIMITED`, which nothing asks again |
 
 Two consequences shape the format: the per-entity budget (our node's 128 KiB of `bytes` per entity and a reth
 pool's 128 KiB per transaction), and the query subset both accept.
@@ -197,8 +197,8 @@ Every `bytes` attribute except a chunk's `data` is one *codec byte* followed by 
 - **Budget.** The `bytes` values of one entity total at most **120,000 bytes**. The node allows 131,072, but a
   131,072-byte create is a 131,768-byte signed transaction, over a reth pool's 131,072. 120,000 bytes plus 24
   attributes is a 125,112-byte transaction (measured). It is also the v3 writer's limit.
-- **Chunking.** While an entity is over budget, its largest value (never the `manifest` or `sourcerefs` unless
-  nothing else is left) moves into `chunk` entities, created first, and the attribute keeps a chunk list. A
+- **Chunking.** While an entity is over budget, its largest value (the `manifest` only when nothing else is left,
+  `sourcerefs` never) moves into `chunk` entities, created first, and the attribute keeps a chunk list. A
   reader joins the chunks, checks length and SHA-256, then decodes. In the corpus 339 compilation `artifacts`
   values and 204 source texts are chunked: 963 chunk entities. Everything else, including 79,512 of v3's 80,081
   spilled payloads, fits once compressed.
@@ -273,7 +273,7 @@ more than 128 bytes become a 125-byte prefix and an ellipsis, as in v3.
 | `abi` | `bytes` | no | The `abi` field (canonical JSON) |
 | `compilation` | `bytes` | no | The `compilation` field |
 | `artifacts` | `bytes` | no | Every other compiler-owned field, one canonical JSON object: `additionalInput`, `sources`, `signatures`, `metadata`, `storageLayout`, `transientStorageLayout`, `userdoc`, `devdoc`, `sourceIds`, `stdJsonInput`, `stdJsonOutput` and the two lanes' `recompiledBytecode`, `sourceMap`, `linkReferences`, `immutableReferences`, `cborAuxdata` (under `creationBytecode`/`runtimeBytecode`), as v3 stripped them |
-| `sourcerefs` | `bytes` | no | Codec `00` and the 32-byte keys of the sources, in `manifest.sources` order |
+| `sourcerefs` | `bytes` | no | Codec `00` and the 32-byte keys of the sources, in `manifest.sources` order. Never chunked: its keys must stay where re-keying can rewrite them (a chunk list's digest would bind them), so a compilation holds at most 3,749 sources (the corpus's largest has 390); readers refuse any other codec |
 | `creationcoderef`, `runtimecoderef` | `key` | no | The recompiled bytecode's `code` entities (two slots: a lane's recompiled bytecode takes its lane's slot, any other code a reference names takes the free one) |
 
 The manifest holds what v3 kept in the envelope's `references`, with cross-entity targets named indirectly:
@@ -367,7 +367,8 @@ proxy resolution, the embedded-metadata whitespace projection ([sourcify-http-co
 
 1. Check `C`: owner is the dataset owner, `arkiv.schema` is the contract tag.
 2. `D` = decode `C.data` (codec, chunks), parse as JSON. Check the projections it determines: `address`,
-   `matchid`, `chainid`, `verifiedat` and `match` must equal what `D` gives.
+   `matchid`, `chainid`, `verifiedat`, `match`, `deployer` and `blocknumber` must equal what `D` gives (as the v3
+   transform derives them).
 3. For each lane with a code reference: fetch the `code` entity, check its `hash` attribute and the Keccak-256 of
    the decoded bytes against the contract's `creationcodehash`/`runtimecodehash`, and insert `"0x" + hex` at
    `/lane/onchainBytecode`. A code hash without a reference must describe a literal `onchainBytecode` in `D`.
@@ -382,12 +383,15 @@ proxy resolution, the embedded-metadata whitespace projection ([sourcify-http-co
    does (stored value, then non-local references, then local ones, each in manifest order) and insert it into
    `D`. Groups load on first use and are checked against their digest; a source is checked by SHA-256 against
    both `manifest.sources[i]` and its entity's `hash`; a code by Keccak-256 against `manifest.codes` and its
-   entity's `hash`; the hydrated `abi` by SHA-256 against `C.abihash`.
+   entity's `hash`; the hydrated `abi` by SHA-256 against `C.abihash`; the hydrated `compilation` against the
+   contract's compiler projections (`name`, `compilerversion`, `language`, `evmversion`, `optimizer`,
+   `optimizerruns`, `viair`, as the v3 transform derives them).
 6. With a field selection, only the selected fields' groups and dependencies are read, and the result keeps the
    seven minimal fields plus the selection. An attribute the query did not select (still listed in
-   `attributeSchema`) is an error when the read needs it, never an absence.
+   `attributeSchema`) is never taken for an absence: the entity is fetched again with every attribute, and where
+   that is not possible (a saved readback) the read fails.
 
-Chunk lists are bounded before anything is fetched (at most 64 MiB, a key per 120,000 bytes), every chunk and the
+Chunk lists are bounded before anything is fetched (at most 64 MiB plus the codec byte, a key per 120,000 bytes), every chunk and the
 joined value are checked, and decoded values stop at 64 MiB. The writer refuses values over that bound and writes a
 contract all or nothing, so a failed record leaves no entity and no nonce behind.
 
@@ -410,7 +414,7 @@ lowercase). Typed attributes are projections for queries; the JSON is the record
 | --- | --- | --- |
 | Minimal (no `fields`) | Contract `data` | 1 |
 | `fields=abi,compilation` | Contract; compilation `manifest`, `abi`, `compilation` | 2 |
-| `fields=all` | Contract; compilation (all); its codes; sources; chunks | 3 + one per 8 further sources or chunks |
+| `fields=all` | Contract; compilation (all); its codes; sources; chunks | 3 rounds without chunked values (up to 6 with them), each one query per 8 keys |
 
 Reads by key batch at most **8 keys per query** (`$key = key(a) OR $key = key(b) …`). Eight `OR` groups is our
 node's planned-path bound; beyond it the node scans at most 4,096 entities and gives up, which on a 15-million
@@ -551,50 +555,57 @@ node's needs a pinned block, Jalebi's dies with the next block.
 
 The rule both nodes run relies on one property only, measured on both, whatever their order:
 
-> a **window** query `… AND matchid >= u64(A) AND matchid <= u64(B)` that returns fewer than `limit` rows, or no
-> cursor, returned every match in that window.
+> a **window** query `… AND matchid >= u64(A) AND matchid <= u64(B)` (inclusive bounds) that returns **no
+> cursor** returned every match in that window.
 
 A page of `P` contracts after a cursor `C` (`P` below `limit`, which is at most 100), ascending:
 
-1. Query the window `[C + 1, C + W]` (W: a width, from the previous page or 65,536 at first). A window that
+1. Query the window `[C + 1, C + W]` (W: the previous page's width hint, or 65,536 at first). A window that
    reaches past 2^40 is open there (`matchid >= u64(C + 1)` alone): the mirror keeps Sourcify's match IDs below
    10^12, so an open window ends the walk in one query wherever the last match is.
-2. **Complete** (fewer than `limit` rows, or no cursor): sort its rows by `matchid` and take what the page still
-   needs. If the page is full, its last `matchid` is the next cursor. If it is short, continue with the next window
-   `[C + W + 1, …]`, four times wider (sixteen after an empty window).
-3. **Full** (`limit` rows and a cursor): sort its rows; the `need`-th smallest `matchid` `M` bounds a window
-   `[C + 1, M]` that holds the `need` smallest matches overall (a subset's k-th smallest is never below the whole
-   set's). Query that window instead and go to 2. `M` is strictly below the window's end while `need < limit`, so
-   the walk ends.
+2. **Complete** (no cursor): sort its rows by `matchid` and take what the page still needs. If the page fills, its
+   last `matchid` is the next cursor and twice the page's span is the next width hint. If it is short, continue
+   with the window after it: back to the rest of the last window that came back full, if any (a binary search),
+   else four times wider (sixteen after an empty window).
+3. **Not complete** (a cursor): narrow the window towards its near end and ask again, to whichever is nearer of
+   the `need`-th smallest `matchid` among the rows returned (a subset's k-th smallest is never below the whole
+   set's, so the narrowed window still holds the `need` first matches) and the window's midpoint. The midpoint
+   matters when the rows come from the far end, as a descending walk's do on a prefilled chain (creation order is
+   ascending there), and when a node returns a cursor with fewer rows than asked. When the narrowed part comes back
+   empty, the rest of the full window is halved at once without asking for all of it first.
 
-Descending pages (newest first) mirror it: windows `[C − W, C − 1]` with `matchid >= u64(…) AND matchid <= u64(…)`,
-shrinking the lower end to the `need`-th largest. Any further positive clauses (a Search filter, a Compare
-question) are added to every window. The reference implementation is `src/udc_page.rs` (`ascending`,
-`descending`), with tests on simulated node orders (creation order with patched rows, block-and-key order,
-shuffled); `udc-page` runs it over RPC.
+Descending pages (newest first) mirror it: windows `[C − W, C − 1]`, narrowed towards their upper end. Any further
+positive clauses (a Search filter, a Compare question) are added to every window **in parentheses**, so an `OR`
+cannot escape the scope, and every returned row's owner and `arkiv.schema` are checked. `matchid`s are unique per
+dataset (`verify` checks it): two at a page boundary fail the walk rather than lose one. The reference
+implementation is `src/udc_page.rs` (`ascending`, `descending`), tested on simulated node orders (creation order
+with patched rows, block-and-key order, shuffled, trimmed pages) and 3,000 random walks; `udc-page` runs it over
+RPC with one pinned block per walk.
 
-Why it is exact on both nodes: completeness is the only thing it reads from a response. A response with fewer
-than `limit` rows is complete on any node, and neither node returns a cursor when no rows remain (measured on both;
-our node also returns none when exactly `limit` rows match). Why it should be cheap on our node (from its query
-planner, `arkiv-state-db-experiment` `docs/snapshot-query-plan.md`; not yet measured on a prefilled chain, see
-[open questions](#open-questions)): range literals on one attribute form one run of the term map over the
-window's values, and the planner drives a group by its smallest source, so a window of a few hundred `matchid`s
-is read through its own run, not through the 7.9-million-entry `arkiv.schema` posting. An unbounded `matchid > X`
-in the middle of a prefilled chain falls back to scanning that posting (the v3 sync's start-cursor search ran
-into this), which is why the walk asks one only past 2^40, where few or no contracts are. With a selective filter
-(Vyper, a deployer) the filter's posting drives the window instead.
+Why it is exact on both nodes: completeness is the only thing it reads from a response, and neither node returns a
+cursor when no rows remain (measured on both; our node also returns none when exactly `limit` rows match). A
+cursor with rows to spare, or with fewer rows than asked, only narrows the window. Why it should be cheap on our
+node (from its query planner, `arkiv-state-db-experiment` `docs/snapshot-query-plan.md`; not yet measured on a
+prefilled chain, see [open questions](#open-questions)): range literals on one attribute form one run of the term
+map over the window's values, and the planner drives a group by its smallest source, so a window of a few hundred
+`matchid`s is read through its own run, not through the 7.9-million-entry `arkiv.schema` posting. An unbounded
+`matchid > X` in the middle of a prefilled chain falls back to scanning that posting (the v3 sync's start-cursor
+search ran into this), which is why the walk asks one only past 2^40, where few or no contracts are. With a
+selective filter (Vyper, a deployer) the filter's posting drives the window instead.
 
-Measured on our node over the sync's 16 test contracts after the re-verification patch
-(`udc/measure/results/our-node-window-paging-20261028.json`): node order puts the patched contract (`matchid`
-60,000,001) where it was created, between 21,561 and 5,888,028; every walk returns `matchid` order, ascending and
-descending, with and without a `match` filter. 16 sparse contracts over 60 million IDs took 8 queries for one page
-of 20, 10 for four pages of 5 descending; on dense data a page settles at one or two queries (500 pages of 20 in
-under 1,300 queries in the tests).
+Cost, in the tests on 60,000 dense contracts in creation order (pages of 20, limit 100): an ascending first page 2
+queries, a descending first page from the very top about 40 (a binary search down from 2^40), every later page 1 in
+both directions. Measured on our node over the sync's 16 sparse test contracts after the re-verification patch
+(`udc/measure/results/our-node-window-paging-20261028.json`, every walk pinned to one block): node order puts the
+patched contract (`matchid` 60,000,001) where it was created, between 21,561 and 5,888,028; every walk returns
+`matchid` order, ascending and descending, with and without a `match` filter; four descending pages of 5 took 7, 1,
+1 and 1 queries.
 
-On our node a walk pins one `atBlock` for all its windows and is a snapshot. On Jalebi each window is read at the
-head: a contract patched between two windows moves to its new `matchid`, so an ascending walk can show it twice
-(once per version; a reader keeps the later one by key) and a descending walk can miss it until the next walk.
-Page jumps become `matchid` jumps (or count by `arkiv_getEntityCount` on a window and bisect); counts are not paged.
+On our node a walk pins one `atBlock` for all its windows and checks that block's hash at the end: a snapshot. On
+Jalebi each window is read at the head: a contract patched between two windows moves to its new `matchid`, so an
+ascending walk can show it twice (once per version; a reader keeps the later one by key) and a descending walk can
+miss it until the next walk. Page jumps become `matchid` jumps (or count by `arkiv_getEntityCount` on a window and
+bisect); counts are not paged.
 
 **Jalebi's anonymous budget.** At 10 cost units per call and 1,000 per window, an anonymous client gets about
 100 calls per window, shared by everything behind one IP; a contract read is 1 to 3 queries plus dependencies.
@@ -660,9 +671,12 @@ November milestone and can be removed after the cutover.
   and is then checked line by line: nonces in order from `firstNonce`, every key the salt-0 key of its nonce,
   every entity permanent, within the node's rules (32 attributes, 128-byte `str`, unindexed `bytes`, ascending
   names) and the 120,000-byte budget, and within the format's schema (`udc::ATTRIBUTES`: each kind's attributes
-  with type, indexed flag and whether required); every key it names (key attributes, `sourcerefs`, chunk lists)
-  an earlier line of the right kind; chunk lists as long as their chunks; one contract per address, one entity per
-  content hash and kind; counts as `report.json` gives them. Values are not decompressed; `hydrate` checks content.
+  with type, indexed flag and whether required); every bytes value non-empty with a known codec, `sourcerefs`
+  inline; every key it names (key attributes, `sourcerefs`, chunk lists) an earlier line of the right kind, and a
+  contract's compilation and codes carrying the hashes it names (`compilationhash`, `creationcodehash`,
+  `runtimecodehash`); chunk lists as long as their chunks; `firstNonce` 0; one contract per address and per
+  `matchid`, one entity per content hash and kind; counts, distinct counts, bytes and storage units as
+  `report.json` gives them. Values are not decompressed; `hydrate` checks content.
 - **`pack`** verifies first (either version) and records `seedVersion` and `bundleFormat` in the archive record;
   **`upload`** stores the format as `x-amz-meta-bundle-format`, refuses an existing object whose format metadata
   differs, and `--expect-format udc|v3` refuses an archive of the other format.
@@ -670,21 +684,29 @@ November milestone and can be removed after the cutover.
   hydration of the same records, byte for byte.
 - **`read-arkiv --format udc`** reads one contract over RPC (`src/udc_rpc.rs`): pinned to one `atBlock` on our
   node (`--block`, else the head when it starts, hash checked at the end), at the head on Jalebi, `auto` by asking
-  for the block before the head; key batches of 8; `--fields` maps to attribute selection; ServerBusy answers are
-  asked again. `udc-page` pages contracts by the [window rule](#paging).
+  for a block 64 behind the head; key batches of 8; `--fields` (checked against the record's top-level fields)
+  maps to attribute selection; 8 MiB per response by default; ServerBusy asked again 6 times, 100 ms doubling
+  (never Jalebi's cost limit). `udc-page` pages contracts by the [window rule](#paging), one pinned block per walk
+  (`--block`).
 - **`arkiv/sync.ts` with `SYNC_FORMAT=udc`** (`arkiv/udc.ts`, UDC SDK `0.9.0-next.2`, installed as
   `@arkiv-network/sdk-udc` beside the v3 sync's `0.8.1-dev.1`): the batch's records become a v4 bundle; sources,
-  codes and compilations already on the chain (`$owner`, `arkiv.schema`, `hash`) are reused and their chunks not
-  written again; contracts are looked up by address and created, counted as synced (same content), patched in place
-  (a `matchid` at least the chain's) or skipped (an older one, or two contracts for the address); new entities go
-  in the four levels above with references rewritten to the receipts' keys; every created or patched entity is read
-  back by key and compared attribute by attribute (name, type, indexed flag, value, owner, creator, expiry).
+  codes and compilations already on the chain (`$owner`, `arkiv.schema`, `hash`) are reused, and their chunks not
+  written again, when they are permanent, the owner's and hold the bundle line's content (another one is not
+  reused: a fresh one is written); contracts are looked up by address and created, counted as synced (same
+  content), patched in place (a `matchid` at least the chain's) or skipped (an older one, or two or more contracts
+  for the address); only what a created or patched contract reaches is written, so a skipped contract leaves no
+  dependencies behind; new entities go in the four levels above with references rewritten to the receipts' keys;
+  every created or patched entity is read back by key (asked again for a node that lags its receipts) and
+  compared attribute by attribute (name, type, indexed flag, value, owner, creator, expiry). Lookups tolerate a
+  cursor (two rows are enough to tell "several"), and the start-cursor search works on a populated chain.
   Transactions hold at most `SYNC_MAX_TX_BYTES` (120,000) bytes of calldata and `SYNC_MAX_TX_OPS` (16, our node's
   limit) operations; an entity always fits one. Gas is estimated per transaction by default. This is the update path issue #13 asks for, for v4.
 - **`crates/server --format udc`** (`backends/udc.rs`): the contract by address, then `udc::Reader` with key batches
   of 8 run under the server's RPC gate, field selection mapped to attribute selection, pinned or head view as
-  `read-arkiv`, ServerBusy asked again, default concurrency 4. The HTTP contract, projection, signature and proxy
-  policies do not change: every response equals the v3 path's for the same record ([evidence](#prototype-and-evidence)).
+  `read-arkiv` (the `auto` probe 64 blocks behind the head), ServerBusy asked again with the same policy (never
+  the cost limit), the request deadline checked before every fetch, decode and reference, default concurrency 4,
+  the API key never printed. The HTTP contract, projection, signature and proxy policies do not change: every
+  response equals the v3 path's for the same record ([evidence](#prototype-and-evidence)).
 - Docs: `README.md`, `docs/server.md` and `docs/arkiv-reader.md` describe the v4 path. The docs site pages
   (`docs/*.html`) and `docs/data/` describe the v3 dataset that production serves and change with the cutover
   (step 11).
@@ -791,6 +813,7 @@ appears in the plan only as a read-only source.
 | Cost | 16,324 bytes of calldata, 305,658 gas, 0.1416419 GLM rent (19,403 storage units, permanent) |
 | Read back | `fields=all`: 3 queries, 6 entities; `fields=abi,compilation`: 2 queries, 2 entities |
 | Result | `udc-hydrate` on the node's own entities prints `docs/data/hydrated-contract.json` byte for byte; the `abi,compilation` read equals the same fields of it |
+| Later | The UDC sync corrected this contract in place at block 74,590 to the mirror's record (no live proxy resolution: `isproxy`/`proxytype` unset, `proxyResolution` null); the version above stays readable at block 68,938 |
 
 A first write of the same contract in a draft layout (no `compilationhash`; block 67,712, transaction
 `0x2f4d368e…412454`) was deleted again at block 68,933 (transaction `0x8464e72c…afc00`) so that the address has one
@@ -813,7 +836,9 @@ comparison is `groups.py BUNDLE/entities 1` (`groups-20261023.txt`), the hot-rea
 entities through one shared writer (so later contracts reuse earlier sources, code and compilations) and compares
 the v4 reader's output with v3 hydration as serialized bytes. On the first 150 part files of the 2026-10-23 seed
 (1,500,000 entities, 428,992 contracts, match IDs 1 to 2,251,189), every 10th contract: **42,900 contracts,
-170,731 v4 entities, no difference** (`udc/measure/results/udc-check-prefix150-every10-20261028.json`). A run over
+170,731 v4 entities, no difference** (`udc/measure/results/udc-check-prefix150-every10-20261028.json`). With the
+reader of steps 3 and 5 (fetch rounds, attribute selection), every 20th contract of the first 50 parts: **6,462
+contracts, 30,007 v4 entities, no difference** (`udc-check-prefix50-every20-20261028.json`). A run over
 the whole seed was stopped: indexing all 64 GB of parts single-threaded took longer than half an hour. For the
 rest of the corpus the size scan covers the risky paths: no contract-local reference outside the two on-chain code
 paths, every compilation code reference on a lane's recompiled bytecode, no reference into `abi` or `compilation`. On top of that, 100,000 generated
@@ -898,6 +923,30 @@ four cases where v4 differed from v3 and gaps in the checks; all are fixed on th
 They were latent for the 2026-10-23 corpus: it has no contract-local reference outside the two on-chain code
 paths, every compilation code reference names a lane's recompiled bytecode (the full-corpus size scan assumes it),
 and none of its 878,392 compilations has a reference into `abi` or `compilation`.
+
+### Independent review of steps 3 and 5
+
+Three independent reviewers (separate agents with the diff and this document, not the implementer's conclusions)
+read the change, ran the suites and built their own harnesses: a batched-reader harness (1,710 records × 21
+selections, batched = one by one = v3), 2,065 tampering mutations × 7 selections (none passed silently), paging
+oracles (40,000 and 200,000 random walks, adversarial orders and boundaries; none inexact), adversarial bundles,
+fake chains and read-only checks on our node. What they found, and what changed:
+
+| Finding | Severity | Fix |
+| --- | --- | --- |
+| The sync's start-cursor probe refused a cursor, so a sync without `--start-after` could not start (or restart) on a chain with more than two contracts above its probe | High | Lookups and the probe tolerate a cursor; tested on a fake chain, and live: a dry run finds the chain's highest `matchid` |
+| Descending pages crept: a full window only moved its far end to the rows returned, which on a prefill are the smallest; about 98,750 queries per page on 7.9 million contracts in simulation | High | A full window narrows to the nearer of that row and the midpoint, a short window returns to the rest of the last full one, an empty half halves the rest at once, and the width hint comes from the page's rows: a descending first page about 40 queries, later pages 1 |
+| A chunked `sourcerefs` (a compilation of over 3,749 sources) hid its source keys in chunk data under a digest: `verify` passed it, the sync would write stale keys, re-keying would break | Medium | Never chunked; the writer refuses such a compilation, and `references`, the readers, `verify` and the sync refuse any codec but `00` |
+| Reused dependencies were not checked, so a rerun after a failed read-back reused whatever had the hash | Medium | A dependency is reused only when permanent, the owner's and of the bundle line's content |
+| `read-arkiv --format udc` capped responses at 1 MiB; a batch of 8 chunks is about 2 MB | Medium | 8 MiB by default for udc |
+| The `auto` view probed one block behind the head | Medium (suspected) | 64 blocks behind |
+| Completeness was "fewer than `limit` rows or no cursor": a node trimming a page with a cursor would lose rows | Low–medium (suspected) | Complete means no cursor; a trimmed page narrows by bisection |
+| Ties at a page boundary were lost silently; an `OR` filter escaped the scope in `udc-page`; `--all` re-pinned per page; three or more lookup matches wedged a batch; skipped contracts' dependencies were written; viem added its own retries; no read-back retry; `SYNC_MAX_TX_OPS` up to 64; busy backoff and attempts differed between components and retried Jalebi's cost limit; the server's v4 hydration checked its deadline only around fetches; udc-only flags were ignored under `--format v3`; the server's config printed its API key under `Debug`; `verify` did not check `firstNonce`, codecs, unique `matchid`s, the compilation and code hashes a contract names, or the report's totals; `deployer`, `blocknumber` and the compiler projections were not checked against the record; an overflow in a width; no tests for the bundle module, the RPC reader, the batched reader or the sync's write path | Low | All fixed, each with a test (`udc_bundle`, `udc_rpc` and `udc_page` tests, the batched-reader test, the fake-chain tests in `tests/udc-sync.test.ts`, the server's budget, deadline and cost-limit tests) |
+
+Kept as they are, with the reason: orphaned chunks of a failed and retried batch, and a newer re-verification the
+mirror ranks lower ([open questions](#open-questions)). After the fixes the 100,000-record bundle still verifies and
+hydrates to the records' exact SHA-256, a dry run of the sync against the test dataset reuses all 197 dependencies
+and finds the 16 contracts synced, and every suite passes.
 
 ### Reproduce
 
@@ -985,50 +1034,81 @@ lowercase hex where the record has it); `sourcerefs` is codec `00` and the 32-by
 3. Hydrate as `Reader::hydrate` does ([algorithm](#algorithm)), with every check: projections against `data`, code
    Keccak against `creationcodehash`/`runtimecodehash` and the code's `hash`, `compilationhash` = the
    compilation's `hash` = SHA-256 of its manifest bytes, a canonical manifest, group digests, source SHA-256
-   against `manifest.sources` and the source's `hash`, the hydrated ABI's SHA-256 against `abihash`, chunk lists.
-   The result is the v3 record, key order included.
+   against `manifest.sources` and the source's `hash`, the hydrated ABI's SHA-256 against `abihash`, chunk lists,
+   `sourcerefs` inline (codec `00`), and the search projections against the record (`deployer`, `blocknumber`
+   always; `name`, `compilerversion`, `language`, `evmversion`, `optimizer`, `optimizerruns`, `viair` when the
+   `compilation` field is read). The result is the v3 record, key order included.
 4. Views: on our node read the head's number once and send it as `atBlock` (hex) on every query of the read;
    every response's `blockNumber` must equal it; check the block's hash at the end. On Jalebi send no `atBlock`.
+   To tell them apart at run time, ask for a block 64 behind the head: our node answers, Jalebi refuses with
+   `-32006` ("not retained").
 5. Our node answers HTTP 429 / `-32010 ServerBusy` when about 8 requests are in flight: keep at most 4 in flight and
-   ask again after 100 ms, doubling, up to 8 attempts. Jalebi's anonymous budget is about 100 calls per window per
-   IP: the UI server needs an API key (`X-API-KEY`).
+   ask again after 100, 200, 400, 800 and 1,600 ms (6 attempts, within the request's deadline; `read-arkiv`, the
+   server and the sync do the same). Jalebi's 429 `ANON_COST_LIMITED` is not busy (its window resets in minutes):
+   fail at once. Its anonymous budget is about 100 calls per window per IP: the UI server needs an API key
+   (`X-API-KEY`).
+6. Response size: a key batch of 8 entities of up to 120,000 bytes is about 2 MB of hex; allow 8 MiB per response
+   (the server's and `read-arkiv`'s default).
 
 ### Paging Search and Compare lists
 
-The [window rule](#paging), exactly (inclusive bounds; a response is complete when it has fewer than `limit` rows
-or no cursor):
+The [window rule](#paging), exactly (inclusive bounds; a window is complete when its response has no cursor):
 
 ```ts
-const TOP = 2n ** 40n // windows are open beyond it (Sourcify match IDs stay below 10^12)
+const TOP = 2n ** 40n, MAX = 2n ** 64n - 1n // windows are open beyond TOP (Sourcify match IDs stay below 10^12)
 type Row = { matchid: bigint; key: string /* plus the summary attributes the list shows */ }
-// query(lo, hi, limit): rows of `scope AND filter [AND matchid >= u64(lo)] [AND matchid <= u64(hi)]` in any order,
-// with complete = rows.length < limit || !cursor. One pinned atBlock per walk on our node, the head on Jalebi.
+// query(lo, hi, limit): rows of `scope AND (filter) [AND matchid >= u64(lo)] [AND matchid <= u64(hi)]` in any
+// order, every row checked for the dataset's owner and `<prefix>.contract`, and complete = !cursor. One pinned
+// atBlock per walk on our node (its hash checked at the end), the head on Jalebi.
 async function ascending(query, after: bigint | null, size: number, limit = 100, width = 65_536n) {
+  if (size < 1 || size >= limit) throw new Error('a page must be smaller than the query limit')
   const rows: Row[] = []
-  let start: bigint | null = after === null ? 0n : after + 1n
+  let start: bigint | null = after === null ? 0n : after === MAX ? null : after + 1n
+  let fullFar: bigint | null | undefined // far end (null: open) of the last window that came back full
+  let presumedFull = false
   while (start !== null) {
-    const need = size - rows.length // size < limit
-    const far = start + width - 1n
+    const need = size - rows.length
     let lo: bigint | null = start > 0n ? start : null
-    let hi: bigint | null = far < TOP ? far : null
+    let hi: bigint | null = fullFar !== undefined ? fullFar : start + width - 1n < TOP ? start + width - 1n : null
+    let skip = presumedFull && hi !== start
+    presumedFull = false
     let found: Row[]
     for (;;) {
-      const r = await query(lo, hi, limit)
-      found = r.rows.sort((a, b) => (a.matchid < b.matchid ? -1 : a.matchid > b.matchid ? 1 : 0))
-      if (r.complete) break
-      hi = found[need - 1]!.matchid // [start, hi] holds the `need` smallest; hi only shrinks
-      width = hi - start + 1n
+      let complete = false
+      found = []
+      if (!skip) {
+        const r = await query(lo, hi, limit)
+        if (r.rows.some(x => (lo !== null && x.matchid < lo) || (hi !== null && x.matchid > hi))) throw new Error('a row outside its window')
+        ;({ rows: found, complete } = r)
+      }
+      skip = false
+      found.sort((a, b) => (a.matchid < b.matchid ? -1 : a.matchid > b.matchid ? 1 : 0))
+      if (complete) break
+      fullFar = hi // not complete: narrow towards the near end
+      const far = hi ?? MAX, mid = start + (far - start) / 2n
+      const byRows = found[need - 1]?.matchid
+      const bound = byRows !== undefined && byRows < mid ? byRows : mid
+      if (bound === far) throw new Error('a window could not be narrowed (two contracts with one matchid?)')
+      hi = bound
+      width = bound - start + 1n
     }
-    rows.push(...found.slice(0, need))
-    if (rows.length >= size) return { rows, next: rows.at(-1)!.matchid, width }
-    start = hi === null ? null : hi + 1n
-    width *= found.length ? 4n : 16n
+    if (found.length >= need) {
+      if (found[need]?.matchid === found[need - 1]!.matchid) throw new Error(`two contracts share matchid ${found[need - 1]!.matchid}`)
+      rows.push(...found.slice(0, need))
+      return { rows, next: rows.at(-1)!.matchid, width: (rows.at(-1)!.matchid - rows[0]!.matchid + 1n) * 2n }
+    }
+    rows.push(...found)
+    start = hi === null || hi === MAX ? null : hi + 1n
+    if (fullFar === hi) fullFar = undefined
+    else if (fullFar !== undefined && found.length === 0) presumedFull = true
+    if (fullFar === undefined) width *= found.length ? 4n : 16n
   }
   return { rows, next: null, width }
 }
-// descending(before): the mirror image. start = before - 1 (or 2^64 - 1 from the top); lo = min(start, TOP) -
-// width + 1 (open at 0), hi = start (open at the top); a full window shrinks lo to its need-th largest matchid;
-// a short one steps down below lo.
+// descending(before): the mirror image. start = before - 1 (or MAX from the top); a window is
+// [max(min(start, TOP) - width + 1, 0), start] (lower open at 0, upper open at MAX); rows are sorted descending;
+// a full window raises its lower end to the nearer of the need-th largest row and the midpoint; the walk steps
+// down below the lower end. src/udc_page.rs is the reference for both.
 ```
 
 The page cursor is the last row's `matchid`; the next page starts after it (before it, descending). Pass the
@@ -1103,8 +1183,14 @@ re-verified match 60,000,001. The comparisons of every contract with v3 hydratio
    (DEFLATE at level 9): about six hours for the full corpus, against v3's parallel gzip. Moving the v3-to-v4
    layout into the transform workers and encoding only the distinct values in a pool (deterministic: encodings are
    pure, keys are assigned in order) would bring it near v3's speed; needed before daily v4 seeds.
-5. **Replaced chunks.** A patch that replaces a chunked contract `data` leaves the old chunks (permanent, rent paid
+5. **Orphaned chunks.** A patch that replaces a chunked contract `data` leaves the old chunks (permanent, rent paid
    once), so that a reader of the previous version still finds them; none of the corpus's contracts is chunked.
+   Chunks have no hash to be found by, so a batch that fails after its chunk level and is retried writes its new
+   chunks again (about 0.9 GLM per full chunk on our node); the earlier ones stay unreferenced.
+6. **Re-verifications the mirror ranks lower.** `source/prepare.ts` keeps one match per address, the better match
+   first and then the newer one. A newer re-verification of lower quality (exact to partial) is therefore never
+   selected and never patched in; whether the dataset should follow the newest match instead is a product question
+   (it is how v3 behaves too).
 
 ## Blockers
 

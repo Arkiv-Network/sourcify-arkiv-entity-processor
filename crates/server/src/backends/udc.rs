@@ -11,7 +11,7 @@
 //!   one query; its dependencies never change once written (only contracts are patched) and are
 //!   checked by content hash, so a read stays consistent while the head moves.
 //!
-//! `auto` decides once at startup: a query at the block before the head either answers (pinned)
+//! `auto` decides once at startup: a query 64 blocks behind the head either answers (pinned)
 //! or is refused as not retained (head).
 use super::transport::{check_url, Budget, Limits as TransportLimits, Transport};
 use crate::backend::{
@@ -37,6 +37,8 @@ use std::{
 /// 8 to 12 requests are in flight. Waits 100, 200, 400, 800 and 1,600 ms, within the request's
 /// deadline; any other failure is final.
 pub const BUSY_RETRIES: u32 = 5;
+/// How far behind the head the `auto` view asks.
+pub const HISTORY_PROBE_DEPTH: u64 = 64;
 /// Parallel RPC calls of the whole server, below the load at which our node answers busy.
 pub const DEFAULT_CONCURRENCY: usize = 4;
 /// How queries see the chain.
@@ -50,7 +52,7 @@ pub enum View {
     Head,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Config {
     pub rpc_url: String,
     /// Sent as `X-API-KEY` (Jalebi's API keys); never logged or reported.
@@ -68,6 +70,20 @@ pub struct Config {
     pub max_rpc_response_bytes: usize,
     /// Cumulative RPC input budget per request; independent of HTTP response size.
     pub max_read_bytes: usize,
+}
+impl std::fmt::Debug for Config {
+    /// The API key is never printed.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Config")
+            .field("rpc_url", &self.rpc_url)
+            .field("api_key", &self.api_key.as_ref().map(|_| "<redacted>"))
+            .field("owner", &self.owner)
+            .field("arkiv_chain_id", &self.arkiv_chain_id)
+            .field("prefix", &self.prefix)
+            .field("view", &self.view)
+            .field("genesis_hash", &self.genesis_hash)
+            .finish_non_exhaustive()
+    }
 }
 impl Config {
     pub fn new(rpc_url: String, owner: String, arkiv_chain_id: u64) -> Self {
@@ -177,8 +193,9 @@ impl UdcBackend {
     }
 }
 impl Inner {
-    /// Whether the node serves past state: a query at the block before the head answers on an
-    /// archive node and is refused as not retained by a head-only one.
+    /// Whether the node serves past state: a query well behind the head answers on an archive
+    /// node and is refused as not retained by a head-only one (even one whose store or replicas
+    /// trail `eth_blockNumber` by a few blocks).
     async fn keeps_history(&self) -> Result<bool> {
         let budget = Budget::default();
         let head = quantity(
@@ -195,7 +212,7 @@ impl Inner {
             .call(
                 &budget,
                 "arkiv_query",
-                json!([format!("$key = key(0x{})", "00".repeat(32)), {"limit":"0x1","atBlock":format!("0x{:x}", head - 1)}]),
+                json!([format!("$key = key(0x{})", "00".repeat(32)), {"limit":"0x1","atBlock":format!("0x{:x}", head.saturating_sub(HISTORY_PROBE_DEPTH))}]),
             )
             .await?;
         match probe {

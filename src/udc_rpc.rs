@@ -9,7 +9,7 @@
 //!   query; its dependencies are never changed once written (only contracts are patched) and are
 //!   checked by content hash, so the read stays consistent while the head moves.
 //!
-//! `auto` asks for the block before the head: a node that answers keeps history (pinned at the
+//! `auto` asks for a block 64 behind the head: a node that answers keeps history (pinned at the
 //! head), one that refuses with "not retained" serves the head only.
 use crate::udc::{
     contract_query, key_query, query_entities, select_json, Reader, Select, UdcEntity, Val,
@@ -47,6 +47,7 @@ pub struct UdcReadConfig {
     pub max_rpc_response_bytes: u64,
 }
 
+#[derive(Debug)]
 pub struct UdcReadResult {
     pub contract: Value,
     /// `pinned` or `head`.
@@ -82,7 +83,7 @@ fn quantity(value: &Value) -> Result<u64> {
 }
 
 /// Attempts per call while the node answers ServerBusy.
-const BUSY_ATTEMPTS: u32 = 8;
+const BUSY_ATTEMPTS: u32 = 6;
 fn is_busy(e: &anyhow::Error) -> bool {
     e.downcast_ref::<RpcError>()
         .is_some_and(|r| r.code == -32010)
@@ -142,12 +143,14 @@ impl Rpc {
         })
     }
     /// One JSON-RPC call; while the node answers ServerBusy (HTTP 429 or code -32010, which our
-    /// node does with about eight requests in flight) it is asked again after a backoff.
+    /// node does with about eight requests in flight) it is asked again after 100, 200, 400, 800
+    /// and 1,600 ms, within the deadline. Every attempt counts against the request budget.
     fn call(&mut self, method: &str, params: Value) -> Result<Value> {
         for attempt in 1.. {
             match self.call_once(method, params.clone()) {
                 Err(e) if attempt < BUSY_ATTEMPTS && is_busy(&e) => {
-                    std::thread::sleep(Duration::from_millis(100 << attempt.min(4)));
+                    let remaining = self.config.deadline.saturating_sub(self.started.elapsed());
+                    std::thread::sleep(Duration::from_millis(100 << (attempt - 1)).min(remaining));
                 }
                 other => return other,
             }
@@ -185,6 +188,13 @@ impl Rpc {
             .send(body.as_slice())
             .with_context(|| format!("Arkiv RPC {method} transport failed"))?;
         if response.status().as_u16() == 429 {
+            // Our node's busy answer is asked again; Jalebi's cost limit (its window resets in
+            // minutes) is not.
+            let text = response.body_mut().read_to_string().unwrap_or_default();
+            ensure!(
+                !text.contains("ANON_COST_LIMITED") && !text.contains("COST_LIMITED"),
+                "Arkiv RPC {method}: the node's anonymous cost limit is spent (set ARKIV_RPC_API_KEY)"
+            );
             return Err(RpcError {
                 code: -32010,
                 message: "ServerBusy (HTTP 429)".into(),
@@ -277,15 +287,18 @@ impl Rpc {
     }
 }
 
-/// Whether the node serves past state: a query at the block before the head either answers
-/// (archive) or fails with "not retained" (head only). Any other failure is an error.
+/// How far behind the head `auto` asks: a head-only node whose store or replicas trail
+/// `eth_blockNumber` by a few blocks must still refuse it.
+const HISTORY_PROBE_DEPTH: u64 = 64;
+/// Whether the node serves past state: a query well behind the head either answers (archive)
+/// or fails with "not retained" (head only). Any other failure is an error.
 fn keeps_history(rpc: &mut Rpc, head: u64) -> Result<bool> {
     if head == 0 {
         return Ok(true);
     }
     let probe = rpc.call(
         "arkiv_query",
-        json!([format!("$key = key(0x{})", "00".repeat(32)), {"limit": "0x1", "atBlock": format!("0x{:x}", head - 1)}]),
+        json!([format!("$key = key(0x{})", "00".repeat(32)), {"limit": "0x1", "atBlock": format!("0x{:x}", head.saturating_sub(HISTORY_PROBE_DEPTH))}]),
     );
     match probe {
         Ok(_) => Ok(true),
@@ -377,6 +390,7 @@ pub struct PageRequest {
     pub limit: usize,
     pub width: u64,
 }
+#[derive(Debug)]
 pub struct PageResult {
     pub rows: Vec<(u64, String, [u8; 32])>,
     pub next: Option<u64>,
@@ -401,22 +415,25 @@ pub fn page_contracts(config: UdcReadConfig, request: PageRequest) -> Result<Pag
         View::Head => None,
         View::Auto => keeps_history(&mut rpc, head)?.then_some(head),
     };
+    let pinned_hash = rpc.at.map(|b| rpc.block_hash(b)).transpose()?;
     let scope = format!(
         "$owner = addr({}) AND arkiv.schema = str('{prefix}.contract') AND chainid = u64(1)",
         crate::hx(owner)
     );
+    let tag = format!("{prefix}.contract");
     let mut addresses = std::collections::HashMap::new();
     let mut query = |window: Window, limit: usize| -> Result<(Vec<Row>, bool)> {
         let mut text = scope.clone();
         if let Some(f) = &request.filter {
-            text.push_str(&format!(" AND {f}"));
+            // Parenthesised: an OR in the filter must not escape the scope.
+            text.push_str(&format!(" AND ({f})"));
         }
         let clauses = window.clauses();
         if !clauses.is_empty() {
             text.push_str(&format!(" AND {clauses}"));
         }
         rpc.queries += 1;
-        let mut options = json!({"select": select_json(&Select::Named(vec!["matchid".into(), "address".into()])), "limit": format!("0x{limit:x}")});
+        let mut options = json!({"select": select_json(&Select::Named(vec!["arkiv.schema".into(), "matchid".into(), "address".into()])), "limit": format!("0x{limit:x}")});
         if let Some(at) = rpc.at {
             options["atBlock"] = json!(format!("0x{at:x}"));
         }
@@ -432,10 +449,15 @@ pub fn page_contracts(config: UdcReadConfig, request: PageRequest) -> Result<Pag
         let data = result["data"]
             .as_array()
             .context("query result has no data")?;
-        let complete = data.len() < limit || result.get("cursor").is_none_or(Value::is_null);
+        // Complete exactly when there is no cursor (both nodes return one while rows remain).
+        let complete = result.get("cursor").is_none_or(Value::is_null);
         let mut rows = vec![];
         for row in data {
             let e = UdcEntity::from_json(row)?;
+            ensure!(
+                e.owner == owner && e.schema() == Some(tag.as_str()),
+                "a row outside the dataset's contracts"
+            );
             let Some(Val::U64(matchid)) = e.get("matchid") else {
                 bail!("contract without matchid")
             };
@@ -466,6 +488,12 @@ pub fn page_contracts(config: UdcReadConfig, request: PageRequest) -> Result<Pag
             request.width,
         )?
     };
+    if let (Some(block), Some(hash)) = (rpc.at, pinned_hash) {
+        ensure!(
+            rpc.block_hash(block)? == hash,
+            "pinned block changed during the walk"
+        );
+    }
     Ok(PageResult {
         rows: page
             .rows
@@ -488,4 +516,323 @@ pub fn page_contracts(config: UdcReadConfig, request: PageRequest) -> Result<Pag
             .or(rpc.blocks)
             .unwrap_or((head, head)),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::udc::{Profile, Writer};
+    use std::{
+        io::{BufRead, BufReader, Read, Write},
+        net::TcpListener,
+        sync::{
+            atomic::{AtomicBool, AtomicUsize, Ordering},
+            Arc, Mutex,
+        },
+        thread,
+    };
+
+    const OWNER: [u8; 20] = [0x11; 20];
+    const ADDRESS: &str = "0x1111111111111111111111111111111111111111";
+    #[derive(Default)]
+    struct State {
+        requests: Mutex<Vec<Value>>,
+        /// Answers left to give busy (HTTP 429), or the cost-limit 429 when `cost` is set.
+        busy: AtomicUsize,
+        cost: AtomicBool,
+        head_only: AtomicBool,
+        /// The block hash changes after the first block request.
+        reorg: AtomicBool,
+        blocks: AtomicUsize,
+        foreign: AtomicBool,
+    }
+    struct Mock {
+        url: String,
+        state: Arc<State>,
+        stop: Arc<AtomicBool>,
+        worker: Option<thread::JoinHandle<()>>,
+    }
+    impl Drop for Mock {
+        fn drop(&mut self) {
+            self.stop.store(true, Ordering::Relaxed);
+            self.worker.take().unwrap().join().unwrap();
+        }
+    }
+    fn render(e: &UdcEntity, select: &Value) -> Value {
+        let v = e.to_json();
+        let all = v["attributes"].as_array().unwrap().clone();
+        let keep = |name: &str| match &select["attributes"] {
+            Value::Object(m) => m.contains_key(name),
+            _ => true,
+        };
+        json!({"key": v["key"], "owner": v["owner"], "creator": v["creator"], "expiresAt": v["expiresAt"],
+            "attributeSchema": all.iter().map(|a| json!({"name": a["name"], "type": a["type"], "indexed": a["indexed"]})).collect::<Vec<_>>(),
+            "attributes": all.iter().filter(|a| keep(a["name"].as_str().unwrap())).map(|a| json!({"name": a["name"], "type": a["type"], "value": a["value"]})).collect::<Vec<_>>()})
+    }
+    impl Mock {
+        fn new() -> (Self, Value) {
+            let record = json!({"chainId":"1","address":ADDRESS,"matchId":"7","verifiedAt":"2020-01-01T00:00:00Z","abi":[],
+                "compilation":{"language":"Solidity","compiler":"solc","compilerVersion":"1","compilerSettings":{},"fullyQualifiedName":"A.sol:A","name":"A"},
+                "sources":{"A.sol":{"content":"contract A {}"}},
+                "creationBytecode":{"onchainBytecode":null,"recompiledBytecode":null},
+                "runtimeBytecode":{"onchainBytecode":"0x6000","recompiledBytecode":"0x6000"}});
+            let profile = Profile {
+                prefix: "sourcify.v4".into(),
+                chain_id: 7706815,
+                owner: OWNER,
+            };
+            let entities = Writer::new(profile, 0)
+                .contract(&crate::transform(&record).unwrap())
+                .unwrap();
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let url = format!("http://{}", listener.local_addr().unwrap());
+            listener.set_nonblocking(true).unwrap();
+            let (state, stop) = (Arc::new(State::default()), Arc::new(AtomicBool::new(false)));
+            let (s, st) = (state.clone(), stop.clone());
+            let worker = thread::spawn(move || {
+                while !st.load(Ordering::Relaxed) {
+                    let socket = match listener.accept() {
+                        Ok((socket, _)) => socket,
+                        Err(_) => {
+                            thread::sleep(std::time::Duration::from_millis(1));
+                            continue;
+                        }
+                    };
+                    socket.set_nonblocking(false).unwrap();
+                    let mut reader = BufReader::new(socket.try_clone().unwrap());
+                    let (mut line, mut length) = (String::new(), 0);
+                    reader.read_line(&mut line).unwrap();
+                    loop {
+                        line.clear();
+                        reader.read_line(&mut line).unwrap();
+                        if line == "\r\n" {
+                            break;
+                        }
+                        if let Some((k, v)) = line.split_once(':') {
+                            if k.eq_ignore_ascii_case("content-length") {
+                                length = v.trim().parse().unwrap();
+                            }
+                        }
+                    }
+                    let mut body = vec![0; length];
+                    reader.read_exact(&mut body).unwrap();
+                    let request: Value = serde_json::from_slice(&body).unwrap();
+                    s.requests.lock().unwrap().push(request.clone());
+                    let reply = |status: &str, body: Vec<u8>| {
+                        let mut socket = &socket;
+                        let _ = write!(socket, "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len());
+                        let _ = socket.write_all(&body);
+                    };
+                    if s.busy.load(Ordering::Relaxed) > 0 {
+                        s.busy.fetch_sub(1, Ordering::Relaxed);
+                        let text = if s.cost.load(Ordering::Relaxed) {
+                            r#"{"error":"ANON_COST_LIMITED"}"#
+                        } else {
+                            r#"{"error":"busy"}"#
+                        };
+                        reply("429 Too Many Requests", text.as_bytes().to_vec());
+                        continue;
+                    }
+                    let params = &request["params"];
+                    let result = match request["method"].as_str().unwrap() {
+                        "eth_chainId" => json!("0x7598bf"),
+                        "eth_blockNumber" => json!("0x64"),
+                        "eth_getBlockByNumber" => {
+                            let blocks = s.blocks.fetch_add(1, Ordering::Relaxed) + 1;
+                            let hash = if s.reorg.load(Ordering::Relaxed) && blocks > 1 {
+                                "22"
+                            } else {
+                                "11"
+                            };
+                            json!({"number": params[0], "hash": format!("0x{}", hash.repeat(32))})
+                        }
+                        "arkiv_query" => {
+                            let text = params[0].as_str().unwrap();
+                            let options = &params[1];
+                            if options.get("atBlock").is_some()
+                                && s.head_only.load(Ordering::Relaxed)
+                                && options["atBlock"] != "0x64"
+                            {
+                                reply("200 OK", serde_json::to_vec(&json!({"jsonrpc":"2.0","id":request["id"],"error":{"code":-32006,"message":"state for this block is not retained"}})).unwrap());
+                                continue;
+                            }
+                            let mut rows: Vec<Value> = entities
+                                .iter()
+                                .filter(|e| {
+                                    if text.contains("$key = key(") {
+                                        text.contains(&format!("key({})", crate::hx(e.key)))
+                                    } else {
+                                        let bound = |marker: &str| {
+                                            text.contains(marker)
+                                                .then(|| text.rsplit(marker).next())
+                                                .flatten()
+                                                .and_then(|r| r.split(')').next())
+                                                .and_then(|n| n.parse::<u64>().ok())
+                                        };
+                                        let m = match e.get("matchid") {
+                                            Some(Val::U64(m)) => *m,
+                                            _ => 0,
+                                        };
+                                        e.schema() == Some("sourcify.v4.contract")
+                                            && bound("matchid >= u64(").is_none_or(|l| m >= l)
+                                            && bound("matchid <= u64(").is_none_or(|u| m <= u)
+                                    }
+                                })
+                                .map(|e| render(e, &options["select"]))
+                                .collect();
+                            if s.foreign.load(Ordering::Relaxed) && !text.contains("$key") {
+                                let mut other = rows[0].clone();
+                                other["owner"] = json!(format!("0x{}", "99".repeat(20)));
+                                other["creator"] = other["owner"].clone();
+                                rows.push(other);
+                            }
+                            json!({"blockNumber": options.get("atBlock").cloned().unwrap_or(json!("0x64")), "data": rows})
+                        }
+                        m => panic!("unexpected {m}"),
+                    };
+                    reply(
+                        "200 OK",
+                        serde_json::to_vec(
+                            &json!({"jsonrpc":"2.0","id":request["id"],"result":result}),
+                        )
+                        .unwrap(),
+                    );
+                }
+            });
+            (
+                Self {
+                    url,
+                    state,
+                    stop,
+                    worker: Some(worker),
+                },
+                crate::canonical(&record),
+            )
+        }
+        fn config(&self, view: View) -> UdcReadConfig {
+            UdcReadConfig {
+                rpc_url: self.url.clone(),
+                api_key: None,
+                owner: OWNER,
+                arkiv_chain_id: 7706815,
+                prefix: "sourcify.v4".into(),
+                view,
+                fields: None,
+                timeout: Duration::from_secs(5),
+                deadline: Duration::from_secs(20),
+                max_rpc_requests: 100,
+                max_rpc_response_bytes: 8 << 20,
+            }
+        }
+        fn queries(&self) -> Vec<Value> {
+            self.state
+                .requests
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|r| r["method"] == "arkiv_query")
+                .cloned()
+                .collect()
+        }
+    }
+
+    #[test]
+    fn a_pinned_read_pins_every_query_and_rechecks_the_block() {
+        let (mock, record) = Mock::new();
+        let result = read_contract(mock.config(View::Pinned(Some(90))), ADDRESS).unwrap();
+        assert_eq!(result.contract, record);
+        assert_eq!(result.view, "pinned");
+        let queries = mock.queries();
+        assert!(!queries.is_empty() && queries.iter().all(|q| q["params"][1]["atBlock"] == "0x5a"));
+        assert!(queries
+            .iter()
+            .all(|q| q["params"][0].as_str().unwrap().matches("$key").count() <= KEY_BATCH));
+        mock.state.blocks.store(0, Ordering::Relaxed);
+        mock.state.reorg.store(true, Ordering::Relaxed);
+        let error = read_contract(mock.config(View::Pinned(Some(90))), ADDRESS).unwrap_err();
+        assert!(error.to_string().contains("changed"), "{error}");
+    }
+
+    #[test]
+    fn auto_pins_on_a_node_with_history_and_reads_the_head_otherwise() {
+        let (mock, record) = Mock::new();
+        assert_eq!(
+            read_contract(mock.config(View::Auto), ADDRESS)
+                .unwrap()
+                .view,
+            "pinned"
+        );
+        mock.state.requests.lock().unwrap().clear();
+        mock.state.head_only.store(true, Ordering::Relaxed);
+        let result = read_contract(mock.config(View::Auto), ADDRESS).unwrap();
+        assert_eq!((result.view, &result.contract), ("head", &record));
+        // The probe asked well behind the head; the reads sent no atBlock.
+        let queries = mock.queries();
+        assert_eq!(
+            queries[0]["params"][1]["atBlock"],
+            format!("0x{:x}", 100 - HISTORY_PROBE_DEPTH)
+        );
+        assert!(queries[1..]
+            .iter()
+            .all(|q| q["params"][1].get("atBlock").is_none()));
+    }
+
+    #[test]
+    fn busy_answers_are_asked_again_but_a_cost_limit_is_not() {
+        let (mock, record) = Mock::new();
+        mock.state.busy.store(3, Ordering::Relaxed);
+        assert_eq!(
+            read_contract(mock.config(View::Head), ADDRESS)
+                .unwrap()
+                .contract,
+            record
+        );
+        mock.state.requests.lock().unwrap().clear();
+        mock.state.cost.store(true, Ordering::Relaxed);
+        mock.state.busy.store(100, Ordering::Relaxed);
+        let error = read_contract(mock.config(View::Head), ADDRESS).unwrap_err();
+        assert!(error.to_string().contains("cost limit"), "{error}");
+        assert_eq!(mock.state.requests.lock().unwrap().len(), 1);
+        // A busy node that never recovers fails after six attempts.
+        mock.state.cost.store(false, Ordering::Relaxed);
+        mock.state.requests.lock().unwrap().clear();
+        assert!(read_contract(mock.config(View::Head), ADDRESS).is_err());
+        assert_eq!(
+            mock.state.requests.lock().unwrap().len(),
+            BUSY_ATTEMPTS as usize
+        );
+        mock.state.busy.store(0, Ordering::Relaxed);
+        let mut small = mock.config(View::Head);
+        small.max_rpc_response_bytes = 300;
+        assert!(read_contract(small, ADDRESS)
+            .unwrap_err()
+            .to_string()
+            .contains("response limit"));
+    }
+
+    #[test]
+    fn the_page_walk_stays_in_the_dataset() {
+        let (mock, _) = Mock::new();
+        let request = || PageRequest {
+            filter: Some("match = str('x') OR matchid >= u64(0)".into()),
+            descending: false,
+            cursor: None,
+            size: 5,
+            limit: 10,
+            width: 1 << 16,
+        };
+        let page = page_contracts(mock.config(View::Pinned(Some(90))), request()).unwrap();
+        assert_eq!(page.rows.len(), 1);
+        let text = mock.queries().last().unwrap()["params"][0]
+            .as_str()
+            .unwrap()
+            .to_string();
+        assert!(
+            text.contains("AND (match = str('x') OR matchid >= u64(0))"),
+            "{text}"
+        );
+        mock.state.foreign.store(true, Ordering::Relaxed);
+        let error = page_contracts(mock.config(View::Pinned(Some(90))), request()).unwrap_err();
+        assert!(error.to_string().contains("outside the dataset"), "{error}");
+    }
 }

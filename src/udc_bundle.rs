@@ -15,6 +15,8 @@
 use crate::udc::{entity_key, Profile, UdcEntity, Val, Writer, CHUNK, PERMANENT};
 use crate::{hx, sha, Entity};
 use anyhow::{bail, ensure, Context, Result};
+#[cfg(test)]
+use base64::Engine as _;
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 use std::{
@@ -250,6 +252,10 @@ pub struct Manifest {
     pub entities: u64,
     pub contracts: u64,
     pub kinds: BTreeMap<String, u64>,
+    /// report.json's totals: distinct (sources, codes, compilations), bytes values, storage units.
+    pub distinct: (u64, u64, u64),
+    pub bytes_values: u64,
+    pub storage_units: u64,
 }
 #[derive(Clone, Debug)]
 pub struct Part {
@@ -335,6 +341,8 @@ pub fn manifest(dir: &Path, sums: &HashMap<String, String>) -> Result<Manifest> 
         "report.json describes another chain, owner or prefix than seed.json"
     );
     let first_nonce = seed["firstNonce"].as_u64().context("seed firstNonce")?;
+    // A bundle's keys are those of its owner's first creates on a fresh chain.
+    ensure!(first_nonce == 0, "seed.json firstNonce must be 0");
     let listed = seed["entities"].as_array().context("seed entities")?;
     let audits = report["parts"].as_array().context("report parts")?;
     ensure!(
@@ -382,6 +390,23 @@ pub fn manifest(dir: &Path, sums: &HashMap<String, String>) -> Result<Manifest> 
         entities,
         contracts: report["contracts"].as_u64().context("report contracts")?,
         kinds,
+        distinct: (
+            report["distinct"]["sources"]
+                .as_u64()
+                .context("report distinct")?,
+            report["distinct"]["codes"]
+                .as_u64()
+                .context("report distinct")?,
+            report["distinct"]["compilations"]
+                .as_u64()
+                .context("report distinct")?,
+        ),
+        bytes_values: report["bytesValues"]
+            .as_u64()
+            .context("report bytesValues")?,
+        storage_units: report["storageUnits"]
+            .as_u64()
+            .context("report storageUnits")?,
     })
 }
 
@@ -450,20 +475,39 @@ pub struct Checked {
 }
 const KIND_IDS: [&str; 5] = crate::udc::KINDS;
 /// The structural check of `verify`: every line in nonce order with its salt-0 key, permanent,
-/// within the node's rules and the format's schema; every key it names an earlier line of the
-/// right kind; chunk lists as long as their chunks; one contract per address and one entity per
-/// content hash; counts as reported. Values are not decompressed (`hydrate` checks content).
+/// within the node's rules and the format's schema, every bytes value with a known codec; every
+/// key it names an earlier line of the right kind, a contract's compilation and code with the
+/// hashes it names; chunk lists as long as their chunks; one contract per address and per
+/// `matchid`, one entity per content hash; counts and totals as reported. Values are not
+/// decompressed (`hydrate` checks content).
 pub fn check(dir: &Path, m: &Manifest) -> Result<Checked> {
     // key -> (kind, chunk data length)
     let mut seen: HashMap<[u8; 32], (u8, u32)> = HashMap::new();
+    // compilation and code key -> content hash
+    let mut content: HashMap<[u8; 32], [u8; 32]> = HashMap::new();
     let mut hashes: HashSet<(u8, [u8; 32])> = HashSet::new();
     let mut addresses: HashSet<[u8; 20]> = HashSet::new();
+    let mut matchids: HashSet<u64> = HashSet::new();
+    let (mut bytes_values, mut storage_units) = (0u64, 0u64);
     let mut out = Checked::default();
     lines(dir, m, |_, _, line, nonce| {
         let e = parse(m, line, nonce)?;
         ensure!(e.expires_at == PERMANENT, "entity is not permanent");
         let kind = e.check_schema(&m.prefix)?;
         let id = KIND_IDS.iter().position(|k| *k == kind).unwrap() as u8;
+        for a in &e.attributes {
+            if let Val::Bytes(b) = &a.value {
+                ensure!(!b.is_empty(), "empty bytes value {}", a.name);
+                ensure!(
+                    kind == "chunk" || b[0] <= 2,
+                    "bytes value {} has unknown codec {}",
+                    a.name,
+                    b[0]
+                );
+            }
+        }
+        bytes_values += e.bytes_len() as u64;
+        storage_units += e.user_units() + SYSTEM_UNITS;
         for (key, target) in e.references()? {
             let (found, _) = seen
                 .get(&key)
@@ -475,6 +519,31 @@ pub fn check(dir: &Path, m: &Manifest) -> Result<Checked> {
                 KIND_IDS[*found as usize]
             );
             out.references += 1;
+        }
+        if kind == "contract" {
+            for (attr, hash_attr) in [
+                ("compilationref", "compilationhash"),
+                ("creationcoderef", "creationcodehash"),
+                ("runtimecoderef", "runtimecodehash"),
+            ] {
+                if let Some(Val::Key(k)) = e.get(attr) {
+                    let named = match e.get(hash_attr) {
+                        Some(Val::Bytes32(h)) => *h,
+                        _ => bail!("contract has {attr} without {hash_attr}"),
+                    };
+                    ensure!(
+                        content.get(k) == Some(&named),
+                        "contract's {attr} names an entity without its {hash_attr}"
+                    );
+                }
+            }
+            let Some(Val::U64(matchid)) = e.get("matchid") else {
+                bail!("contract without matchid")
+            };
+            ensure!(
+                matchids.insert(*matchid),
+                "two contracts with matchid {matchid}"
+            );
         }
         for a in &e.attributes {
             if let Val::Bytes(b) = &a.value {
@@ -501,6 +570,9 @@ pub fn check(dir: &Path, m: &Manifest) -> Result<Checked> {
                 "two {kind} entities with hash {}",
                 hx(h)
             );
+            if kind == "compilation" || kind == "code" {
+                content.insert(e.key, *h);
+            }
         }
         if kind == "contract" {
             let Some(Val::Addr(a)) = e.get("address") else {
@@ -524,6 +596,13 @@ pub fn check(dir: &Path, m: &Manifest) -> Result<Checked> {
     ensure!(
         out.entities == m.entities && out.kinds == m.kinds && out.contracts == m.contracts,
         "entity, kind or contract counts differ from report.json"
+    );
+    let kind = |k: &str| out.kinds.get(k).copied().unwrap_or(0);
+    ensure!(
+        m.distinct == (kind("source"), kind("code"), kind("compilation"))
+            && m.bytes_values == bytes_values
+            && m.storage_units == storage_units,
+        "distinct counts, bytes values or storage units differ from report.json"
     );
     Ok(out)
 }
@@ -617,4 +696,232 @@ pub fn seed_version(dir: &Path) -> Result<u64> {
         serde_json::from_slice(&fs::read(dir.join("seed.json")).context("seed.json")?)
             .context("invalid seed.json")?;
     seed["version"].as_u64().context("seed.json has no version")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::transform;
+    use serde_json::json;
+
+    const OWNER: [u8; 20] = [0x11; 20];
+    fn record(i: u64) -> Value {
+        json!({"chainId":"1","address":format!("0x{:040x}", i),"matchId":i.to_string(),"verifiedAt":"2020-01-01T00:00:00Z",
+            "abi":[],"compilation":{"language":"Solidity","compiler":"solc","compilerVersion":"1","compilerSettings":{"optimizer":{"enabled":true,"runs":200}},"fullyQualifiedName":"A.sol:A","name":"A"},
+            "sources":{"A.sol":{"content":format!("contract A{} {{}}", i % 2)}},
+            "creationBytecode":{"onchainBytecode":"0x6001","recompiledBytecode":"0x6001"},
+            "runtimeBytecode":{"onchainBytecode":"0x6000","recompiledBytecode":"0x6000"},
+            "deployment":{"deployer":"0x2222222222222222222222222222222222222222","blockNumber":"7"}})
+    }
+    fn bundle(name: &str, records: u64) -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("udc-bundle-test-{}-{name}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let profile = Profile {
+            prefix: "sourcify.v4".into(),
+            chain_id: 7706815,
+            owner: OWNER,
+        };
+        let mut w = BundleWriter::new(&dir, profile, 4).unwrap();
+        for i in 1..=records {
+            w.record(&transform(&record(i)).unwrap()).unwrap();
+        }
+        w.finish(records, Map::new()).unwrap();
+        dir
+    }
+    fn checked(dir: &Path) -> Result<Checked> {
+        let sums = read_sums(dir)?;
+        check(dir, &manifest(dir, &sums)?)
+    }
+    /// Rewrites a bundle's lines (as JSON values) and re-signs it: parts, report.json, seed.json
+    /// and SHA256SUMS agree again, so only the structural check can object.
+    fn rewrite(dir: &Path, edit: impl Fn(&mut Vec<Value>), report_edit: impl Fn(&mut Value)) {
+        let mut seed: Value =
+            serde_json::from_slice(&fs::read(dir.join("seed.json")).unwrap()).unwrap();
+        let mut report: Value =
+            serde_json::from_slice(&fs::read(dir.join("report.json")).unwrap()).unwrap();
+        let mut lines: Vec<Value> = vec![];
+        for p in seed["entities"].as_array().unwrap() {
+            let text = fs::read_to_string(dir.join(p["path"].as_str().unwrap())).unwrap();
+            lines.extend(
+                text.lines()
+                    .map(|l| serde_json::from_str::<Value>(l).unwrap()),
+            );
+            fs::remove_file(dir.join(p["path"].as_str().unwrap())).unwrap();
+        }
+        edit(&mut lines);
+        let mut body = Vec::new();
+        for l in &lines {
+            body.extend(serde_json::to_vec(l).unwrap());
+            body.push(b'\n');
+        }
+        fs::write(dir.join("entities/000001.jsonl"), &body).unwrap();
+        seed["entities"] = json!([{"path": "entities/000001.jsonl"}]);
+        report["parts"] = json!([{"path": "entities/000001.jsonl", "bytes": body.len(), "sha256": hex::encode(sha(&body)), "entities": lines.len(), "firstNonce": 0}]);
+        report["entities"] = json!(lines.len());
+        report_edit(&mut report);
+        fs::write(dir.join("seed.json"), serde_json::to_vec(&seed).unwrap()).unwrap();
+        fs::write(
+            dir.join("report.json"),
+            serde_json::to_vec(&report).unwrap(),
+        )
+        .unwrap();
+        let mut sums = format!("{}  entities/000001.jsonl\n", hex::encode(sha(&body)));
+        for f in ["report.json", "seed.json"] {
+            sums.push_str(&format!(
+                "{}  {f}\n",
+                hex::encode(sha(fs::read(dir.join(f)).unwrap()))
+            ));
+        }
+        fs::write(dir.join("SHA256SUMS"), sums).unwrap();
+    }
+    fn attr<'a>(line: &'a mut Value, name: &str) -> &'a mut Value {
+        line["attributes"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|a| a["name"] == name)
+            .unwrap()
+    }
+    fn kind(line: &Value) -> String {
+        line["attributes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|a| a["name"] == "arkiv.schema")
+            .unwrap()["value"]
+            .as_str()
+            .unwrap()
+            .rsplit('.')
+            .next()
+            .unwrap()
+            .into()
+    }
+
+    #[test]
+    fn a_written_bundle_checks_and_reads_back() {
+        let dir = bundle("ok", 3);
+        let c = checked(&dir).unwrap();
+        assert_eq!(c.contracts, 3);
+        assert!(c.references > 0);
+        let b = UdcBundle::open(&dir).unwrap();
+        assert_eq!(b.contracts().len(), 3);
+        let contract = b
+            .find_contract(
+                &hex::decode(format!("{:040x}", 2))
+                    .unwrap()
+                    .try_into()
+                    .unwrap(),
+            )
+            .unwrap()
+            .unwrap();
+        let mut fetch = |k: &[u8; 32]| b.entity(k);
+        let record = crate::udc::Reader::new("sourcify.v4", Some(OWNER), &mut fetch)
+            .hydrate(&contract, None)
+            .unwrap();
+        assert_eq!(record, crate::canonical(&record_value(2)));
+        // An unchanged rewrite still checks (the helper itself is sound).
+        rewrite(&dir, |_| {}, |_| {});
+        checked(&dir).unwrap();
+        fs::remove_dir_all(dir).unwrap();
+    }
+    fn record_value(i: u64) -> Value {
+        record(i)
+    }
+
+    #[test]
+    fn the_writer_refuses_a_second_record_for_an_address() {
+        let dir = std::env::temp_dir().join(format!("udc-bundle-test-{}-dup", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let profile = Profile {
+            prefix: "sourcify.v4".into(),
+            chain_id: 7706815,
+            owner: OWNER,
+        };
+        let mut w = BundleWriter::new(&dir, profile, 4).unwrap();
+        w.record(&transform(&record(1)).unwrap()).unwrap();
+        let mut again = record(1);
+        again["matchId"] = json!("9");
+        assert!(w
+            .record(&transform(&again).unwrap())
+            .unwrap_err()
+            .to_string()
+            .contains("second record"));
+        drop(w);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn tampered_bundles_fail_the_check() {
+        type Edit = Box<dyn Fn(&mut Vec<Value>)>;
+        let cases: Vec<(&str, Edit, &str)> = vec![
+            (
+                "forward reference",
+                Box::new(|l: &mut Vec<Value>| {
+                    // Move the first contract before its dependencies, renumbering nonces and keys.
+                    let i = l.iter().position(|x| kind(x) == "contract").unwrap();
+                    let c = l.remove(i);
+                    l.insert(0, c);
+                }),
+                "nonce",
+            ),
+            (
+                "not permanent",
+                Box::new(|l: &mut Vec<Value>| l[0]["expiresAt"] = json!("0x10")),
+                "permanent",
+            ),
+            (
+                "wrong kind",
+                Box::new(|l: &mut Vec<Value>| {
+                    let source = l.iter().find(|x| kind(x) == "source").unwrap()["key"].clone();
+                    let c = l.iter_mut().find(|x| kind(x) == "contract").unwrap();
+                    attr(c, "compilationref")["value"] = source;
+                }),
+                "as a compilation",
+            ),
+            (
+                "unknown codec",
+                Box::new(|l: &mut Vec<Value>| {
+                    let s = l.iter_mut().find(|x| kind(x) == "source").unwrap();
+                    attr(s, "content")["value"] =
+                        json!(base64::engine::general_purpose::STANDARD.encode([3u8, 1, 2]));
+                }),
+                "codec",
+            ),
+            (
+                "compilationhash",
+                Box::new(|l: &mut Vec<Value>| {
+                    let c = l.iter_mut().find(|x| kind(x) == "contract").unwrap();
+                    attr(c, "compilationhash")["value"] = json!(format!("0x{}", "ab".repeat(32)));
+                }),
+                "compilationhash",
+            ),
+            (
+                "chunked sourcerefs",
+                Box::new(|l: &mut Vec<Value>| {
+                    let c = l.iter_mut().find(|x| kind(x) == "compilation").unwrap();
+                    let mut list = vec![2u8];
+                    list.extend_from_slice(&[0; 36]);
+                    list.extend_from_slice(&[7; 32]);
+                    attr(c, "sourcerefs")["value"] =
+                        json!(base64::engine::general_purpose::STANDARD.encode(list));
+                }),
+                "sourcerefs",
+            ),
+        ];
+        for (name, edit, message) in cases {
+            let dir = bundle(&name.replace(' ', "-"), 2);
+            rewrite(&dir, edit, |_| {});
+            let error = format!("{:#}", checked(&dir).unwrap_err());
+            assert!(error.contains(message), "{name}: {error}");
+            fs::remove_dir_all(dir).unwrap();
+        }
+        let dir = bundle("totals", 2);
+        rewrite(&dir, |_| {}, |r| r["storageUnits"] = json!(1));
+        assert!(checked(&dir)
+            .unwrap_err()
+            .to_string()
+            .contains("storage units"));
+        fs::remove_dir_all(dir).unwrap();
+    }
 }

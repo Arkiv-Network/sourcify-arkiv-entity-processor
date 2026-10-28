@@ -326,9 +326,12 @@ pub struct PageArgs {
     /// First window width in matchid units (pass the previous page's `width`)
     #[arg(long, default_value_t = arkiv_entity_processor::udc_page::WIDTH)]
     pub width: u64,
-    /// Read the head only (Jalebi); default pins the head block on a node that keeps history
+    /// Read the head only (Jalebi); default pins one block on a node that keeps history
     #[arg(long)]
     pub head: bool,
+    /// The block to pin (default: the head when the walk starts); one block for every page
+    #[arg(long, conflicts_with = "head")]
+    pub block: Option<u64>,
     /// Walk every page and print them all
     #[arg(long)]
     pub all: bool,
@@ -336,7 +339,13 @@ pub struct PageArgs {
 
 pub fn page(a: &PageArgs) -> Result<()> {
     use arkiv_entity_processor::udc_rpc::{page_contracts, PageRequest, UdcReadConfig, View};
-    let config = || -> Result<UdcReadConfig> {
+    // One view for the whole walk: the first page decides the block, later pages reuse it.
+    let mut view = match (a.head, a.block) {
+        (true, _) => View::Head,
+        (false, Some(block)) => View::Pinned(Some(block)),
+        (false, None) => View::Auto,
+    };
+    let config = |view: View| -> Result<UdcReadConfig> {
         Ok(UdcReadConfig {
             rpc_url: a.rpc_url.clone(),
             api_key: std::env::var("ARKIV_RPC_API_KEY")
@@ -345,7 +354,7 @@ pub fn page(a: &PageArgs) -> Result<()> {
             owner: address(&a.owner)?,
             arkiv_chain_id: a.arkiv_chain_id,
             prefix: a.schema_prefix.clone(),
-            view: if a.head { View::Head } else { View::Auto },
+            view,
             fields: None,
             timeout: std::time::Duration::from_secs(30),
             deadline: std::time::Duration::from_secs(120),
@@ -356,7 +365,7 @@ pub fn page(a: &PageArgs) -> Result<()> {
     let (mut cursor, mut width, mut pages) = (a.cursor, a.width, vec![]);
     loop {
         let page = page_contracts(
-            config()?,
+            config(view)?,
             PageRequest {
                 filter: a.filter.clone(),
                 descending: a.descending,
@@ -374,6 +383,9 @@ pub fn page(a: &PageArgs) -> Result<()> {
         }));
         if !a.all || !full {
             break;
+        }
+        if page.view == "pinned" {
+            view = View::Pinned(Some(page.blocks.0));
         }
         (cursor, width) = (page.next, page.width);
     }

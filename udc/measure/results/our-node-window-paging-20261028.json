@@ -1,5 +1,6 @@
 {
- "note": "udc-page (src/udc_rpc.rs page_contracts over src/udc_page.rs) on our node, 2026-10-28, over the sync's test contracts (prefix sourcify-udc-proposal.v4, owner 0x3ffcb8c66ba2a35df36d73b213399220fd59f42f) after the re-verification patch of 0x36f3\u2026d723 (matchid 468227 -> 60000001, block 74,632). nodeOrder is arkiv_query's own order (record ID = creation order) at block 74830; every walk returns matchid order whatever that order.",
+ "note": "udc-page (src/udc_rpc.rs page_contracts over src/udc_page.rs, after the review fixes) on our node, 2026-10-28, over the sync's test contracts (prefix sourcify-udc-proposal.v4, owner 0x3ffcb8c66ba2a35df36d73b213399220fd59f42f) after the re-verification patch of 0x36f3\u2026d723 (matchid 468227 -> 60000001, block 74,632), every walk pinned to block 82833. nodeOrder is arkiv_query's own order (record ID = creation order); every walk returns matchid order whatever that order.",
+ "block": 82833,
  "nodeOrder": [
   {
    "matchid": 607,
@@ -118,12 +119,12 @@
     }
    ],
    "next": 235,
-   "width": 400,
+   "width": 470,
    "queries": 2,
    "view": "pinned",
    "blocks": [
-    74830,
-    74830
+    82833,
+    82833
    ]
   },
   {
@@ -145,12 +146,12 @@
     }
    ],
    "next": 673,
-   "width": 38,
-   "queries": 3,
+   "width": 444,
+   "queries": 1,
    "view": "pinned",
    "blocks": [
-    74830,
-    74830
+    82833,
+    82833
    ]
   },
   {
@@ -172,12 +173,12 @@
     }
    ],
    "next": 911,
-   "width": 608,
-   "queries": 2,
+   "width": 70,
+   "queries": 1,
    "view": "pinned",
    "blocks": [
-    74830,
-    74830
+    82833,
+    82833
    ]
   },
   {
@@ -199,12 +200,12 @@
     }
    ],
    "next": 5888028,
-   "width": 39845888,
-   "queries": 6,
+   "width": 11774078,
+   "queries": 8,
    "view": "pinned",
    "blocks": [
-    74830,
-    74830
+    82833,
+    82833
    ]
   },
   {
@@ -226,12 +227,12 @@
     }
    ],
    "next": 28759260,
-   "width": 39845888,
-   "queries": 1,
+   "width": 9891908,
+   "queries": 2,
    "view": "pinned",
    "blocks": [
-    74830,
-    74830
+    82833,
+    82833
    ]
   },
   {
@@ -243,12 +244,12 @@
     }
    ],
    "next": null,
-   "width": 167125767421952,
+   "width": 41489669292032,
    "queries": 6,
    "view": "pinned",
    "blocks": [
-    74830,
-    74830
+    82833,
+    82833
    ]
   }
  ],
@@ -341,8 +342,8 @@
    "queries": 8,
    "view": "pinned",
    "blocks": [
-    74830,
-    74830
+    82833,
+    82833
    ]
   }
  ],
@@ -376,12 +377,12 @@
     }
    ],
    "next": 5888028,
-   "width": 1099511627776,
+   "width": 108223948,
    "queries": 7,
    "view": "pinned",
    "blocks": [
-    74830,
-    74830
+    82833,
+    82833
    ]
   },
   {
@@ -413,12 +414,12 @@
     }
    ],
    "next": 877,
-   "width": 1099511627776,
+   "width": 41370,
    "queries": 1,
    "view": "pinned",
    "blocks": [
-    74830,
-    74830
+    82833,
+    82833
    ]
   },
   {
@@ -450,12 +451,12 @@
     }
    ],
    "next": 32,
-   "width": 1099511627776,
+   "width": 1284,
    "queries": 1,
    "view": "pinned",
    "blocks": [
-    74830,
-    74830
+    82833,
+    82833
    ]
   },
   {
@@ -467,12 +468,12 @@
     }
    ],
    "next": null,
-   "width": 4398046511104,
+   "width": 5136,
    "queries": 1,
    "view": "pinned",
    "blocks": [
-    74830,
-    74830
+    82833,
+    82833
    ]
   }
  ],
@@ -506,12 +507,12 @@
     }
    ],
    "next": 607,
-   "width": 65536,
+   "width": 1214,
    "queries": 1,
    "view": "pinned",
    "blocks": [
-    74830,
-    74830
+    82833,
+    82833
    ]
   },
   {
@@ -543,12 +544,12 @@
     }
    ],
    "next": 990,
-   "width": 65536,
+   "width": 636,
    "queries": 1,
    "view": "pinned",
    "blocks": [
-    74830,
-    74830
+    82833,
+    82833
    ]
   },
   {
@@ -565,12 +566,12 @@
     }
    ],
    "next": null,
-   "width": 17592186044416,
-   "queries": 8,
+   "width": 43705587204096,
+   "queries": 10,
    "view": "pinned",
    "blocks": [
-    74830,
-    74830
+    82833,
+    82833
    ]
   }
  ]
