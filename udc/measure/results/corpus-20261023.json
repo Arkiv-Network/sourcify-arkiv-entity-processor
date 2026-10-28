@@ -1,0 +1,792 @@
+{
+ "attrnames": {
+  "blob.contentencoding": 196824,
+  "blob.hash": 196824,
+  "blob.kind": 196824,
+  "blob.originalcontenttype": 196824,
+  "blob.part": 196824,
+  "blob.parts": 196824,
+  "blob.payloadsha256": 196824,
+  "blob.projectid": 196824,
+  "blob.size": 196824,
+  "blob.stagingid": 196824,
+  "blob.uploadschema": 196824,
+  "code.contentencoding": 5214983,
+  "code.hash": 5214983,
+  "code.kind": 5214983,
+  "code.originalcontenttype": 5214983,
+  "code.payloadsha256": 5214983,
+  "code.projectid": 5214983,
+  "code.size": 5214983,
+  "code.stagingid": 5214983,
+  "code.uploadschema": 5214983,
+  "compilation.compiler": 878407,
+  "compilation.compilerversion": 878407,
+  "compilation.contentencoding": 878407,
+  "compilation.evmversion": 878407,
+  "compilation.hash": 878407,
+  "compilation.kind": 878407,
+  "compilation.language": 878407,
+  "compilation.name": 878407,
+  "compilation.optimizer": 878407,
+  "compilation.optimizerruns": 878407,
+  "compilation.originalcontenttype": 878407,
+  "compilation.payloadsha256": 878407,
+  "compilation.projectid": 878407,
+  "compilation.stagingid": 878407,
+  "compilation.uploadschema": 878407,
+  "compilation.viair": 878407,
+  "sourcefile.contentencoding": 1135778,
+  "sourcefile.hash": 1135778,
+  "sourcefile.kind": 1135778,
+  "sourcefile.originalcontenttype": 1135778,
+  "sourcefile.payloadsha256": 1135778,
+  "sourcefile.projectid": 1135778,
+  "sourcefile.size": 1135778,
+  "sourcefile.stagingid": 1135778,
+  "sourcefile.uploadschema": 1135778,
+  "verified_contract.abihash": 7901941,
+  "verified_contract.address": 7901941,
+  "verified_contract.blocknumber": 7901941,
+  "verified_contract.chainid": 7901941,
+  "verified_contract.compilationref": 7901941,
+  "verified_contract.compiler": 7901941,
+  "verified_contract.compilerversion": 7901941,
+  "verified_contract.contentencoding": 7901941,
+  "verified_contract.creationcodehash": 7741722,
+  "verified_contract.deployer": 7901941,
+  "verified_contract.evmversion": 7901941,
+  "verified_contract.kind": 7901941,
+  "verified_contract.language": 7901941,
+  "verified_contract.match": 7901941,
+  "verified_contract.matchid": 7901941,
+  "verified_contract.name": 7901941,
+  "verified_contract.optimizer": 7901941,
+  "verified_contract.originalcontenttype": 7901941,
+  "verified_contract.payloadsha256": 7901941,
+  "verified_contract.projectid": 7901941,
+  "verified_contract.runtimecodehash": 7901941,
+  "verified_contract.stagingid": 7901941,
+  "verified_contract.uploadschema": 7901941,
+  "verified_contract.verifiedat": 7901941,
+  "verified_contract.viair": 7901941
+ },
+ "code": {
+  "code_entities": 5214983,
+  "code_entities_not_onchain_ref": 1255202,
+  "code_raw_bytes": 33318920143,
+  "creation": {
+   "distinct": 2973236,
+   "distinct_shared_by_2plus": 68179,
+   "missing_size": 0,
+   "raw_bytes_distinct": 13715858562,
+   "raw_bytes_if_inline": 22537283093,
+   "refs": 7741722,
+   "refs_to_shared": 4836665,
+   "top_counts": [
+    1586243,
+    1174898,
+    263203,
+    244744,
+    230958
+   ]
+  },
+  "creation_and_runtime_same_hash": 0,
+  "distinct_onchain_hashes": 3959781,
+  "runtime": {
+   "distinct": 986545,
+   "distinct_shared_by_2plus": 54767,
+   "missing_size": 0,
+   "raw_bytes_distinct": 8249783643,
+   "raw_bytes_if_inline": 20076452503,
+   "refs": 7901941,
+   "refs_to_shared": 6970163,
+   "top_counts": [
+    1595579,
+    1548170,
+    1174919,
+    481579,
+    409283
+   ]
+  }
+ },
+ "cp": {
+  "code.noncanonical": 1756784,
+  "code.noprefix_lower": 1756784,
+  "decoded": 54976209159,
+  "max_sources": 390,
+  "max_src_refs": 390,
+  "n": 878392,
+  "over_budget": 255,
+  "ref.code": 3513568,
+  "ref.local": 5593714,
+  "ref.sourcefile": 5836160,
+  "refs": 14943442,
+  "refs_deflate": 624629997,
+  "sources_paths": 5195180,
+  "spilled_reassembled": 74862,
+  "src_refs": 5836160,
+  "sum_field_deflate": 13588336928,
+  "whole_deflate": 11915435041
+ },
+ "cpdigest": {
+  "abi": {
+   "distinct": 377751,
+   "dup_values": 500641,
+   "top": [
+    49288,
+    11974,
+    10668,
+    7416,
+    6590
+   ],
+   "values": 878392
+  },
+  "metadata": {
+   "distinct": 875734,
+   "dup_values": 2658,
+   "top": [
+    2504,
+    3,
+    3,
+    3,
+    2
+   ],
+   "values": 878392
+  },
+  "sources": {
+   "distinct": 530906,
+   "dup_values": 347486,
+   "top": [
+    12037,
+    5232,
+    3869,
+    2740,
+    2613
+   ],
+   "values": 878392
+  },
+  "stdJsonInput": {
+   "distinct": 2075,
+   "dup_values": 876317,
+   "top": [
+    476643,
+    111236,
+    80020,
+    58739,
+    37405
+   ],
+   "values": 878392
+  },
+  "stdJsonOutput": {
+   "distinct": 877644,
+   "dup_values": 748,
+   "top": [
+    179,
+    72,
+    50,
+    29,
+    27
+   ],
+   "values": 878392
+  }
+ },
+ "cpfield": {
+  "abi": {
+   "deflate": 566754313,
+   "json": 5011829902,
+   "max_deflate": 13605,
+   "n": 878392,
+   "null": 27
+  },
+  "additionalInput": {
+   "deflate": 5270352,
+   "json": 3513568,
+   "max_deflate": 6,
+   "n": 878392,
+   "null": 878392
+  },
+  "compilation": {
+   "deflate": 177112020,
+   "json": 297224599,
+   "max_deflate": 2557,
+   "n": 878392
+  },
+  "creationBytecode": {
+   "deflate": 968684913,
+   "json": 2498214479,
+   "max_deflate": 107167,
+   "n": 878392
+  },
+  "devdoc": {
+   "deflate": 436401202,
+   "json": 1281449013,
+   "max_deflate": 26178,
+   "n": 878392,
+   "null": 1574
+  },
+  "metadata": {
+   "deflate": 1892140875,
+   "json": 8271384018,
+   "max_deflate": 61299,
+   "n": 878392,
+   "null": 2504
+  },
+  "runtimeBytecode": {
+   "deflate": 4735533824,
+   "json": 14962657729,
+   "max_deflate": 96268,
+   "n": 878392
+  },
+  "signatures": {
+   "deflate": 1451639177,
+   "json": 3964764462,
+   "max_deflate": 28334,
+   "n": 878392
+  },
+  "sourceIds": {
+   "deflate": 93022252,
+   "json": 300869599,
+   "max_deflate": 3438,
+   "n": 878392,
+   "null": 393
+  },
+  "sources": {
+   "deflate": 77331879,
+   "json": 270568113,
+   "max_deflate": 2596,
+   "n": 878392
+  },
+  "stdJsonInput": {
+   "deflate": 43679629,
+   "json": 45608651,
+   "max_deflate": 107,
+   "n": 878392
+  },
+  "stdJsonOutput": {
+   "deflate": 2621127175,
+   "json": 12949582817,
+   "max_deflate": 271018,
+   "n": 878392
+  },
+  "storageLayout": {
+   "deflate": 388627801,
+   "json": 2183406022,
+   "max_deflate": 4229,
+   "n": 878392,
+   "null": 103241
+  },
+  "transientStorageLayout": {
+   "deflate": 6521679,
+   "json": 5025760,
+   "max_deflate": 503,
+   "n": 878392,
+   "null": 829007
+  },
+  "userdoc": {
+   "deflate": 124489837,
+   "json": 293948950,
+   "max_deflate": 60771,
+   "n": 878392,
+   "null": 1574
+  }
+ },
+ "cpfieldhist": {
+  "abi": {
+   "10": 427239,
+   "11": 109754,
+   "12": 6926,
+   "13": 57,
+   "14": 1,
+   "3": 3390,
+   "6": 427,
+   "7": 7513,
+   "8": 89618,
+   "9": 233467
+  },
+  "additionalInput": {
+   "3": 878392
+  },
+  "compilation": {
+   "10": 10300,
+   "11": 513,
+   "12": 17,
+   "7": 180,
+   "8": 810727,
+   "9": 56655
+  },
+  "creationBytecode": {
+   "10": 158576,
+   "11": 294521,
+   "12": 110118,
+   "13": 9201,
+   "14": 186,
+   "15": 49,
+   "16": 38,
+   "17": 10,
+   "6": 1195,
+   "7": 3924,
+   "8": 122406,
+   "9": 178168
+  },
+  "devdoc": {
+   "10": 165656,
+   "11": 127108,
+   "12": 21523,
+   "13": 4000,
+   "14": 214,
+   "15": 16,
+   "3": 1798,
+   "5": 75686,
+   "6": 297712,
+   "7": 63033,
+   "8": 32451,
+   "9": 89195
+  },
+  "metadata": {
+   "10": 255912,
+   "11": 325437,
+   "12": 185558,
+   "13": 77091,
+   "14": 21492,
+   "15": 1480,
+   "16": 21,
+   "3": 2504,
+   "9": 8897
+  },
+  "runtimeBytecode": {
+   "10": 79433,
+   "11": 113632,
+   "12": 165711,
+   "13": 277326,
+   "14": 189754,
+   "15": 14181,
+   "16": 85,
+   "17": 13,
+   "7": 481,
+   "8": 4984,
+   "9": 32792
+  },
+  "signatures": {
+   "10": 174071,
+   "11": 356609,
+   "12": 184595,
+   "13": 40013,
+   "14": 1941,
+   "15": 17,
+   "6": 7674,
+   "7": 62,
+   "8": 72620,
+   "9": 40790
+  },
+  "sourceIds": {
+   "10": 21018,
+   "11": 2175,
+   "12": 38,
+   "3": 393,
+   "5": 416576,
+   "6": 157242,
+   "7": 45406,
+   "8": 153035,
+   "9": 82509
+  },
+  "sources": {
+   "10": 11148,
+   "11": 974,
+   "12": 7,
+   "4": 8445,
+   "5": 511775,
+   "6": 59991,
+   "7": 100269,
+   "8": 121633,
+   "9": 64150
+  },
+  "stdJsonInput": {
+   "5": 476887,
+   "6": 1070,
+   "7": 400435
+  },
+  "stdJsonOutput": {
+   "10": 128294,
+   "11": 423953,
+   "12": 192623,
+   "13": 80679,
+   "14": 32827,
+   "15": 12940,
+   "16": 4645,
+   "17": 692,
+   "18": 31,
+   "19": 2,
+   "8": 1513,
+   "9": 193
+  },
+  "storageLayout": {
+   "10": 375899,
+   "11": 22660,
+   "12": 405,
+   "13": 46,
+   "3": 103241,
+   "5": 109144,
+   "6": 12,
+   "7": 66,
+   "8": 41858,
+   "9": 225061
+  },
+  "transientStorageLayout": {
+   "3": 829007,
+   "5": 48776,
+   "8": 394,
+   "9": 215
+  },
+  "userdoc": {
+   "10": 39817,
+   "11": 16730,
+   "12": 3969,
+   "13": 478,
+   "14": 15,
+   "16": 1,
+   "3": 1975,
+   "5": 107930,
+   "6": 575366,
+   "7": 26024,
+   "8": 46169,
+   "9": 59918
+  }
+ },
+ "cphist": {
+  "10": 169,
+  "11": 3075,
+  "12": 29780,
+  "13": 193942,
+  "14": 354745,
+  "15": 241912,
+  "16": 49333,
+  "17": 5304,
+  "18": 129,
+  "19": 3
+ },
+ "cpsources": {
+  "1": 567691,
+  "2": 18860,
+  "3": 111594,
+  "4": 80384,
+  "5": 68939,
+  "6": 25467,
+  "7": 4865,
+  "8": 584,
+  "9": 8
+ },
+ "hist": {
+  "blob.decoded": {
+   "1": 1,
+   "10": 213,
+   "11": 407,
+   "12": 818,
+   "13": 1575,
+   "14": 3076,
+   "15": 19620,
+   "16": 34416,
+   "17": 136480,
+   "3": 2,
+   "4": 1,
+   "5": 9,
+   "6": 14,
+   "7": 26,
+   "8": 58,
+   "9": 108
+  },
+  "blob.wire": {
+   "1": 1,
+   "10": 817,
+   "11": 1870,
+   "12": 7978,
+   "13": 22422,
+   "14": 46132,
+   "15": 115273,
+   "16": 1685,
+   "17": 10,
+   "3": 2,
+   "4": 1,
+   "5": 9,
+   "6": 14,
+   "7": 26,
+   "8": 135,
+   "9": 449
+  },
+  "code.decoded": {
+   "1": 1,
+   "10": 120218,
+   "11": 1867103,
+   "12": 563033,
+   "13": 1137793,
+   "14": 1024960,
+   "15": 427116,
+   "16": 3155,
+   "17": 60,
+   "2": 1,
+   "3": 9,
+   "4": 3,
+   "5": 18,
+   "6": 1167,
+   "7": 8675,
+   "8": 19193,
+   "9": 42478
+  },
+  "code.wire": {
+   "1": 1,
+   "10": 1907022,
+   "11": 816476,
+   "12": 1207594,
+   "13": 996605,
+   "14": 182512,
+   "15": 1293,
+   "16": 19,
+   "17": 10,
+   "2": 1,
+   "3": 9,
+   "4": 3,
+   "5": 18,
+   "6": 1167,
+   "7": 8687,
+   "8": 24319,
+   "9": 69247
+  },
+  "compilation.decoded": {
+   "12": 710,
+   "13": 12248,
+   "14": 86715,
+   "15": 137213,
+   "16": 360232,
+   "17": 206412,
+   "7": 74877
+  },
+  "compilation.wire": {
+   "10": 92,
+   "11": 9255,
+   "12": 77993,
+   "13": 189284,
+   "14": 337212,
+   "15": 188077,
+   "16": 1617,
+   "7": 74877
+  },
+  "sourcefile.decoded": {
+   "10": 69928,
+   "11": 103591,
+   "12": 143319,
+   "13": 170898,
+   "14": 280444,
+   "15": 181487,
+   "16": 98597,
+   "17": 20023,
+   "6": 2,
+   "7": 5323,
+   "8": 9009,
+   "9": 53157
+  },
+  "sourcefile.wire": {
+   "10": 176333,
+   "11": 218892,
+   "12": 324890,
+   "13": 151318,
+   "14": 81452,
+   "15": 7470,
+   "16": 35,
+   "6": 2,
+   "7": 5326,
+   "8": 28955,
+   "9": 141105
+  },
+  "verified_contract.decoded": {
+   "13": 7881784,
+   "14": 19177,
+   "15": 672,
+   "16": 263,
+   "17": 36,
+   "7": 9
+  },
+  "verified_contract.wire": {
+   "10": 5660550,
+   "11": 2239345,
+   "12": 1602,
+   "13": 254,
+   "14": 159,
+   "15": 20,
+   "16": 2,
+   "7": 9
+  }
+ },
+ "kinds": {
+  "blob": {
+   "attrbytes": 72348232,
+   "attrs": 2165064,
+   "decoded": 15475518092,
+   "gzip": 196770,
+   "identity": 54,
+   "n": 196824,
+   "wire": 3357440772
+  },
+  "code": {
+   "attrbytes": 1852366162,
+   "attrs": 46934847,
+   "decoded": 33318791465,
+   "gzip": 5192473,
+   "identity": 22510,
+   "n": 5214983,
+   "wire": 14010666414
+  },
+  "compilation": {
+   "attrbytes": 423015673,
+   "attrs": 14054512,
+   "decoded": 40558362785,
+   "gzip": 803532,
+   "identity": 74875,
+   "n": 878407,
+   "wire": 9491792952
+  },
+  "sourcefile": {
+   "attrbytes": 401336963,
+   "attrs": 10222002,
+   "decoded": 15441017046,
+   "gzip": 1130138,
+   "identity": 5640,
+   "n": 1135778,
+   "wire": 3365854514
+  },
+  "verified_contract": {
+   "attrbytes": 7049798143,
+   "attrs": 197388306,
+   "decoded": 40045885879,
+   "gzip": 7901932,
+   "identity": 9,
+   "n": 7901941,
+   "wire": 7862651265
+  }
+ },
+ "parts": 1533,
+ "pending_spill_cp": 15,
+ "spill_summary": {
+  "complete": 80081,
+  "decoded": 15475518092,
+  "fits_in_one_entity_if_whole_gzip": {
+   "100000": 78892,
+   "120000": 79512,
+   "131072": 79663,
+   "chunks120k": 80677
+  },
+  "logical_payloads": 80081,
+  "max_decoded": 2308069,
+  "max_wire": 439533,
+  "parts": 196824,
+  "wire_gzip": 3357440772,
+  "wire_hist": {
+   "11": 15,
+   "12": 3,
+   "13": 28,
+   "14": 214,
+   "15": 26464,
+   "16": 46747,
+   "17": 6192,
+   "18": 404,
+   "19": 14
+  }
+ },
+ "spillhist": {
+  "code:17": 1,
+  "compilation:17": 11704,
+  "compilation:18": 53103,
+  "compilation:19": 9290,
+  "compilation:20": 755,
+  "compilation:21": 24,
+  "compilation:22": 1,
+  "sourcefile:17": 657,
+  "sourcefile:18": 3896,
+  "sourcefile:19": 419,
+  "sourcefile:20": 213,
+  "sourcefile:21": 9,
+  "verified_contract:17": 1,
+  "verified_contract:18": 8
+ },
+ "spills": {
+  "code": {
+   "bytes": 128791,
+   "n": 1,
+   "parts": 2
+  },
+  "compilation": {
+   "bytes": 14428948999,
+   "n": 74877,
+   "parts": 183712
+  },
+  "sourcefile": {
+   "bytes": 1045008500,
+   "n": 5194,
+   "parts": 13091
+  },
+  "verified_contract": {
+   "bytes": 1431802,
+   "n": 9,
+   "parts": 19
+  }
+ },
+ "src": {
+  "content": 15653800692,
+  "deflate": 3455284535,
+  "json_wrapper": 831624507,
+  "n": 1135778,
+  "spill_missing": 1,
+  "spilled_reassembled": 5193
+ },
+ "srchist": {
+  "0": 1,
+  "10": 69315,
+  "11": 103652,
+  "12": 142863,
+  "13": 173020,
+  "14": 281388,
+  "15": 174763,
+  "16": 94995,
+  "17": 18144,
+  "18": 3480,
+  "19": 393,
+  "20": 191,
+  "21": 5,
+  "4": 2,
+  "5": 13,
+  "6": 89,
+  "7": 1136,
+  "8": 17218,
+  "9": 55110
+ },
+ "vc": {
+  "data": 8782592905,
+  "data_deflate": 3743054717,
+  "n": 7901932,
+  "ref.code": 15643645,
+  "ref.compilation": 173842504,
+  "spilled": 9
+ },
+ "vchist": {
+  "10": 2107780,
+  "11": 9628,
+  "12": 558,
+  "13": 206,
+  "14": 149,
+  "15": 16,
+  "16": 2,
+  "8": 1447,
+  "9": 5782146
+ },
+ "vckeys": {
+  "address": 7901932,
+  "chainId": 7901932,
+  "creationBytecode": 7901932,
+  "creationMatch": 7901932,
+  "deployment": 7901932,
+  "match": 7901932,
+  "matchId": 7901932,
+  "runtimeBytecode": 7901932,
+  "runtimeMatch": 7901932,
+  "verifiedAt": 7901932
+ }
+}
