@@ -1,5 +1,5 @@
 """Hot-read sizes: digests-only attribute against the manifest, and references into abi/compilation.
-Usage: python3 -I hotread.py ENTITIES_DIR (every 25th part file)"""
+Usage: python3 -I hotread.py ENTITIES_DIR [EVERY] (default every 25th part file)"""
 import base64, gzip, json, os, sys, zlib, hashlib
 from collections import Counter
 from multiprocessing import Pool
@@ -30,7 +30,8 @@ def scan(path):
     return dict(r)
 if __name__ == "__main__":
     src = sys.argv[1]
-    parts = sorted(os.path.join(src, p) for p in os.listdir(src) if p.endswith(".jsonl"))[::25]
+    every = int(sys.argv[2]) if len(sys.argv) > 2 else 25
+    parts = sorted(os.path.join(src, p) for p in os.listdir(src) if p.endswith(".jsonl"))[::every]
     t = Counter()
     with Pool(8) as pool:
         for x in pool.imap_unordered(scan, parts): t.update(x)

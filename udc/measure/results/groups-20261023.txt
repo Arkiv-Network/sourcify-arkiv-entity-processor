@@ -1,0 +1,8 @@
+ "hot_only": 743866333
+}
+whole                           11915.4 MB   +0.0% vs whole
+field                           13739.0 MB  +15.3% vs whole
+hot+rest                        12497.1 MB   +4.9% vs whole
+abi,comp,big,rest               12841.2 MB   +7.8% vs whole
+abi,comp,lanes,stdout,rest      12700.2 MB   +6.6% vs whole
+hot fields only: 847 bytes avg per compilation

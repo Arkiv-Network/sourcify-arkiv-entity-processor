@@ -159,10 +159,11 @@ Every `bytes` attribute except a chunk's `data` is one *codec byte* followed by 
   `zlib`, browsers' `DecompressionStream("deflate-raw")`), it has no 18-byte gzip frame per value, and integrity
   comes from SHA-256 digests anyway. zstd with a trained dictionary would compress small JSON better but has no
   browser decoder; it can be added later as codec `03` ([open questions](#open-questions)).
-- **Why compress per attribute.** Selectable attributes are the point of UDC. Measured on 36,837 compilations
-  (every 25th part file): one compressed document per compilation is the smallest; one attribute per field costs
-  **+15.3%**; `abi` + `compilation` separate from the rest costs **+4.9%**; v4's three groups cost about the same
-  (corpus total 12.52 GB for `abi`, `compilation` and `artifacts` against 11.92 GB for whole documents, +5.1%).
+- **Why compress per attribute.** Selectable attributes are the point of UDC. Measured over all 878,392
+  compilations (`udc/measure/results/groups-20261023.txt`): one compressed document per compilation is the
+  smallest (11.92 GB); one attribute per field costs **+15.3%** (13.74 GB); `abi` + `compilation` together and the
+  rest in one attribute **+4.9%** (12.50 GB); v4's three groups `abi`, `compilation`, `artifacts` **+5.1%**
+  (12.52 GB).
 - **Budget.** The `bytes` values of one entity total at most **120,000 bytes**. The node allows 131,072, but a
   131,072-byte create is a 131,768-byte signed transaction, over a reth pool's 131,072. 120,000 bytes plus 24
   attributes is a 125,112-byte transaction (measured). It is also the v3 writer's limit.
@@ -364,7 +365,7 @@ Because steps 2 to 5 are v3's own insertion order, the output equals v3 hydratio
 SafeProxy example's output is byte-identical to `docs/data/hydrated-contract.json` (23,188 bytes, 2-space
 pretty JSON). Unit tests compare v4 against v3 hydration, as serialized bytes, on the processor's tricky
 fixtures (escaped pointer keys `~` and `/`, sources referenced from arrays, null ABI, non-canonical hex spellings,
-literal `$ref`/`$spill` keys, arbitrary-precision numbers, values large enough to chunk) and on 40,000 generated
+literal `$ref`/`$spill` keys, arbitrary-precision numbers, values large enough to chunk) and on 100,000 generated
 records built to collide sources, code, ABI and other fields, all through one shared writer. `udc-check` does the
 same on real contracts of a v3 bundle ([evidence](#prototype-and-evidence)).
 
@@ -625,8 +626,8 @@ sourcify.dev for Ethereum mainnet that the processor's `prepare` and its sync re
   `compilerSettings`, already read. No grant changes.
 - **Sync behaviour v4 relies on, unchanged:**
   - `sourcify_matches.id` is sourcify.dev's `matchId`, inserted in list order, and `created_at` is `verifiedAt`.
-    The Arkiv sync writes contracts in `matchId` order, which keeps creation order equal to `matchid` order (the
-    paging rule).
+    The Arkiv sync writes contracts in `matchId` order, so every block's `matchid`s lie above the earlier blocks'
+    (what the paging rule needs).
   - Matches from 10^12 on are the node's own and stay excluded.
   - A seed is the database at one `matchId`: the daily run stops the mirror's sync during `prepare`.
 - **Known edges, not new with v4:**
@@ -674,7 +675,19 @@ Measurement outputs are in `udc/measure/results/`: `corpus-20261023.json` (`corp
 sizes, spills, code sharing, per-field compilation sizes and duplicates), `v4size-20261023.json` (`v4size.py`),
 `our-node-sizes-20261028.jsonl` and `our-node-paging-20261028.jsonl` (`limits.ts`) and
 `jalebi-probes-20261028.jsonl` (every Jalebi request, with its `Arkiv-Cost` and `RateLimit` headers). The grouping
-comparison is `groups.py BUNDLE/entities 25`, the hot-read sizes `hotread.py BUNDLE/entities`.
+comparison is `groups.py BUNDLE/entities 1` (`groups-20261023.txt`), the hot-read sizes `hotread.py BUNDLE/entities 1`.
+
+### Real contracts
+
+`udc-check` rebuilds contracts of a v3 bundle with the v3 reader, transforms each record again, writes it as v4
+entities through one shared writer (so later contracts reuse earlier sources, code and compilations) and compares
+the v4 reader's output with v3 hydration as serialized bytes. On the first 150 part files of the 2026-10-23 seed
+(1,500,000 entities, 428,992 contracts, match IDs 1 to 2,251,189), every 10th contract: **42,900 contracts,
+170,731 v4 entities, no difference** (`udc/measure/results/udc-check-prefix150-every10-20261028.json`). A run over
+the whole seed was stopped: indexing all 64 GB of parts single-threaded took longer than half an hour. For the
+rest of the corpus the size scan covers the risky paths: no contract-local reference outside the two on-chain code
+paths, every compilation code reference on a lane's recompiled bytecode, no reference into `abi` or `compilation`. On top of that, 100,000 generated
+records (`differential_against_v3`) and the SafeProxy fixture rebuild byte for byte.
 
 ### Independent review
 
@@ -692,15 +705,17 @@ four cases where v4 differed from v3 and gaps in the checks; all are fixed on th
 
 They were latent for the 2026-10-23 corpus: it has no contract-local reference outside the two on-chain code
 paths, every compilation code reference names a lane's recompiled bytecode (the full-corpus size scan assumes it),
-and a sample of 36,837 compilations has no reference into `abi` or `compilation`.
+and none of its 878,392 compilations has a reference into `abi` or `compilation`.
 
 ### Reproduce
 
 ```sh
 cargo build --release --locked
 udc/examples.sh                                        # both byte-for-byte checks
-target/release/arkiv-entity-processor udc-check BUNDLE --every 1000   # v4 against v3 on real contracts
-UDC_FUZZ_N=40000 cargo test --release --locked --lib udc::tests::differential_against_v3
+target/release/arkiv-entity-processor udc-check BUNDLE --every 10     # v4 against v3 on real contracts
+# (a prefix of a bundle is a bundle once seed.json, report.json and SHA256SUMS list only those parts:
+#  dependencies always precede the contracts that need them)
+UDC_FUZZ_N=100000 cargo test --release --locked --lib udc::tests::differential_against_v3
 cargo test --release --locked --lib udc                # v4 against v3 hydration on tricky records
 python3 -I udc/measure/v4size.py BUNDLE/entities OUT.json 12   # corpus size (about 12 minutes on 12 cores)
 cd udc/prototype && bun install --frozen-lockfile
@@ -722,8 +737,8 @@ Decisions for a human:
    derives its served signatures from the ABI anyway. Keeping them preserves input fidelity; dropping them is a
    lossy change to the processor's contract.
 4. **A smaller hot read.** `manifest` (902 bytes on average) is read on the `abi,compilation` path only for its
-   digests: in a sample of 36,837 compilations no reference points into `abi` or `compilation`. A separate
-   `digests` attribute (178 bytes on average) would cut the hot read from about 1.75 KB to 1.02 KB.
+   digests: in the whole corpus (878,392 compilations) no reference points into `abi` or `compilation`. A separate
+   `digests` attribute (178 bytes on average) would cut the hot read from about 1.75 KB to 1.03 KB.
 5. **zstd with a dictionary** (codec `03`) for small JSON values, if clients without a browser decoder are
    acceptable.
 6. **Jalebi pricing and permanence.** What a permanent entity costs on Jalebi, who pays for a 15-million entity
