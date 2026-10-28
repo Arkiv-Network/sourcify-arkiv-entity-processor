@@ -1,7 +1,7 @@
 {
   "rpc": "alt-node-fast.arkiv-global.net",
   "pinned": true,
-  "head": 67732,
+  "head": 68943,
   "fields": "all",
   "queries": [
     {
@@ -16,14 +16,14 @@
         "attributes": true
       },
       "limit": 2,
-      "block": 67732,
+      "block": 68943,
       "rows": 1,
       "cursor": null,
       "ms": 1
     },
     {
       "what": "compilation+code",
-      "query": "$key = key(0x257697de0ae84d65c1642d937d94b083c9434e1f8074ef0b12d56c2034c6ddb5) OR $key = key(0xb5c75b5f789e1109994161a01097cf8a7024c364fa94300cb8dbbf2be060c500) OR $key = key(0xc48784b9ef1d0f520c61d2dc26a77130ba56c01884090c05cdcf262542f6366d)",
+      "query": "$key = key(0xa690810b261deffd5ffd5503a361cc03999031ef8ae9cf5665f599c7c386bec5) OR $key = key(0x7b30ba0fee0009c24d113e9d2a409564b161d44a4433b8e36c72045bb9cabccb) OR $key = key(0x0240735ed5044dc9fc9f24f964e24e7e035bc324ba61ea87e6e6e09989a172f4)",
       "select": {
         "key": true,
         "owner": true,
@@ -33,14 +33,14 @@
         "attributes": true
       },
       "limit": 3,
-      "block": 67732,
+      "block": 68943,
       "rows": 3,
       "cursor": null,
       "ms": 1
     },
     {
       "what": "source+code+chunk",
-      "query": "$key = key(0x29d09765c78c926440c23162039e99930924eb08fba8e598b9bb61c7ba6ff1f3) OR $key = key(0x7452c8a62df34f980f6ff8aafaa42a8d75704b786b5a33f54437b775ef4ceb24)",
+      "query": "$key = key(0x5d02a08cf86de086e98b3c9b614e598f22fda17de28d2f5ddc0958a1a09705e1) OR $key = key(0x610ba12e7a4c8a2dc8418d8ae6157e85f48fc3c9ff799f17e83934eb3c8ad568)",
       "select": {
         "key": true,
         "owner": true,
@@ -50,10 +50,10 @@
         "attributes": true
       },
       "limit": 2,
-      "block": 67732,
+      "block": 68943,
       "rows": 2,
       "cursor": null,
-      "ms": 1
+      "ms": 0
     }
   ]
 }

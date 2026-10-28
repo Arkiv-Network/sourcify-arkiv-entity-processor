@@ -120,6 +120,9 @@ enum Command {
     /// Prototype: rebuild a contract from UDC entities
     #[command(long_about = udc_cli::HYDRATE_ABOUT)]
     UdcHydrate(udc_cli::HydrateArgs),
+    /// Prototype: check the UDC layout against v3 hydration on a bundle sample
+    #[command(long_about = udc_cli::CHECK_ABOUT)]
+    UdcCheck(udc_cli::CheckArgs),
 }
 
 #[derive(Args, Debug)]
@@ -801,6 +804,7 @@ fn main() -> Result<()> {
         Command::Upload(a) => upload::upload(&a),
         Command::UdcExample(a) => udc_cli::example(&a),
         Command::UdcHydrate(a) => udc_cli::hydrate(&a),
+        Command::UdcCheck(a) => udc_cli::check(&a),
     }
 }
 /// `process`: the offline importer. Writes the bundle and publishes seed.json last.

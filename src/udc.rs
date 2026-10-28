@@ -15,7 +15,7 @@
 //! - `chunk`: one slice of a value too large for its entity.
 //!
 //! Every `bytes` value except a chunk's `data` starts with a codec byte: 0 identity, 1 raw
-//! DEFLATE (RFC 1951), 2 chunk manifest. Digests cover uncompressed bytes, so compression and
+//! DEFLATE (RFC 1951), 2 chunk list. Digests cover uncompressed bytes, so compression and
 //! chunking never change identities.
 //!
 //! The decomposition is the v3 processor's (`split.rs`): this module re-lays out its logical
@@ -29,13 +29,15 @@ use serde_json::{json, Map, Value};
 use sha3::{Digest, Keccak256};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io::{Read, Write};
+use std::rc::Rc;
 
 /// Bytes values one entity may carry together. Below the node's 128 KiB so that a create also
-/// fits a reth transaction (Jalebi's pool refuses transactions over 128 KiB) with its ABI framing.
+/// fits a reth transaction (a reth pool refuses transactions over 128 KiB by default) with its
+/// ABI framing.
 pub const BUDGET: usize = 120_000;
 /// Bytes in one chunk.
 pub const CHUNK: usize = 120_000;
-/// Bound on one decoded value.
+/// Bound on one value, decoded or encoded, on write and on read.
 pub const MAX_VALUE: usize = 64 << 20;
 /// `expiresAt` of a permanent entity.
 pub const PERMANENT: u64 = u64::MAX;
@@ -77,6 +79,7 @@ const ONCHAIN: [(&str, &str, &str); 2] = [
     ("creationBytecode", "creationcoderef", "creationcodehash"),
     ("runtimeBytecode", "runtimecoderef", "runtimecodehash"),
 ];
+const SLOTS: [&str; 2] = ["creation", "runtime"];
 
 /// A typed attribute value. JSON follows the node's RPC encoding.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -173,6 +176,28 @@ fn quantity(s: &str) -> Result<u64> {
     );
     Ok(u64::from_str_radix(digits, 16)?)
 }
+/// An indexed `str` projection: control characters (which the node refuses in a `str`) become
+/// U+FFFD, and more than 128 bytes become a 125-byte prefix and an ellipsis, as in v3.
+pub fn index_str(s: &str) -> String {
+    let clean: String = s
+        .chars()
+        .map(|c| {
+            if c <= '\u{1f}' || c == '\u{7f}' {
+                '\u{fffd}'
+            } else {
+                c
+            }
+        })
+        .collect();
+    if clean.len() <= 128 {
+        return clean;
+    }
+    let mut n = 125;
+    while !clean.is_char_boundary(n) {
+        n -= 1;
+    }
+    format!("{}…", &clean[..n])
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Attr {
@@ -212,25 +237,31 @@ impl UdcEntity {
             .find(|a| a.name == name)
             .map(|a| &a.value)
     }
-    fn bytes(&self, name: &str) -> Result<Option<&[u8]>> {
+    /// An attribute that may be absent; an unselected one is an error, never an absence.
+    fn attr(&self, name: &str) -> Result<Option<&Val>> {
         match self.get(name) {
             None if self.unselected.iter().any(|n| n == name) => {
                 bail!("attribute {name} of {} was not selected", hx(self.key))
             }
+            found => Ok(found),
+        }
+    }
+    fn bytes(&self, name: &str) -> Result<Option<&[u8]>> {
+        match self.attr(name)? {
             None => Ok(None),
             Some(Val::Bytes(b)) => Ok(Some(b)),
             Some(v) => bail!("attribute {name} is {}, expected bytes", v.tag()),
         }
     }
     fn key_attr(&self, name: &str) -> Result<Option<[u8; 32]>> {
-        match self.get(name) {
+        match self.attr(name)? {
             None => Ok(None),
             Some(Val::Key(k)) => Ok(Some(*k)),
             Some(v) => bail!("attribute {name} is {}, expected key", v.tag()),
         }
     }
     fn bytes32_attr(&self, name: &str) -> Result<Option<[u8; 32]>> {
-        match self.get(name) {
+        match self.attr(name)? {
             None => Ok(None),
             Some(Val::Bytes32(k)) => Ok(Some(*k)),
             Some(v) => bail!("attribute {name} is {}, expected bytes32", v.tag()),
@@ -311,23 +342,22 @@ impl UdcEntity {
     }
     /// Reads `to_json` output, or an `arkiv_query` result entity (`attributeSchema` + `attributes`).
     pub fn from_json(v: &Value) -> Result<Self> {
-        let flags: HashMap<&str, bool> = match v.get("attributeSchema") {
-            Some(schema) => schema
-                .as_array()
-                .context("attributeSchema")?
-                .iter()
-                .map(|s| {
-                    Ok((
-                        s["name"].as_str().context("schema name")?,
-                        s["indexed"].as_bool().context("schema indexed")?,
-                    ))
-                })
-                .collect::<Result<_>>()?,
-            None => HashMap::new(),
-        };
+        let mut flags: HashMap<&str, bool> = HashMap::new();
+        if let Some(schema) = v.get("attributeSchema") {
+            for s in schema.as_array().context("attributeSchema")? {
+                let name = s["name"].as_str().context("schema name")?;
+                let flag = s["indexed"].as_bool().context("schema indexed")?;
+                ensure!(
+                    flags.insert(name, flag).is_none(),
+                    "duplicate attribute {name}"
+                );
+            }
+        }
         let mut attributes = vec![];
+        let mut names = HashSet::new();
         for a in v["attributes"].as_array().context("attributes")? {
             let name = a["name"].as_str().context("attribute name")?;
+            ensure!(names.insert(name), "duplicate attribute {name}");
             let tag = a["type"].as_str().context("attribute type")?;
             let indexed = match a.get("indexed") {
                 Some(flag) => flag.as_bool().context("indexed")?,
@@ -342,7 +372,7 @@ impl UdcEntity {
         attributes.sort_by(|a, b| a.name.as_bytes().cmp(b.name.as_bytes()));
         let mut unselected: Vec<String> = flags
             .keys()
-            .filter(|n| !attributes.iter().any(|a| a.name == **n))
+            .filter(|n| !names.contains(*n))
             .map(|n| n.to_string())
             .collect();
         unselected.sort();
@@ -378,25 +408,33 @@ fn keccak(data: &[u8]) -> [u8; 32] {
     Keccak256::digest(data).into()
 }
 
-/// A bytes value: raw DEFLATE when that is smaller, else identity.
-pub fn encode(raw: &[u8]) -> Vec<u8> {
+/// A bytes value: raw DEFLATE when that is smaller, else identity. At most `MAX_VALUE` bytes.
+pub fn encode(raw: &[u8]) -> Result<Vec<u8>> {
+    ensure!(
+        raw.len() <= MAX_VALUE,
+        "value of {} bytes exceeds the {MAX_VALUE}-byte limit",
+        raw.len()
+    );
     let mut z = DeflateEncoder::new(vec![DEFLATE], Compression::best());
-    z.write_all(raw).expect("in-memory deflate");
-    let deflated = z.finish().expect("in-memory deflate");
+    z.write_all(raw)?;
+    let deflated = z.finish()?;
     if deflated.len() < raw.len() + 1 {
-        deflated
+        Ok(deflated)
     } else {
         let mut v = Vec::with_capacity(raw.len() + 1);
         v.push(IDENTITY);
         v.extend_from_slice(raw);
-        v
+        Ok(v)
     }
 }
-/// Decodes an identity or DEFLATE value; chunk manifests are resolved by the reader first.
+/// Decodes an identity or DEFLATE value; chunk lists are resolved by the reader first.
 pub fn decode(value: &[u8]) -> Result<Vec<u8>> {
     let (&codec, body) = value.split_first().context("empty bytes value")?;
     match codec {
-        IDENTITY => Ok(body.to_vec()),
+        IDENTITY => {
+            ensure!(body.len() <= MAX_VALUE, "value exceeds limit");
+            Ok(body.to_vec())
+        }
         DEFLATE => {
             let mut out = Vec::new();
             DeflateDecoder::new(body)
@@ -409,27 +447,28 @@ pub fn decode(value: &[u8]) -> Result<Vec<u8>> {
         _ => bail!("unknown codec {codec}"),
     }
 }
-/// A chunk manifest: `02 ‖ sha256(joined) ‖ u32 length ‖ keys`.
 /// Digest and length of the joined value, and the chunk keys in order.
 type ChunkList = ([u8; 32], usize, Vec<[u8; 32]>);
+/// A chunk list: `02 ‖ sha256(joined) ‖ u32 length ‖ keys`, bounded before anything is fetched.
 fn chunk_manifest(value: &[u8]) -> Result<Option<ChunkList>> {
     if value.first() != Some(&CHUNKED) {
         return Ok(None);
     }
     ensure!(
         value.len() >= 37 && (value.len() - 37).is_multiple_of(32),
-        "malformed chunk manifest"
+        "malformed chunk list"
     );
     let digest: [u8; 32] = value[1..33].try_into()?;
     let len = u32::from_be_bytes(value[33..37].try_into()?) as usize;
+    ensure!(
+        len > 0 && len <= MAX_VALUE + 1,
+        "chunk list length out of range"
+    );
     let keys: Vec<[u8; 32]> = value[37..]
         .chunks(32)
         .map(|k| k.try_into().unwrap())
         .collect();
-    ensure!(
-        !keys.is_empty() && keys.len() == len.div_ceil(CHUNK),
-        "chunk count mismatch"
-    );
+    ensure!(keys.len() == len.div_ceil(CHUNK), "chunk count mismatch");
     Ok(Some((digest, len, keys)))
 }
 
@@ -447,13 +486,15 @@ impl Profile {
 }
 
 /// Builds entities in creation order and deduplicates shared content across contracts.
-/// Keys are those the node assigns to creates with salt 0, starting at `next_nonce`.
+/// Keys are those the node assigns to creates with salt 0, starting at `next_nonce`. A contract
+/// is written all or nothing: on an error the writer is left as it was before it.
 pub struct Writer {
     pub profile: Profile,
     pub next_nonce: u64,
     sources: HashMap<[u8; 32], [u8; 32]>,
     codes: HashMap<[u8; 32], [u8; 32]>,
     compilations: HashMap<[u8; 32], [u8; 32]>,
+    journal: Vec<(u8, [u8; 32])>,
     out: Vec<UdcEntity>,
 }
 impl Writer {
@@ -464,6 +505,7 @@ impl Writer {
             sources: HashMap::new(),
             codes: HashMap::new(),
             compilations: HashMap::new(),
+            journal: vec![],
             out: vec![],
         }
     }
@@ -476,7 +518,6 @@ impl Writer {
             self.next_nonce,
             0,
         );
-        self.next_nonce += 1;
         let entity = UdcEntity {
             key,
             owner: self.profile.owner,
@@ -485,11 +526,12 @@ impl Writer {
             unselected: vec![],
         };
         entity.validate()?;
+        self.next_nonce += 1;
         self.out.push(entity);
         Ok(key)
     }
     /// Encoded bytes fields as attributes. While the entity is over budget, the largest
-    /// chunkable value moves into chunk entities (created first) and keeps a chunk manifest.
+    /// chunkable value moves into chunk entities (created first) and keeps a chunk list.
     fn place(&mut self, fields: Vec<(&str, Vec<u8>)>, pinned: &[&str]) -> Result<Vec<Attr>> {
         let mut fields: Vec<(&str, Vec<u8>, bool)> =
             fields.into_iter().map(|(n, v)| (n, v, false)).collect();
@@ -501,7 +543,8 @@ impl Writer {
             let pick = fields
                 .iter()
                 .enumerate()
-                .filter(|(_, f)| !f.2)
+                // A chunk list costs 37 bytes plus a key per chunk: only larger values move.
+                .filter(|(_, f)| !f.2 && f.1.len() > 37 + 32)
                 .max_by_key(|(_, f)| (!pinned.contains(&f.0), f.1.len()))
                 .map(|(i, _)| i)
                 .context("entity cannot fit its budget")?;
@@ -526,10 +569,11 @@ impl Writer {
         if let Some(key) = self.sources.get(&hash) {
             return Ok(*key);
         }
-        let mut attrs = self.place(vec![("content", encode(content.as_bytes()))], &[])?;
+        let mut attrs = self.place(vec![("content", encode(content.as_bytes())?)], &[])?;
         attrs.push(indexed("hash", Val::Bytes32(hash)));
         let key = self.create("source", attrs)?;
         self.sources.insert(hash, key);
+        self.journal.push((0, hash));
         Ok(key)
     }
     fn code(&mut self, bytecode: &[u8]) -> Result<[u8; 32]> {
@@ -537,17 +581,36 @@ impl Writer {
         if let Some(key) = self.codes.get(&hash) {
             return Ok(*key);
         }
-        let mut attrs = self.place(vec![("code", encode(bytecode))], &[])?;
+        let mut attrs = self.place(vec![("code", encode(bytecode)?)], &[])?;
         attrs.push(indexed("hash", Val::Bytes32(hash)));
         let key = self.create("code", attrs)?;
         self.codes.insert(hash, key);
+        self.journal.push((1, hash));
         Ok(key)
     }
     /// Re-lays out the v3 entities of one contract (`crate::transform` output, dependencies
     /// first, the verified contract last). Returns the entities created for it; shared content
-    /// created for an earlier contract is referenced, not repeated.
+    /// created for an earlier contract is referenced, not repeated. All or nothing.
     pub fn contract(&mut self, v3: &[Entity]) -> Result<Vec<UdcEntity>> {
-        let start = self.out.len();
+        let (start, nonce) = (self.out.len(), self.next_nonce);
+        self.journal.clear();
+        match self.contract_inner(v3) {
+            Ok(()) => Ok(self.out[start..].to_vec()),
+            Err(e) => {
+                self.out.truncate(start);
+                self.next_nonce = nonce;
+                for (map, hash) in std::mem::take(&mut self.journal) {
+                    match map {
+                        0 => self.sources.remove(&hash),
+                        1 => self.codes.remove(&hash),
+                        _ => self.compilations.remove(&hash),
+                    };
+                }
+                Err(e)
+            }
+        }
+    }
+    fn contract_inner(&mut self, v3: &[Entity]) -> Result<()> {
         let find = |kind: &str, hash: &str, part: Option<u64>| -> Result<Entity> {
             v3.iter()
                 .find(|e| {
@@ -584,25 +647,17 @@ impl Writer {
                 }
                 "verified_contract" => {
                     let env: Value = serde_json::from_slice(&logical(e)?)?;
-                    let (key, v3hash) =
-                        compilation.clone().context("contract before compilation")?;
-                    self.verified(
-                        e,
-                        env,
-                        key,
-                        &v3hash,
-                        runs.as_ref(),
-                        &code_bytes,
-                        &source_text,
-                    )?;
+                    let comp = compilation.clone().context("contract before compilation")?;
+                    self.verified(e, env, comp, runs.as_ref(), &code_bytes, &source_text)?;
                 }
                 kind => bail!("unsupported v3 kind {kind}"),
             }
         }
-        Ok(self.out[start..].to_vec())
+        Ok(())
     }
-    /// Returns the v4 key and the v3 fingerprint the contract's references name.
-    fn compilation(&mut self, env: Value) -> Result<([u8; 32], String)> {
+    /// Returns the compilation's key and manifest hash, and the v3 fingerprint the contract's
+    /// references name.
+    fn compilation(&mut self, env: Value) -> Result<Comp> {
         ensure!(
             env["schema"] == "sourcify.compilation.v3",
             "compilation schema"
@@ -610,18 +665,28 @@ impl Writer {
         let v3hash = hx(sha(json_bytes(&env)));
         let data = env["data"].as_object().context("compilation data")?;
         let refs = env["references"].as_array().context("references")?;
-        let code_at = |path: &str| {
-            refs.iter()
-                .find(|r| r["path"] == path && r["kind"] == "code")
-                .and_then(|r| r["hash"].as_str().map(String::from))
-        };
-        let slots: Vec<(&str, String)> = [
-            ("creation", code_at("/creationBytecode/recompiledBytecode")),
-            ("runtime", code_at("/runtimeBytecode/recompiledBytecode")),
-        ]
-        .into_iter()
-        .filter_map(|(slot, hash)| hash.map(|h| (slot, h)))
-        .collect();
+        // The recompiled bytecodes get the slot of their lane; any other code a reference names
+        // (a lane can be referenced away, or its hex can equal a source text) takes a free slot.
+        let mut slots: Vec<(&str, String)> = vec![];
+        for (slot, lane) in SLOTS.iter().zip(LANES) {
+            let path = format!("/{lane}/recompiledBytecode");
+            if let Some(r) = refs
+                .iter()
+                .find(|r| r["path"] == path.as_str() && r["kind"] == "code")
+            {
+                slots.push((slot, r["hash"].as_str().context("code hash")?.into()));
+            }
+        }
+        for r in refs.iter().filter(|r| r["kind"] == "code") {
+            let hash = r["hash"].as_str().context("code hash")?;
+            if !slots.iter().any(|(_, h)| h == hash) {
+                let free = SLOTS
+                    .iter()
+                    .find(|s| !slots.iter().any(|(t, _)| t == *s))
+                    .context("more than two codes in one compilation")?;
+                slots.push((free, hash.into()));
+            }
+        }
         let mut sources: Vec<String> = vec![];
         let mut out_refs = vec![];
         for r in refs {
@@ -641,11 +706,7 @@ impl Writer {
                 }
                 "code" => {
                     let hash = r["hash"].as_str().context("code hash")?;
-                    let slot = slots
-                        .iter()
-                        .find(|(_, h)| h == hash)
-                        .map(|(s, _)| *s)
-                        .context("compilation code reference outside its recompiled bytecode")?;
+                    let slot = slots.iter().find(|(_, h)| h == hash).unwrap().0;
                     json!({"kind":"code","path":path,"code":slot,"encoding":r["encoding"]})
                 }
                 kind => bail!("unsupported compilation reference {kind}"),
@@ -677,10 +738,16 @@ impl Writer {
         let manifest_bytes = json_bytes(&manifest);
         let hash = sha(&manifest_bytes);
         if let Some(key) = self.compilations.get(&hash) {
-            return Ok((*key, v3hash));
+            return Ok(Comp {
+                key: *key,
+                hash,
+                v3hash,
+            });
         }
-        let mut fields: Vec<(&str, Vec<u8>)> = vec![("manifest", encode(&manifest_bytes))];
-        fields.extend(group_bytes.iter().map(|(n, b)| (*n, encode(b))));
+        let mut fields: Vec<(&str, Vec<u8>)> = vec![("manifest", encode(&manifest_bytes)?)];
+        for (n, b) in &group_bytes {
+            fields.push((n, encode(b)?));
+        }
         if !sources.is_empty() {
             let mut keys = vec![IDENTITY];
             for s in &sources {
@@ -700,15 +767,14 @@ impl Writer {
         }
         let key = self.create("compilation", attrs)?;
         self.compilations.insert(hash, key);
-        Ok((key, v3hash))
+        self.journal.push((2, hash));
+        Ok(Comp { key, hash, v3hash })
     }
-    #[allow(clippy::too_many_arguments)]
     fn verified(
         &mut self,
         e: &Entity,
         env: Value,
-        compilation: [u8; 32],
-        v3hash: &str,
+        comp: Comp,
         runs: Option<&Value>,
         codes: &HashMap<String, Vec<u8>>,
         sources: &HashMap<String, String>,
@@ -718,13 +784,17 @@ impl Writer {
             "contract schema"
         );
         let mut data = env["data"].clone();
+        let refs = env["references"].as_array().context("references")?;
+        let parent = |p: &str| p.rsplit_once('/').map(|x| x.0.to_string());
         let mut code_refs: Vec<(&str, [u8; 32])> = vec![];
-        let mut seen_compilation = HashSet::new();
-        for r in env["references"].as_array().context("references")? {
+        for (i, r) in refs.iter().enumerate() {
             let path = r["path"].as_str().context("reference path")?;
             match r["kind"].as_str().context("reference kind")? {
                 "compilation" => {
-                    ensure!(r["hash"] == v3hash, "contract names another compilation");
+                    ensure!(
+                        r["hash"] == comp.v3hash.as_str(),
+                        "contract names another compilation"
+                    );
                     ensure!(r["pointer"] == path, "compilation reference moves a field");
                     let field = path.trim_start_matches('/');
                     let known = TOP_FIELDS.contains(&field)
@@ -732,23 +802,29 @@ impl Writer {
                             .iter()
                             .any(|lane| LANE_FIELDS.iter().any(|f| field == format!("{lane}/{f}")));
                     ensure!(known, "unexpected compilation field {path}");
-                    seen_compilation.insert(path.to_string());
                 }
                 "code" => {
                     let hash = r["hash"].as_str().context("code hash")?;
                     let bytecode = codes.get(hash).context("code missing")?;
                     let canonical = r["encoding"] == json!({"prefix":true,"uppercase":[]});
+                    // A reference restores its value at the end of its parent, after every
+                    // earlier reference there; the reader restores on-chain code first, so only
+                    // a reference no later sibling follows can become a code attribute.
+                    let last_in_parent = !refs[i + 1..].iter().any(|later| {
+                        later["kind"] != "compilation"
+                            && later["path"].as_str().and_then(parent) == parent(path)
+                    });
                     match ONCHAIN
                         .iter()
                         .find(|(lane, _, _)| path == format!("/{lane}/onchainBytecode"))
                     {
-                        Some((_, attr, _)) if canonical => {
+                        Some((_, attr, _)) if canonical && last_in_parent => {
                             code_refs.push((
                                 attr,
                                 *self.codes.get(&fixed::<32>(hash)?).context("code key")?,
                             ));
                         }
-                        // Anything else stays literal contract data.
+                        // Anything else stays literal contract data, in v3's order.
                         _ => insert(&mut data, path, json!(spell(bytecode, &r["encoding"])?))?,
                     }
                 }
@@ -769,34 +845,31 @@ impl Writer {
                 .with_context(|| format!("v3 attribute {name}"))
         };
         let u = |name: &str| -> Result<u64> { Ok(s(name)?.parse()?) };
+        let b = |name: &str| a[name]["value"].as_bool().with_context(|| name.to_string());
         let mut attrs = vec![
             indexed("address", Val::Addr(fixed(&s("address")?)?)),
             indexed("chainid", Val::U64(u("chainid")?)),
             indexed("matchid", Val::U64(u("matchid")?)),
             indexed("verifiedat", Val::U64(u("verifiedat")?)),
-            indexed("match", Val::Str(s("match")?)),
-            indexed("name", Val::Str(s("name")?)),
-            indexed("compilerversion", Val::Str(s("compilerversion")?)),
-            indexed("language", Val::Str(s("language")?)),
-            indexed("evmversion", Val::Str(s("evmversion")?)),
+            indexed("match", Val::Str(index_str(&s("match")?))),
+            indexed("name", Val::Str(index_str(&s("name")?))),
             indexed(
-                "optimizer",
-                Val::Bool(a["optimizer"]["value"].as_bool().context("optimizer")?),
+                "compilerversion",
+                Val::Str(index_str(&s("compilerversion")?)),
             ),
-            indexed(
-                "viair",
-                Val::Bool(a["viair"]["value"].as_bool().context("viair")?),
-            ),
+            indexed("language", Val::Str(index_str(&s("language")?))),
+            indexed("evmversion", Val::Str(index_str(&s("evmversion")?))),
+            indexed("optimizer", Val::Bool(b("optimizer")?)),
+            indexed("viair", Val::Bool(b("viair")?)),
             indexed("deployer", Val::Addr(fixed(&s("deployer")?)?)),
             indexed("blocknumber", Val::U64(u("blocknumber")?)),
             indexed("abihash", Val::Bytes32(fixed(&s("abihash")?)?)),
-            indexed("compilationref", Val::Key(compilation)),
+            indexed("compilationhash", Val::Bytes32(comp.hash)),
+            stored("compilationref", Val::Key(comp.key)),
         ];
         if let Some(runs) = runs {
-            attrs.push(indexed(
-                "optimizerruns",
-                Val::I32(i32::try_from(runs["value"].as_i64().context("runs")?)?),
-            ));
+            let n = runs["value"].as_i64().context("runs")?;
+            attrs.push(indexed("optimizerruns", Val::I32(i32::try_from(n)?)));
         }
         for name in ["creationcodehash", "runtimecodehash"] {
             if a.contains_key(name) {
@@ -804,22 +877,26 @@ impl Writer {
             }
         }
         if a.contains_key("isproxy") {
-            attrs.push(indexed(
-                "isproxy",
-                Val::Bool(a["isproxy"]["value"].as_bool().context("isproxy")?),
-            ));
-            attrs.push(indexed("proxytype", Val::Str(s("proxytype")?)));
+            attrs.push(indexed("isproxy", Val::Bool(b("isproxy")?)));
+            attrs.push(indexed("proxytype", Val::Str(index_str(&s("proxytype")?))));
         }
         for (attr, key) in code_refs {
             attrs.push(stored(attr, Val::Key(key)));
         }
-        attrs.extend(self.place(vec![("data", encode(&json_bytes(&data)))], &[])?);
+        // Insertion order, not canonical order: literals restored above keep v3's position.
+        attrs.extend(self.place(vec![("data", encode(&serde_json::to_vec(&data)?)?)], &[])?);
         self.create("contract", attrs)?;
         Ok(())
     }
     pub fn entities(&self) -> &[UdcEntity] {
         &self.out
     }
+}
+#[derive(Clone)]
+struct Comp {
+    key: [u8; 32],
+    hash: [u8; 32],
+    v3hash: String,
 }
 /// Hex spelling of `bytecode` under a v3 code encoding (prefix flag, uppercase offsets).
 fn spell(bytecode: &[u8], encoding: &Value) -> Result<String> {
@@ -922,7 +999,12 @@ impl<'a> Reader<'a> {
                 let mut joined = Vec::with_capacity(len);
                 for key in keys {
                     let chunk = self.entity(&key, "chunk", "data")?;
-                    joined.extend_from_slice(chunk.bytes("data")?.context("chunk data")?);
+                    let data = chunk.bytes("data")?.context("chunk data")?;
+                    ensure!(
+                        data.len() <= CHUNK && joined.len() + data.len() <= len,
+                        "chunk size mismatch"
+                    );
+                    joined.extend_from_slice(data);
                 }
                 ensure!(
                     joined.len() == len && sha(&joined) == digest,
@@ -950,56 +1032,56 @@ impl<'a> Reader<'a> {
         let raw = self.value(contract, "data")?.context("contract data")?;
         let mut data: Value = serde_json::from_slice(&raw)?;
         ensure!(data.is_object(), "contract data must be an object");
-        // Query attributes are projections of the stored record: they must agree with it.
-        let address: [u8; 20] = fixed(data["address"].as_str().context("address")?)?;
-        ensure!(
-            contract.get("address") == Some(&Val::Addr(address)),
-            "address attribute mismatch"
-        );
-        let match_id = match &data["matchId"] {
-            Value::String(s) => s.parse::<u64>()?,
-            other => other.as_u64().context("matchId")?,
-        };
-        ensure!(
-            contract.get("matchid") == Some(&Val::U64(match_id)),
-            "matchid attribute mismatch"
-        );
+        project(contract, &data)?;
         for (lane, attr, hash_attr) in ONCHAIN {
+            let hash = contract.bytes32_attr(hash_attr)?;
+            let key = contract.key_attr(attr)?;
+            if key.is_none() {
+                // Without a reference the code hash describes literal data, never nothing.
+                if let Some(hash) = hash {
+                    let literal = data
+                        .pointer(&format!("/{lane}/onchainBytecode"))
+                        .and_then(Value::as_str)
+                        .context("code hash without code reference or literal")?;
+                    let bytes = hex::decode(literal.trim_start_matches("0x"))?;
+                    ensure!(keccak(&bytes) == hash, "literal code hash mismatch");
+                }
+                continue;
+            }
             if !want(lane) {
                 continue;
             }
-            if let Some(key) = contract.key_attr(attr)? {
-                let hash = contract
-                    .bytes32_attr(hash_attr)?
-                    .context("code hash attribute")?;
-                let code = self.code(&key, &hash)?;
-                insert(
-                    &mut data,
-                    &format!("/{lane}/onchainBytecode"),
-                    json!(format!("0x{}", hex::encode(code))),
-                )?;
-            }
+            let key = key.unwrap();
+            let hash = hash.context("code reference without code hash")?;
+            let code = self.code(&key, &hash)?;
+            insert(
+                &mut data,
+                &format!("/{lane}/onchainBytecode"),
+                json!(format!("0x{}", hex::encode(code))),
+            )?;
         }
         let needs_compilation = TOP_FIELDS.iter().chain(&LANES).any(|f| want(f));
         if needs_compilation {
             let key = contract
                 .key_attr("compilationref")?
                 .context("compilationref")?;
-            let mut comp = Compilation::load(self, &key)?;
-            // The contract's abihash is the digest of the compilation's abi attribute.
-            if let (Some(abi), Some(hash)) =
-                (comp.digests.get("abi"), contract.bytes32_attr("abihash")?)
-            {
-                ensure!(
-                    abi == &json!(hx(hash)),
-                    "abihash does not match the compilation"
-                );
-            }
+            let hash = contract
+                .bytes32_attr("compilationhash")?
+                .context("compilationhash")?;
+            let mut comp = Compilation::load(self, &key, &hash)?;
+            let abihash = contract.bytes32_attr("abihash")?;
             for field in TOP_FIELDS {
                 if want(field) && comp.exists(self, &format!("/{field}"))? {
                     let value = comp
                         .expand(self, &format!("/{field}"), 0)?
                         .context("missing compilation field")?;
+                    if field == "abi" {
+                        let abihash = abihash.context("abihash")?;
+                        ensure!(
+                            sha(json_bytes(&value)) == abihash,
+                            "abihash does not match the compilation"
+                        );
+                    }
                     insert(&mut data, &format!("/{}", escape(field)), value)?;
                 }
             }
@@ -1029,6 +1111,39 @@ impl<'a> Reader<'a> {
         Ok(data)
     }
 }
+/// The contract's query attributes are projections of its record: those the stored data
+/// determines must agree with it.
+fn project(contract: &UdcEntity, data: &Value) -> Result<()> {
+    let address: [u8; 20] = fixed(data["address"].as_str().context("address")?)?;
+    ensure!(
+        contract.attr("address")? == Some(&Val::Addr(address)),
+        "address attribute mismatch"
+    );
+    let number = |v: &Value| match v {
+        Value::String(s) => s.parse::<u64>().ok(),
+        other => other.as_u64(),
+    };
+    for (field, attr) in [("matchId", "matchid"), ("chainId", "chainid")] {
+        let n = number(&data[field]).with_context(|| format!("{field} is not a number"))?;
+        ensure!(
+            contract.attr(attr)? == Some(&Val::U64(n)),
+            "{attr} attribute mismatch"
+        );
+    }
+    let at =
+        chrono::DateTime::parse_from_rfc3339(data["verifiedAt"].as_str().context("verifiedAt")?)?
+            .timestamp();
+    ensure!(
+        contract.attr("verifiedat")? == Some(&Val::U64(u64::try_from(at)?)),
+        "verifiedat attribute mismatch"
+    );
+    let matched = index_str(data["match"].as_str().unwrap_or("null"));
+    ensure!(
+        contract.attr("match")? == Some(&Val::Str(matched)),
+        "match attribute mismatch"
+    );
+    Ok(())
+}
 /// Fields every response carries.
 pub const MINIMAL: [&str; 7] = [
     "match",
@@ -1042,11 +1157,14 @@ pub const MINIMAL: [&str; 7] = [
 fn escape(s: &str) -> String {
     s.replace('~', "~0").replace('/', "~1")
 }
+fn unescape(s: &str) -> String {
+    s.replace("~1", "/").replace("~0", "~")
+}
 
 /// A compilation being expanded: its manifest, and its attribute groups loaded on first use.
 struct Compilation {
     entity: UdcEntity,
-    refs: Vec<Value>,
+    refs: Rc<Vec<Value>>,
     digests: Map<String, Value>,
     sources: Vec<[u8; 32]>,
     source_keys: Vec<[u8; 32]>,
@@ -1056,13 +1174,12 @@ struct Compilation {
     hexes: HashMap<String, String>,
 }
 impl Compilation {
-    fn load(reader: &mut Reader, key: &[u8; 32]) -> Result<Self> {
+    fn load(reader: &mut Reader, key: &[u8; 32], expected: &[u8; 32]) -> Result<Self> {
         let entity = reader.entity(key, "compilation", "manifest")?;
+        let hash = entity.bytes32_attr("hash")?.context("compilation hash")?;
+        ensure!(&hash == expected, "the contract names another compilation");
         let manifest_bytes = reader.value(&entity, "manifest")?.context("manifest")?;
-        ensure!(
-            entity.bytes32_attr("hash")? == Some(sha(&manifest_bytes)),
-            "compilation hash mismatch"
-        );
+        ensure!(sha(&manifest_bytes) == hash, "compilation hash mismatch");
         let manifest: Value = serde_json::from_slice(&manifest_bytes)?;
         ensure!(
             json_bytes(&manifest) == manifest_bytes,
@@ -1119,7 +1236,7 @@ impl Compilation {
         }
         Ok(Self {
             entity,
-            refs,
+            refs: Rc::new(refs),
             digests: manifest["digests"].as_object().context("digests")?.clone(),
             sources,
             source_keys: vec![],
@@ -1129,60 +1246,75 @@ impl Compilation {
             hexes: HashMap::new(),
         })
     }
-    /// The group attribute holding top-level `field`.
-    fn group(field: &str) -> &str {
-        if HOT.contains(&field) {
-            field
-        } else {
-            "artifacts"
-        }
-    }
-    /// The stored (stripped) value at `pointer`, loading its group.
-    fn stored(&mut self, reader: &mut Reader, pointer: &str) -> Result<Option<Value>> {
-        let field = pointer
+    /// The group attribute holding a top-level field, and the field name.
+    fn group_of(pointer: &str) -> Result<(String, String)> {
+        let first = pointer
             .strip_prefix('/')
             .context("pointer below the compilation root")?
             .split('/')
             .next()
-            .unwrap()
-            .replace("~1", "/")
-            .replace("~0", "~");
-        let group = Self::group(&field).to_string();
-        if !self.groups.contains_key(&group) {
-            let key = self.entity.key;
-            reader.entity(&key, "compilation", &group)?;
-            let raw = reader.value(&self.entity, &group)?;
-            let value = match raw {
-                None => {
-                    ensure!(!self.digests.contains_key(&group), "group {group} missing");
-                    None
-                }
-                Some(raw) => {
-                    let digest = self.digests.get(&group).context("group digest")?;
-                    ensure!(
-                        digest == &json!(hx(sha(&raw))),
-                        "group {group} digest mismatch"
-                    );
-                    Some(serde_json::from_slice(&raw)?)
-                }
-            };
-            self.groups.insert(group.clone(), value);
+            .unwrap();
+        let field = unescape(first);
+        let group = if HOT.contains(&field.as_str()) {
+            field.clone()
+        } else {
+            "artifacts".into()
+        };
+        Ok((group, field))
+    }
+    /// Loads and verifies the group holding `pointer`.
+    fn load_group(&mut self, reader: &mut Reader, pointer: &str) -> Result<()> {
+        let (group, _) = Self::group_of(pointer)?;
+        if self.groups.contains_key(&group) {
+            return Ok(());
         }
-        let Some(value) = &self.groups[&group] else {
+        let key = self.entity.key;
+        reader.entity(&key, "compilation", &group)?;
+        let value = match reader.value(&self.entity, &group)? {
+            None => {
+                ensure!(!self.digests.contains_key(&group), "group {group} missing");
+                None
+            }
+            Some(raw) => {
+                let digest = self.digests.get(&group).context("group digest")?;
+                ensure!(
+                    digest == &json!(hx(sha(&raw))),
+                    "group {group} digest mismatch"
+                );
+                Some(serde_json::from_slice(&raw)?)
+            }
+        };
+        self.groups.insert(group, value);
+        Ok(())
+    }
+    /// The loaded group value holding `pointer` and the pointer inside it.
+    fn locate(&self, pointer: &str) -> Result<Option<(&Value, String)>> {
+        let (group, field) = Self::group_of(pointer)?;
+        let Some(Some(value)) = self.groups.get(&group) else {
             return Ok(None);
         };
-        let local = if HOT.contains(&field.as_str()) {
-            // Hot groups hold the field's value itself.
-            let rest = &pointer[1 + escape(&field).len()..];
-            value.pointer(rest)
+        Ok(Some(if HOT.contains(&field.as_str()) {
+            // A hot group holds the field's value itself.
+            (value, pointer[1 + escape(&field).len()..].to_string())
         } else {
-            value.pointer(pointer)
-        };
-        Ok(local.cloned())
+            (value, pointer.to_string())
+        }))
+    }
+    /// The stored (stripped) value at `pointer`, loading its group.
+    fn stored(&mut self, reader: &mut Reader, pointer: &str) -> Result<Option<Value>> {
+        self.load_group(reader, pointer)?;
+        Ok(self
+            .locate(pointer)?
+            .and_then(|(value, inner)| value.pointer(&inner).cloned()))
     }
     fn exists(&mut self, reader: &mut Reader, pointer: &str) -> Result<bool> {
-        Ok(self.refs.iter().any(|r| r["path"] == pointer)
-            || self.stored(reader, pointer)?.is_some())
+        if self.refs.iter().any(|r| r["path"] == pointer) {
+            return Ok(true);
+        }
+        self.load_group(reader, pointer)?;
+        Ok(self
+            .locate(pointer)?
+            .is_some_and(|(value, inner)| value.pointer(&inner).is_some()))
     }
     /// v3 `expand_at`: the subtree at `pointer` with every reference inside it restored,
     /// non-local references first, each in manifest order.
@@ -1194,8 +1326,8 @@ impl Compilation {
     ) -> Result<Option<Value>> {
         ensure!(depth < 64, "reference depth exceeded");
         validate_pointer(pointer, true)?;
-        let refs = self.refs.clone();
-        for r in &refs {
+        let refs = Rc::clone(&self.refs);
+        for r in refs.iter() {
             let path = r["path"].as_str().unwrap();
             if within(pointer, path) {
                 let value = self.reference(reader, r, depth)?;
@@ -1226,21 +1358,20 @@ impl Compilation {
     }
     fn reference(&mut self, reader: &mut Reader, r: &Value, depth: usize) -> Result<Value> {
         let path = r["path"].as_str().unwrap();
+        // The destination must be free in the stored value (checked without copying it).
+        self.load_group(reader, path)?;
         let (parent, _) = path.rsplit_once('/').context("reference path")?;
-        // The destination must be free in the stored value of its parent.
         if parent.is_empty() {
-            ensure!(
-                self.stored(reader, path)?.is_none(),
-                "reference overwrites literal"
-            );
+            let taken = self
+                .locate(path)?
+                .is_some_and(|(value, inner)| value.pointer(&inner).is_some());
+            ensure!(!taken, "reference overwrites literal");
         } else {
-            let parent_value = self
-                .stored(reader, parent)?
-                .context("reference parent missing")?;
-            validate_destination(
-                &json!({"p": parent_value}),
-                &format!("/p{}", &path[parent.len()..]),
-            )?;
+            let (value, inner) = self.locate(path)?.context("reference parent missing")?;
+            if inner.is_empty() {
+                bail!("reference overwrites literal");
+            }
+            validate_destination(value, &inner)?;
         }
         match r["kind"].as_str().unwrap() {
             "local" => self
@@ -1556,7 +1687,7 @@ mod tests {
             let Val::Bytes(b) = &mut attr.value else {
                 unreachable!()
             };
-            *b = encode(b"{\"tampered\":true}");
+            *b = encode(b"{\"tampered\":true}").unwrap();
             let contract = bad.last().unwrap().clone();
             let mut fetch =
                 |k: &[u8; 32]| bad.iter().find(|e| &e.key == k).cloned().context("missing");
@@ -1571,5 +1702,408 @@ mod tests {
         for e in w.contract(&transform(&fixture()).unwrap()).unwrap() {
             assert_eq!(UdcEntity::from_json(&e.to_json()).unwrap(), e);
         }
+    }
+
+    /// An `arkiv_query` result with a named attribute selection: unselected attributes are
+    /// listed in `attributeSchema` only, and must not read as absent.
+    #[test]
+    fn partial_selections_are_not_absences() {
+        let record = fixture();
+        let mut w = Writer::new(profile(), 0);
+        let entities = w.contract(&transform(&record).unwrap()).unwrap();
+        let rpc = |e: &UdcEntity, keep: &[&str]| {
+            let mut v = e.to_json();
+            let schema: Vec<Value> = v["attributes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|a| json!({"name": a["name"], "type": a["type"], "indexed": a["indexed"]}))
+                .collect();
+            let attributes: Vec<Value> = v["attributes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|a| keep.is_empty() || keep.contains(&a["name"].as_str().unwrap()))
+                .map(|a| json!({"name": a["name"], "type": a["type"], "value": a["value"]}))
+                .collect();
+            v["attributeSchema"] = json!(schema);
+            v["attributes"] = json!(attributes);
+            UdcEntity::from_json(&v).unwrap()
+        };
+        let hot = ["arkiv.schema", "hash", "manifest", "abi", "compilation"];
+        let partial: Vec<UdcEntity> = entities
+            .iter()
+            .map(|e| {
+                if e.schema() == Some("sourcify.v4.compilation") {
+                    rpc(e, &hot)
+                } else {
+                    rpc(e, &[])
+                }
+            })
+            .collect();
+        let contract = partial.last().unwrap().clone();
+        let mut fetch = |k: &[u8; 32]| {
+            partial
+                .iter()
+                .find(|e| &e.key == k)
+                .cloned()
+                .context("missing")
+        };
+        let mut reader = Reader::new("sourcify.v4", None, &mut fetch);
+        let selected = reader
+            .hydrate(&contract, Some(&["abi", "compilation"]))
+            .unwrap();
+        assert_eq!(selected["abi"], record["abi"]);
+        let mut fetch = |k: &[u8; 32]| {
+            partial
+                .iter()
+                .find(|e| &e.key == k)
+                .cloned()
+                .context("missing")
+        };
+        let error = Reader::new("sourcify.v4", None, &mut fetch)
+            .hydrate(&contract, None)
+            .unwrap_err();
+        assert!(error.to_string().contains("was not selected"), "{error}");
+    }
+
+    fn base() -> Value {
+        json!({"chainId":"1","address":"0x1111111111111111111111111111111111111111","matchId":"1","verifiedAt":"2020-01-01T00:00:00Z","abi":[],"compilation":{"language":"Solidity","compiler":"solc","compilerVersion":"1","compilerSettings":{},"fullyQualifiedName":"A.sol:A"},"sources":{"A.sol":{"content":"contract A {}"}},"creationBytecode":{"onchainBytecode":null,"recompiledBytecode":null},"runtimeBytecode":{"onchainBytecode":"0x6000","recompiledBytecode":"0x6000"}})
+    }
+    fn hydrate_all(entities: &[UdcEntity], contract: &UdcEntity) -> Result<Value> {
+        let mut fetch = |k: &[u8; 32]| {
+            entities
+                .iter()
+                .find(|e| &e.key == k)
+                .cloned()
+                .context("missing")
+        };
+        Reader::new("sourcify.v4", Some([0x11; 20]), &mut fetch).hydrate(contract, None)
+    }
+
+    /// Literal contract data restored from v3 references keeps v3's key order.
+    #[test]
+    fn contract_literals_keep_v3_order() {
+        let mut r = base();
+        r["unknown"] = json!({"a": "contract A {}", "b": 1});
+        roundtrip(&r);
+        let mut r = base();
+        r["sources"]["B.sol"] = json!({"content": "1"});
+        roundtrip(&r);
+        let mut r = base();
+        r["runtimeBytecode"]["onchainBytecode"] = json!("0x60AA");
+        r["runtimeBytecode"]["transformations"] = json!([]);
+        roundtrip(&r);
+        let mut r = base();
+        r["runtimeBytecode"]["zzz"] = json!("0x6000");
+        roundtrip(&r);
+    }
+
+    /// The abihash covers the hydrated ABI, whatever the ABI shares with sources or code.
+    #[test]
+    fn abi_strings_equal_to_sources_or_code() {
+        let mut r = base();
+        r["abi"] = json!([{"type": "function", "name": "contract A {}"}, {"name": "6000"}]);
+        roundtrip(&r);
+    }
+
+    /// A recompiled bytecode spelled like a source text still finds its code slot.
+    #[test]
+    fn recompiled_bytecode_spelled_like_a_source() {
+        let mut r = base();
+        r["sources"]["B.sol"] = json!({"content": "0x6000"});
+        r["metadata"] = json!("6000");
+        roundtrip(&r);
+    }
+
+    #[test]
+    fn index_strings_are_valid_str_values() {
+        let mut r = base();
+        r["compilation"]["name"] = json!("A\nB");
+        r["match"] = json!("m".repeat(200));
+        let (_, entities) = roundtrip(&r);
+        let contract = entities.last().unwrap();
+        assert_eq!(contract.get("name"), Some(&Val::Str("A\u{fffd}B".into())));
+        assert_eq!(
+            contract.get("match"),
+            Some(&Val::Str(format!("{}…", "m".repeat(125))))
+        );
+    }
+
+    /// A contract names its compilation by key and by hash: a swapped key is refused.
+    #[test]
+    fn contract_is_bound_to_its_compilation() {
+        let a = base();
+        let mut b = base();
+        b["address"] = json!("0x2222222222222222222222222222222222222222");
+        b["matchId"] = json!("2");
+        b["sources"]["A.sol"]["content"] = json!("contract A { /* other */ }");
+        let mut w = Writer::new(profile(), 0);
+        let first = w.contract(&transform(&a).unwrap()).unwrap();
+        w.contract(&transform(&b).unwrap()).unwrap();
+        let all = w.entities().to_vec();
+        let mut contract_b = all.last().unwrap().clone();
+        let comp_a = first
+            .last()
+            .unwrap()
+            .get("compilationref")
+            .cloned()
+            .unwrap();
+        for at in contract_b.attributes.iter_mut() {
+            if at.name == "compilationref" {
+                at.value = comp_a.clone();
+            }
+        }
+        let error = hydrate_all(&all, &contract_b).unwrap_err();
+        assert!(error.to_string().contains("another compilation"), "{error}");
+        hydrate_all(&all, all.last().unwrap()).unwrap();
+    }
+
+    /// An unselected code reference is an error, not missing code.
+    #[test]
+    fn unselected_code_reference_is_an_error() {
+        let mut w = Writer::new(profile(), 0);
+        let entities = w.contract(&transform(&base()).unwrap()).unwrap();
+        let mut contract = entities.last().unwrap().clone();
+        contract.attributes.retain(|a| a.name != "runtimecoderef");
+        contract.unselected.push("runtimecoderef".into());
+        let error = hydrate_all(&entities, &contract).unwrap_err();
+        assert!(error.to_string().contains("not selected"), "{error}");
+        // Without the attribute at all, the code hash still demands the code.
+        contract.unselected.clear();
+        assert!(hydrate_all(&entities, &contract).is_err());
+    }
+
+    /// A chunk list's claimed length is bounded before any chunk is fetched.
+    #[test]
+    fn chunk_lists_are_bounded_before_fetching() {
+        let keys = (131_072 - 37) / 32;
+        let mut list = vec![CHUNKED];
+        list.extend_from_slice(&[0u8; 32]);
+        list.extend_from_slice(&((keys * CHUNK) as u32).to_be_bytes());
+        list.extend(std::iter::repeat_n(7u8, keys * 32));
+        let contract = UdcEntity {
+            key: [9; 32],
+            owner: [0x11; 20],
+            expires_at: PERMANENT,
+            attributes: vec![
+                indexed("arkiv.schema", Val::Str("sourcify.v4.contract".into())),
+                stored("data", Val::Bytes(list)),
+            ],
+            unselected: vec![],
+        };
+        let mut fetched = 0;
+        let mut fetch = |_: &[u8; 32]| -> Result<UdcEntity> {
+            fetched += 1;
+            bail!("no chunk")
+        };
+        let error = Reader::new("sourcify.v4", None, &mut fetch)
+            .hydrate(&contract, None)
+            .unwrap_err();
+        assert!(error.to_string().contains("out of range"), "{error}");
+        assert_eq!(fetched, 0);
+    }
+
+    /// The writer refuses values the reader would refuse, and a failed contract leaves no trace.
+    #[test]
+    fn writer_bounds_values_and_rolls_back() {
+        let mut r = base();
+        r["sources"]["B.sol"] = json!({"content": "a".repeat(MAX_VALUE + 1)});
+        let mut w = Writer::new(profile(), 10);
+        let error = w.contract(&transform(&r).unwrap()).unwrap_err();
+        assert!(error.to_string().contains("exceeds"), "{error}");
+        assert_eq!(w.next_nonce, 10);
+        assert!(w.entities().is_empty());
+        // A.sol was created before the failure; the next contract must create it again.
+        let created = w.contract(&transform(&base()).unwrap()).unwrap();
+        assert!(created
+            .iter()
+            .any(|e| e.schema() == Some("sourcify.v4.source")));
+        assert_eq!(created[0].key, entity_key(7706815, &[0x11; 20], 10, 0));
+        hydrate_all(&created, created.last().unwrap()).unwrap();
+    }
+
+    /// Each reference costs the same however large its parent is (no copy per reference).
+    #[test]
+    fn many_references_hydrate_linearly() {
+        let mut r = base();
+        r["metadata"] = json!(vec!["contract A {}"; 16_000]);
+        let v3 = transform(&r).unwrap();
+        let started = std::time::Instant::now();
+        hydrate::hydrate(v3.last().unwrap(), &v3).unwrap();
+        let v3_time = started.elapsed();
+        let mut w = Writer::new(profile(), 0);
+        let entities = w.contract(&v3).unwrap();
+        let started = std::time::Instant::now();
+        hydrate_all(&entities, entities.last().unwrap()).unwrap();
+        let v4_time = started.elapsed();
+        assert!(
+            v4_time < v3_time * 20 + std::time::Duration::from_secs(1),
+            "v3 {v3_time:?}, v4 {v4_time:?}"
+        );
+    }
+
+    struct Rng(u64);
+    impl Rng {
+        fn next(&mut self) -> u64 {
+            self.0 ^= self.0 << 13;
+            self.0 ^= self.0 >> 7;
+            self.0 ^= self.0 << 17;
+            self.0
+        }
+        fn pick<'a, T>(&mut self, xs: &'a [T]) -> &'a T {
+            &xs[(self.next() % xs.len() as u64) as usize]
+        }
+        fn chance(&mut self, n: u64) -> bool {
+            self.next().is_multiple_of(n)
+        }
+    }
+    const LEAVES: [&str; 14] = [
+        "",
+        "1",
+        "x",
+        "contract A {}",
+        "0x6000",
+        "6000",
+        "0x60AA",
+        "60aa",
+        "0xaBcD",
+        "abcd",
+        "ABCD",
+        "0x",
+        "exact_match",
+        "a longer string that is nothing special at all",
+    ];
+    const KEYS: [&str; 12] = [
+        "a", "b", "content", "~", "/", "~1", "10", "2", "😀", "\u{ffff}", "abi", "zzz",
+    ];
+    fn leaf(g: &mut Rng) -> Value {
+        match g.next() % 6 {
+            0 => Value::Null,
+            1 => json!(g.next() % 100),
+            2 => json!(true),
+            _ => json!(*g.pick(&LEAVES)),
+        }
+    }
+    fn tree(g: &mut Rng, depth: u32) -> Value {
+        if depth == 0 || g.chance(3) {
+            return leaf(g);
+        }
+        if g.chance(2) {
+            let n = g.next() % 4;
+            Value::Array((0..n).map(|_| tree(g, depth - 1)).collect())
+        } else {
+            let mut m = Map::new();
+            for _ in 0..(g.next() % 4) {
+                m.insert((*g.pick(&KEYS)).into(), tree(g, depth - 1));
+            }
+            Value::Object(m)
+        }
+    }
+    /// Records biased towards collisions between sources, code, ABI and other fields.
+    fn random_record(g: &mut Rng) -> Value {
+        let mut r = base();
+        let mut sources = Map::new();
+        for i in 0..(1 + g.next() % 3) {
+            let content = *g.pick(&["", "1", "x", "contract A {}", "0x6000", "abcd"]);
+            sources.insert(format!("{}{i}", g.pick(&KEYS)), json!({"content": content}));
+        }
+        r["sources"] = Value::Object(sources);
+        let code = ["0x6000", "0x60aa", "0x60AA", "0xabcd", "0xABcd"];
+        for lane in LANES {
+            for field in ["recompiledBytecode", "onchainBytecode"] {
+                r[lane][field] = if g.chance(4) {
+                    Value::Null
+                } else {
+                    json!(*g.pick(&code))
+                };
+            }
+            for k in [
+                "transformations",
+                "transformationValues",
+                "zzz",
+                "aaa",
+                "sourceMap",
+                "cborAuxdata",
+            ] {
+                if g.chance(3) {
+                    r[lane][k] = tree(g, 2);
+                }
+            }
+        }
+        r["abi"] = Value::Array((0..g.next() % 3).map(|_| tree(g, 3)).collect());
+        for f in [
+            "metadata",
+            "userdoc",
+            "devdoc",
+            "signatures",
+            "sourceIds",
+            "storageLayout",
+        ] {
+            if g.chance(2) {
+                r[f] = tree(g, 4);
+            }
+        }
+        if g.chance(2) {
+            r["compilation"]["extra"] = tree(g, 3);
+        }
+        for f in ["stdJsonInput", "stdJsonOutput"] {
+            match g.next() % 4 {
+                0 => {}
+                1 => r[f] = tree(g, 4),
+                2 => {
+                    let src = *g.pick(&["abi", "metadata", "userdoc", "compilation", "sources"]);
+                    let v = r.get(src).cloned().unwrap_or(Value::Null);
+                    r[f] = json!({"copy": v, "abi": r["abi"].clone(), "x": [Value::Null, r["sources"].clone()]});
+                }
+                _ => {
+                    r[f] = r
+                        .get("metadata")
+                        .cloned()
+                        .unwrap_or(json!({"m": tree(g, 3)}))
+                }
+            }
+        }
+        for f in ["unknown", "deployment", "zfield", "Afield"] {
+            if g.chance(3) {
+                r[f] = tree(g, 3);
+            }
+        }
+        r
+    }
+
+    /// Differential test against v3 hydration: every record v3 accepts rebuilds byte for byte,
+    /// through one shared writer (so later contracts reuse earlier sources, code and compilations).
+    #[test]
+    fn differential_against_v3() {
+        let n: u64 = std::env::var("UDC_FUZZ_N")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(2000);
+        let mut g = Rng(0x9e37_79b9_7f4a_7c15);
+        let mut w = Writer::new(profile(), 0);
+        let mut checked = 0;
+        for i in 0..n {
+            let mut r = random_record(&mut g);
+            r["address"] = json!(format!("0x{:040x}", i + 1));
+            r["matchId"] = json!((i + 1).to_string());
+            let Ok(v3) = transform(&r) else { continue };
+            let Ok(expected) = hydrate::hydrate(v3.last().unwrap(), &v3) else {
+                continue;
+            };
+            let created = w
+                .contract(&v3)
+                .unwrap_or_else(|e| panic!("writer: {e:#}\n{r}"));
+            let all = w.entities();
+            let got = hydrate_all(all, created.last().unwrap())
+                .unwrap_or_else(|e| panic!("reader: {e:#}\n{r}"));
+            assert_eq!(
+                serde_json::to_string(&got).unwrap(),
+                serde_json::to_string(&expected).unwrap(),
+                "{r}"
+            );
+            checked += 1;
+        }
+        assert!(checked > n / 2, "only {checked} records checked");
     }
 }

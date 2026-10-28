@@ -60,15 +60,15 @@
       "nonce": 5,
       "kind": "contract",
       "key": "0x0699aab09f21d8881398b8d9be3118a5795b19a9dd8b8d779cf2934c4a754900",
-      "attributes": 24,
+      "attributes": 25,
       "indexed": 21,
       "bytesValues": 463,
-      "userUnits": 3794,
-      "storageUnits": 5254
+      "userUnits": 3843,
+      "storageUnits": 5303
     }
   ],
   "totalEntities": 6,
   "totalBytesValues": 5381,
-  "totalStorageUnits": 19276,
+  "totalStorageUnits": 19325,
   "storageUnitsNote": "user cells (name + value + 2, +128 when indexed) plus 1,460 for the entity and its system cells, as arkiv-state-db-experiment charges rent"
 }

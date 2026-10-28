@@ -28,6 +28,11 @@
       },
       {
         "indexed": true,
+        "name": "compilationhash",
+        "type": "bytes32"
+      },
+      {
+        "indexed": false,
         "name": "compilationref",
         "type": "key"
       },
@@ -149,9 +154,14 @@
         "value": "0x1"
       },
       {
+        "name": "compilationhash",
+        "type": "bytes32",
+        "value": "0x768801ecf4b52b7c616ad0791c9d4e9386fd95599ce28d8a85b9b36726fea028"
+      },
+      {
         "name": "compilationref",
         "type": "key",
-        "value": "0x257697de0ae84d65c1642d937d94b083c9434e1f8074ef0b12d56c2034c6ddb5"
+        "value": "0xa690810b261deffd5ffd5503a361cc03999031ef8ae9cf5665f599c7c386bec5"
       },
       {
         "name": "compilerversion",
@@ -166,7 +176,7 @@
       {
         "name": "creationcoderef",
         "type": "key",
-        "value": "0xb5c75b5f789e1109994161a01097cf8a7024c364fa94300cb8dbbf2be060c500"
+        "value": "0x7b30ba0fee0009c24d113e9d2a409564b161d44a4433b8e36c72045bb9cabccb"
       },
       {
         "name": "data",
@@ -231,7 +241,7 @@
       {
         "name": "runtimecoderef",
         "type": "key",
-        "value": "0xc48784b9ef1d0f520c61d2dc26a77130ba56c01884090c05cdcf262542f6366d"
+        "value": "0x0240735ed5044dc9fc9f24f964e24e7e035bc324ba61ea87e6e6e09989a172f4"
       },
       {
         "name": "verifiedat",
@@ -246,7 +256,7 @@
     ],
     "creator": "0x3ffcb8c66ba2a35df36d73b213399220fd59f42f",
     "expiresAt": "0xffffffffffffffff",
-    "key": "0x69c660a2063f48e7b0751efd7054bbb248a876751973c3f09869be2a69432150",
+    "key": "0x6bfd289df2184ea640d1c3f1d16ca4dcd27392272c73c0328dc2fcc4bdf0ad6a",
     "owner": "0x3ffcb8c66ba2a35df36d73b213399220fd59f42f"
   },
   {
@@ -326,7 +336,7 @@
     ],
     "creator": "0x3ffcb8c66ba2a35df36d73b213399220fd59f42f",
     "expiresAt": "0xffffffffffffffff",
-    "key": "0x257697de0ae84d65c1642d937d94b083c9434e1f8074ef0b12d56c2034c6ddb5",
+    "key": "0xa690810b261deffd5ffd5503a361cc03999031ef8ae9cf5665f599c7c386bec5",
     "owner": "0x3ffcb8c66ba2a35df36d73b213399220fd59f42f"
   }
 ]

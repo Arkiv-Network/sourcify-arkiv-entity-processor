@@ -2,23 +2,23 @@
   "rpc": "alt-node-fast.arkiv-global.net",
   "chainId": 7706815,
   "owner": "0x3ffcb8c66ba2a35df36d73b213399220fd59f42f",
-  "firstNonce": "63",
-  "txHash": "0x2f4d368eda78c10a713b5e7eee9f8bce185218bc7354b441d679882717412454",
-  "block": 67712,
+  "firstNonce": "139",
+  "txHash": "0xc75a6122e4d7b88475fa7554ee4256cdc399e25fcbe5895d393646fa9bd7233a",
+  "block": 68938,
   "status": "0x1",
-  "calldataBytes": 16132,
-  "gasUsed": 305126,
+  "calldataBytes": 16324,
+  "gasUsed": 305658,
   "effectiveGasPriceWei": "1000000000",
-  "rentFeeWei": "141284200000000000",
-  "balanceSpentWei": "141589326000000000",
+  "rentFeeWei": "141641900000000000",
+  "balanceSpentWei": "141947558000000000",
   "created": [
-    "0x7452c8a62df34f980f6ff8aafaa42a8d75704b786b5a33f54437b775ef4ceb24",
-    "0x29d09765c78c926440c23162039e99930924eb08fba8e598b9bb61c7ba6ff1f3",
-    "0xc48784b9ef1d0f520c61d2dc26a77130ba56c01884090c05cdcf262542f6366d",
-    "0x257697de0ae84d65c1642d937d94b083c9434e1f8074ef0b12d56c2034c6ddb5",
-    "0xb5c75b5f789e1109994161a01097cf8a7024c364fa94300cb8dbbf2be060c500",
-    "0x69c660a2063f48e7b0751efd7054bbb248a876751973c3f09869be2a69432150"
+    "0x610ba12e7a4c8a2dc8418d8ae6157e85f48fc3c9ff799f17e83934eb3c8ad568",
+    "0x5d02a08cf86de086e98b3c9b614e598f22fda17de28d2f5ddc0958a1a09705e1",
+    "0x0240735ed5044dc9fc9f24f964e24e7e035bc324ba61ea87e6e6e09989a172f4",
+    "0xa690810b261deffd5ffd5503a361cc03999031ef8ae9cf5665f599c7c386bec5",
+    "0x7b30ba0fee0009c24d113e9d2a409564b161d44a4433b8e36c72045bb9cabccb",
+    "0x6bfd289df2184ea640d1c3f1d16ca4dcd27392272c73c0328dc2fcc4bdf0ad6a"
   ],
   "keysAsPredicted": true,
-  "ms": 10511
+  "ms": 1060
 }

@@ -121,6 +121,10 @@ def scan(path):
                 for r in refs:
                     if r["kind"] == "code" and r["path"] == f"/{lane}/recompiledBytecode":
                         slots[slot] = r["hash"]
+            # Any other code a reference names takes a free slot (as src/udc.rs does).
+            for r in refs:
+                if r["kind"] == "code" and r["hash"] not in slots.values():
+                    slots[next(s for s in ("creation", "runtime") if s not in slots)] = r["hash"]
             sources, out_refs = [], []
             for r in refs:
                 if r["kind"] == "local":
@@ -158,12 +162,14 @@ def scan(path):
             a = {n: v.split(":", 1) for n, v in e.items() if not n.startswith("$")}
             cells = [schema("contract")]
             for n in ("address", "chainid", "matchid", "verifiedat", "match", "name", "compilerversion", "language",
-                      "evmversion", "optimizer", "viair", "deployer", "blocknumber", "abihash", "compilationref",
+                      "evmversion", "optimizer", "viair", "deployer", "blocknumber", "abihash",
                       "creationcodehash", "runtimecodehash", "isproxy", "proxytype"):
                 if n in a:
                     t, val = a[n]
-                    cells.append(cell(n, WIDTH.get(t, len(val.encode())), True))
+                    cells.append(cell(n, WIDTH.get(t, min(128, len(val.encode()))), True))
             cells.append(cell("optimizerruns", 4, True))
+            cells.append(cell("compilationhash", 32, True))
+            cells.append(cell("compilationref", 32, False))
             inline = 0
             for r in env["references"]:
                 if r["kind"] == "code":

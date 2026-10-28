@@ -2,14 +2,14 @@
   "input": "sourcify-response.json",
   "owner": "0x3ffcb8c66ba2a35df36d73b213399220fd59f42f",
   "chainId": 7706815,
-  "firstNonce": 63,
+  "firstNonce": 139,
   "prefix": "sourcify-udc-proposal.v4",
   "budgetBytes": 120000,
   "entities": [
     {
-      "nonce": 63,
+      "nonce": 139,
       "kind": "source",
-      "key": "0x7452c8a62df34f980f6ff8aafaa42a8d75704b786b5a33f54437b775ef4ceb24",
+      "key": "0x610ba12e7a4c8a2dc8418d8ae6157e85f48fc3c9ff799f17e83934eb3c8ad568",
       "attributes": 3,
       "indexed": 2,
       "bytesValues": 857,
@@ -17,9 +17,9 @@
       "storageUnits": 2665
     },
     {
-      "nonce": 64,
+      "nonce": 140,
       "kind": "code",
-      "key": "0x29d09765c78c926440c23162039e99930924eb08fba8e598b9bb61c7ba6ff1f3",
+      "key": "0x5d02a08cf86de086e98b3c9b614e598f22fda17de28d2f5ddc0958a1a09705e1",
       "attributes": 3,
       "indexed": 2,
       "bytesValues": 322,
@@ -27,9 +27,9 @@
       "storageUnits": 2125
     },
     {
-      "nonce": 65,
+      "nonce": 141,
       "kind": "code",
-      "key": "0xc48784b9ef1d0f520c61d2dc26a77130ba56c01884090c05cdcf262542f6366d",
+      "key": "0x0240735ed5044dc9fc9f24f964e24e7e035bc324ba61ea87e6e6e09989a172f4",
       "attributes": 3,
       "indexed": 2,
       "bytesValues": 152,
@@ -37,9 +37,9 @@
       "storageUnits": 1955
     },
     {
-      "nonce": 66,
+      "nonce": 142,
       "kind": "compilation",
-      "key": "0x257697de0ae84d65c1642d937d94b083c9434e1f8074ef0b12d56c2034c6ddb5",
+      "key": "0xa690810b261deffd5ffd5503a361cc03999031ef8ae9cf5665f599c7c386bec5",
       "attributes": 9,
       "indexed": 2,
       "bytesValues": 3237,
@@ -47,9 +47,9 @@
       "storageUnits": 5189
     },
     {
-      "nonce": 67,
+      "nonce": 143,
       "kind": "code",
-      "key": "0xb5c75b5f789e1109994161a01097cf8a7024c364fa94300cb8dbbf2be060c500",
+      "key": "0x7b30ba0fee0009c24d113e9d2a409564b161d44a4433b8e36c72045bb9cabccb",
       "attributes": 3,
       "indexed": 2,
       "bytesValues": 350,
@@ -57,18 +57,18 @@
       "storageUnits": 2153
     },
     {
-      "nonce": 68,
+      "nonce": 144,
       "kind": "contract",
-      "key": "0x69c660a2063f48e7b0751efd7054bbb248a876751973c3f09869be2a69432150",
-      "attributes": 24,
+      "key": "0x6bfd289df2184ea640d1c3f1d16ca4dcd27392272c73c0328dc2fcc4bdf0ad6a",
+      "attributes": 25,
       "indexed": 21,
       "bytesValues": 463,
-      "userUnits": 3807,
-      "storageUnits": 5267
+      "userUnits": 3856,
+      "storageUnits": 5316
     }
   ],
   "totalEntities": 6,
   "totalBytesValues": 5381,
-  "totalStorageUnits": 19354,
+  "totalStorageUnits": 19403,
   "storageUnitsNote": "user cells (name + value + 2, +128 when indexed) plus 1,460 for the entity and its system cells, as arkiv-state-db-experiment charges rent"
 }

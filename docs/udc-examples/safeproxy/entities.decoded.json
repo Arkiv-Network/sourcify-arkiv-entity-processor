@@ -537,9 +537,15 @@
         "value": "0x1"
       },
       {
+        "name": "compilationhash",
+        "type": "bytes32",
+        "indexed": true,
+        "value": "0x768801ecf4b52b7c616ad0791c9d4e9386fd95599ce28d8a85b9b36726fea028"
+      },
+      {
         "name": "compilationref",
         "type": "key",
-        "indexed": true,
+        "indexed": false,
         "value": "0x71331937485fca53dce301ab3c9b85417adcc2d4e22bc595112080edec5f4072"
       },
       {

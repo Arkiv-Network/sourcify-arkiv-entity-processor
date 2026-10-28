@@ -51,9 +51,9 @@ pub struct HydrateArgs {
     /// arkiv.schema prefix
     #[arg(long, default_value = "sourcify.v4")]
     pub prefix: String,
-    /// Required owner of every entity
+    /// Owner every entity must have (the dataset owner)
     #[arg(long)]
-    pub owner: Option<String>,
+    pub owner: String,
     /// Comma-separated top-level fields (minimal fields are always included); default all
     #[arg(long)]
     pub fields: Option<String>,
@@ -177,7 +177,7 @@ pub fn hydrate(a: &HydrateArgs) -> Result<()> {
         n => bail!("{n} contracts for {}", a.address),
     }
     let contract = contracts[0].clone();
-    let owner = a.owner.as_deref().map(address).transpose()?;
+    let owner = Some(address(&a.owner)?);
     let mut fetch = |k: &[u8; 32]| {
         entities
             .iter()
@@ -203,5 +203,90 @@ pub fn hydrate(a: &HydrateArgs) -> Result<()> {
     };
     ensure!(!text.is_empty());
     print!("{text}");
+    Ok(())
+}
+
+pub const CHECK_ABOUT: &str = "Check the UDC layout on a v3 bundle (prototype).\n\n\
+For every EVERY-th contract of BUNDLE_DIR: hydrate it with the v3 reader, transform the record again, \
+write it as UDC entities through one shared writer (so shared content is deduplicated across the \
+sample), rebuild it with the UDC reader and compare with v3 hydration of the same entities, as \
+serialized bytes. Prints a JSON summary; exits nonzero on any difference.";
+
+#[derive(Args, Debug)]
+pub struct CheckArgs {
+    /// v3 bundle directory (seed.json, report.json, SHA256SUMS, entity parts)
+    #[arg(value_name = "BUNDLE_DIR")]
+    pub dir: PathBuf,
+    /// Check every N-th contract
+    #[arg(long, default_value_t = 1000)]
+    pub every: usize,
+    /// Stop after this many checked contracts
+    #[arg(long)]
+    pub limit: Option<usize>,
+}
+
+pub fn check(a: &CheckArgs) -> Result<()> {
+    use arkiv_entity_processor::{bundle::Bundle, hydrate};
+    use std::collections::HashMap;
+    let started = std::time::Instant::now();
+    let bundle = Bundle::open(&a.dir)?;
+    eprintln!("bundle indexed in {:.0} s", started.elapsed().as_secs_f64());
+    let profile = Profile {
+        prefix: "sourcify.v4".into(),
+        chain_id: 7706815,
+        owner: [0x11; 20],
+    };
+    let mut writer = Writer::new(profile, 0);
+    let mut store: HashMap<[u8; 32], UdcEntity> = HashMap::new();
+    let (mut checked, mut failed, mut entities) = (0usize, 0usize, 0usize);
+    let mut failures = vec![];
+    for (i, entity) in bundle.contracts().enumerate() {
+        if i % a.every != 0 {
+            continue;
+        }
+        if a.limit.is_some_and(|n| checked >= n) {
+            break;
+        }
+        let entity = entity?;
+        let record =
+            hydrate::hydrate_with(&entity, |kind, hash, part| bundle.resolve(kind, hash, part))?;
+        let address = record["address"].as_str().unwrap_or("?").to_string();
+        let outcome = (|| -> Result<()> {
+            let v3 = transform(&record)?;
+            let expected = serde_json::to_string(&hydrate::hydrate(v3.last().unwrap(), &v3)?)?;
+            let created = writer.contract(&v3)?;
+            entities += created.len();
+            for e in &created {
+                e.validate()?;
+                store.insert(e.key, e.clone());
+            }
+            let contract = created.last().context("no contract entity")?.clone();
+            let mut fetch = |k: &[u8; 32]| store.get(k).cloned().context("missing entity");
+            let mut reader = Reader::new("sourcify.v4", Some([0x11; 20]), &mut fetch);
+            let got = serde_json::to_string(&reader.hydrate(&contract, None)?)?;
+            ensure!(got == expected, "hydration differs");
+            ensure!(
+                serde_json::from_str::<Value>(&got)? == record,
+                "value differs from the bundle record"
+            );
+            Ok(())
+        })();
+        checked += 1;
+        if let Err(e) = outcome {
+            failed += 1;
+            if failures.len() < 20 {
+                failures.push(json!({"address": address, "error": format!("{e:#}")}));
+            }
+        }
+        if checked % 500 == 0 {
+            eprintln!(
+                "{checked} checked, {failed} failed, {:.0} s",
+                started.elapsed().as_secs_f64()
+            );
+        }
+    }
+    let summary = json!({"checked": checked, "failed": failed, "udcEntities": entities, "seconds": started.elapsed().as_secs(), "failures": failures});
+    println!("{}", serde_json::to_string_pretty(&summary)?);
+    ensure!(failed == 0, "{failed} contracts differ");
     Ok(())
 }

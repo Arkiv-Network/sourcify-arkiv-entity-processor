@@ -4,6 +4,7 @@
  *
  *   bun roundtrip.ts write ENTITIES.json OUT_DIR    # needs ARKIV_RPC_URL, ARKIV_CHAIN_ID, ARKIV_KEY_FILE
  *   bun roundtrip.ts read ADDRESS OWNER PREFIX OUT_DIR [abi,compilation]
+ *   bun roundtrip.ts delete WRITE.json OUT_DIR       # removes what a write created
  *
  * `write` checks that the node assigns the keys the example predicted (salt 0 from the owner's entity
  * nonce) and records block, gas and rent. `read` runs the hydration read plan (docs/udc-proposal.md):
@@ -167,7 +168,21 @@ async function read(address: string, owner: string, prefix: string, out: string,
   console.log(json({ entities: entities.size, queries: reads.length, ms: reads.reduce((s, r) => s + r.ms, 0) }))
 }
 
+/** Deletes the entities a previous `write` created (its write.json), in one transaction. */
+async function remove(writeFile: string, out: string) {
+  const { created } = JSON.parse(readFileSync(writeFile, "utf8")) as { created: Hex[] }
+  const account = privateKeyToAccount(readFileSync(env.ARKIV_KEY_FILE!, "utf8").trim() as Hex)
+  const wallet = createWalletClient({ chain, transport, account, pollingInterval: 1000 })
+  const result = await wallet.executeBatch({ deletes: created.map((entityKey) => ({ entityKey })) })
+  const receipt: any = await rpc("eth_getTransactionReceipt", [result.txHash])
+  const record = { txHash: result.txHash, block: Number(BigInt(receipt.blockNumber)), status: receipt.status, deleted: result.deletedEntities }
+  mkdirSync(out, { recursive: true })
+  writeFileSync(`${out}/delete.json`, json(record))
+  console.log(json(record))
+}
+
 const [mode, ...args] = process.argv.slice(2)
 if (mode === "write") await write(args[0]!, args[1]!)
+else if (mode === "delete") await remove(args[0]!, args[1]!)
 else if (mode === "read") await read(args[0]!, args[1]!, args[2]!, args[3]!, args[4])
-else throw new Error("usage: bun roundtrip.ts write ENTITIES OUT | read ADDRESS OWNER PREFIX OUT [abi,compilation]")
+else throw new Error("usage: bun roundtrip.ts write ENTITIES OUT | read ADDRESS OWNER PREFIX OUT [abi,compilation] | delete WRITE.json OUT")

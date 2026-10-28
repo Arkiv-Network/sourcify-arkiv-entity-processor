@@ -1,7 +1,7 @@
 {
   "rpc": "alt-node-fast.arkiv-global.net",
   "pinned": true,
-  "head": 67732,
+  "head": 68943,
   "fields": "abi,compilation",
   "queries": [
     {
@@ -16,14 +16,14 @@
         "attributes": true
       },
       "limit": 2,
-      "block": 67732,
+      "block": 68943,
       "rows": 1,
       "cursor": null,
       "ms": 1
     },
     {
       "what": "compilation",
-      "query": "$key = key(0x257697de0ae84d65c1642d937d94b083c9434e1f8074ef0b12d56c2034c6ddb5)",
+      "query": "$key = key(0xa690810b261deffd5ffd5503a361cc03999031ef8ae9cf5665f599c7c386bec5)",
       "select": {
         "key": true,
         "owner": true,
@@ -39,7 +39,7 @@
         }
       },
       "limit": 1,
-      "block": 67732,
+      "block": 68943,
       "rows": 1,
       "cursor": null,
       "ms": 1
