@@ -14,6 +14,13 @@
  *     is skipped and logged (changed contracts are not updated yet, see issue #13).
  * Every created entity is read back and compared. The cursor (SYNC_DIR/state.json) advances only after a whole batch.
  *
+ * SYNC_FORMAT=udc writes the v4 (UDC) dataset instead (docs/udc-proposal.md) through arkiv/udc.ts, on the UDC SDK:
+ * entities (arkiv-entity-processor process --format udc --schema-prefix SYNC_SCHEMA_PREFIX) -> Arkiv in four levels
+ * (chunks; sources and codes; compilations; contracts), each mined and read back before the next. Sources, codes and
+ * compilations already on the chain (same owner, arkiv.schema and hash) are reused; a contract whose address already has
+ * one is patched in place when its matchId is at least the chain's (a re-verification or a correction keeps the
+ * entity's key), counted as synced when identical, and skipped when the chain holds a newer match.
+ *
  * A start checks the cursor against the chain (startCursor): the writer's highest verified_contract matchid there, from a
  * seed the chain was prefilled with or from syncing, less a margin of matches. Without state.json that is the cursor;
  * with one, it moves the cursor back only when the chain is behind it. When the writer has no contract near the mirror's
@@ -33,8 +40,10 @@
  * SYNC_BATCH (matches per batch, default 200), SYNC_POLL_SECONDS (default 60), SYNC_MAX_TX_BYTES (calldata per
  * transaction, default 120000, at least 4000; a larger entity travels alone), SYNC_MAX_GAS_PRICE_GWEI (default 2), SYNC_IN_FLIGHT
  * (unmined transactions at a time, default 4), SYNC_BATCH_DELAY_SECONDS (pause after each batch that sent transactions,
- * default 0; with SYNC_BATCH=1 a pause between contracts), SYNC_GAS (computed or estimate, see send()),
- * ARKIV_PROCESSOR_BIN (default ./target/release/arkiv-entity-processor).
+ * default 0; with SYNC_BATCH=1 a pause between contracts), SYNC_GAS (computed or estimate, see send(); udc default
+ * estimate), ARKIV_PROCESSOR_BIN (default ./target/release/arkiv-entity-processor); SYNC_FORMAT (v3 or udc, default v3),
+ * SYNC_SCHEMA_PREFIX (udc: arkiv.schema prefix, default sourcify.v4), SYNC_MAX_TX_OPS (udc: operations per
+ * transaction, default 16, our node's limit).
  */
 import { createWalletClient, ENTITY_EVENTS_ABI, ExpirationTime, randomSalt, resolveExpiry } from '@arkiv-network/sdk';
 import { addr, bool, bytes32, i32, key, str, u64 } from '@arkiv-network/sdk/attr';
@@ -46,10 +55,15 @@ import { dirname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { newestEthereumMatchId, prepareSource, sourceDatabase, type SourceDatabase, type SourceManifest } from '../source/prepare';
 import { ARKIV_ADDRESS, connect, describeError, executeCalldata, sdkInternals, writerAccount } from './chain';
+import * as udc from './udc';
 
 const APP_DIR = resolve(dirname(import.meta.path), '..');
 const env = process.env;
+const format = env.SYNC_FORMAT || 'v3';
 const settings = {
+  format,
+  prefix: env.SYNC_SCHEMA_PREFIX || 'sourcify.v4',
+  maxTxOps: Number(env.SYNC_MAX_TX_OPS || 16),
   dir: env.SYNC_DIR ? resolve(env.SYNC_DIR) : '',
   batch: Number(env.SYNC_BATCH || 200),
   pollSeconds: Number(env.SYNC_POLL_SECONDS || 60),
@@ -57,7 +71,7 @@ const settings = {
   maxGasPrice: BigInt(Math.round(Number(env.SYNC_MAX_GAS_PRICE_GWEI || 2) * 1e9)),
   inFlight: Number(env.SYNC_IN_FLIGHT || 4),
   batchDelaySeconds: Number(env.SYNC_BATCH_DELAY_SECONDS || 0),
-  gas: env.SYNC_GAS || 'computed',
+  gas: env.SYNC_GAS || (format === 'udc' ? 'estimate' : 'computed'),
   processor: resolve(APP_DIR, env.ARKIV_PROCESSOR_BIN || 'target/release/arkiv-entity-processor'),
   keyFile: resolve(APP_DIR, env.ARKIV_PRIVATE_KEY_FILE || 'arkiv-writer.key'),
 };
@@ -147,6 +161,9 @@ async function main() {
   if (!Number.isSafeInteger(settings.inFlight) || settings.inFlight < 1 || settings.inFlight > 16) throw new Error('SYNC_IN_FLIGHT must be 1..16');
   if (!Number.isFinite(settings.batchDelaySeconds) || settings.batchDelaySeconds < 0 || settings.batchDelaySeconds > 3600) throw new Error('SYNC_BATCH_DELAY_SECONDS must be 0..3600');
   if (!['computed', 'estimate'].includes(settings.gas)) throw new Error('SYNC_GAS must be computed or estimate');
+  if (!['v3', 'udc'].includes(settings.format)) throw new Error('SYNC_FORMAT must be v3 or udc');
+  if (!/^[A-Za-z0-9._-]{1,116}$/.test(settings.prefix)) throw new Error('SYNC_SCHEMA_PREFIX must be letters, digits, ".", "_" or "-"');
+  if (!Number.isSafeInteger(settings.maxTxOps) || settings.maxTxOps < 1 || settings.maxTxOps > 64) throw new Error('SYNC_MAX_TX_OPS must be 1..64');
   const maxBatches = values.once ? 1 : values.batches !== undefined ? Number(values.batches) : Infinity;
   if (maxBatches !== Infinity && (!Number.isSafeInteger(maxBatches) || maxBatches < 1)) throw new Error('--batches must be a positive whole number');
   if (values['start-after'] !== undefined && !/^(0|[1-9][0-9]*)$/.test(values['start-after'])) throw new Error('--start-after must be a match ID');
@@ -156,9 +173,11 @@ async function main() {
   const account = writerAccount(settings.keyFile);
   const owner = account.address.toLowerCase();
   if (env.ENTITY_OWNER && env.ENTITY_OWNER.toLowerCase() !== owner) throw new Error(`the writer key is for ${account.address}, but ENTITY_OWNER (the seeds' owner) is ${env.ENTITY_OWNER}`);
-  const { chain, client, transport, rpcUrl } = await connect(env);
-  // Receipts are polled every second (viem's default is 4 s, two blocks here).
-  const wallet = createWalletClient({ chain, transport, account, pollingInterval: 1000 });
+  const { chain, client: v3Client, transport, rpcUrl } = await connect(env);
+  // Receipts are polled every second (viem's default is 4 s, two blocks here). A udc sync uses the UDC SDK's clients.
+  const udcClients = settings.format === 'udc' ? udc.udcClients(rpcUrl, chain.id, account, env.ARKIV_RPC_API_KEY) : undefined;
+  const client: any = udcClients?.client ?? v3Client;
+  const wallet: any = udcClients?.wallet ?? createWalletClient({ chain, transport, account, pollingInterval: 1000 });
   await mkdir(settings.dir, { recursive: true });
   const release = await lock(join(settings.dir, 'sync.lock'), continuous);
   // What a continuous run is doing, for pipeline/sync-targets.sh ls.
@@ -177,7 +196,7 @@ async function main() {
     release(); process.exit(code);
   });
   try {
-    log('start', { rpcUrl, chainId: chain.id, writer: account.address, dir: settings.dir, batch: settings.batch, batchDelaySeconds: settings.batchDelaySeconds, dryRun: values['dry-run'] });
+    log('start', { rpcUrl, chainId: chain.id, writer: account.address, dir: settings.dir, batch: settings.batch, batchDelaySeconds: settings.batchDelaySeconds, dryRun: values['dry-run'], format: settings.format, ...(settings.format === 'udc' ? { schemaPrefix: settings.prefix } : {}) });
     await report({ status: 'starting', rpcUrl, chainId: chain.id, writer: account.address });
 
     // Queries return at most two rows: more than one entity for a lookup is ambiguous for the server too.
@@ -198,8 +217,9 @@ async function main() {
       cursor = values['start-after'];
       log('cursor', { lastMatchId: cursor, from: 'argument' });
     }
+    const probe = settings.format === 'udc' ? udc.matchIdProbe(client, owner, settings.prefix) : v3Probe(find);
     while (cursor === undefined) {
-      const start = await startingPoint(state?.lastMatchId, database, find);
+      const start = await startingPoint(state?.lastMatchId, database, probe);
       await report({ status: start.cursor === undefined ? 'needs-seed' : 'starting', start });
       if ((cursor = start.cursor) !== undefined) break;
       if (!continuous) throw new Error('No cursor: the writer has no verified_contract near the mirror\'s newest matches; prefill the chain with a seed or pass --start-after MATCH_ID');
@@ -250,17 +270,22 @@ async function main() {
   } finally { release(); }
 }
 
-/** Where a start continues (startCursor), from state.json's cursor, the mirror's newest match and the chain. */
-async function startingPoint(state: string | undefined, database: SourceDatabase, find: (selector: string) => Promise<Found[]>) {
-  const newest = await newestEthereumMatchId(database);
-  const chain = await highestMatchId(async after => {
+/** The highest matchid of the v3 verified_contract entities `find` returns above `after`. */
+function v3Probe(find: (selector: string) => Promise<Found[]>) {
+  return async (after: bigint) => {
     let highest: bigint | undefined;
     for (const { matchid } of await find(`kind = str('verified_contract') AND matchid > u64(${after})`)) {
       if (matchid === undefined) throw new Error('a verified_contract entity on the chain has no matchid');
       if (highest === undefined || BigInt(matchid) > highest) highest = BigInt(matchid);
     }
     return highest;
-  }, BigInt(newest ?? state ?? 0));
+  };
+}
+
+/** Where a start continues (startCursor), from state.json's cursor, the mirror's newest match and the chain. */
+async function startingPoint(state: string | undefined, database: SourceDatabase, probe: (after: bigint) => Promise<bigint | undefined>) {
+  const newest = await newestEthereumMatchId(database);
+  const chain = await highestMatchId(probe, BigInt(newest ?? state ?? 0));
   // Back from the chain's progress: twice a batch, at least 1,000 Ethereum matches (SYNC_BATCH may have been larger).
   const stepBack = chain === undefined ? undefined : await newestEthereumMatchId(database, { atOrBelow: String(chain), offset: Math.max(2 * settings.batch, 1000) }) ?? '0';
   const start = { mirrorNewest: newest, state, chain: chain?.toString(), ...startCursor(state, chain?.toString(), stepBack) };
@@ -290,7 +315,8 @@ async function syncBatch(context: { after: string; owner: string; chainId: numbe
   await mkdir(work, { recursive: true });
   const manifest: SourceManifest = await prepareSource({ sourceDir: join(work, 'source'), database: context.database, afterMatchId: after, limit: settings.batch, memoryLimit: '1GB', threads: 2 });
   const result = { firstMatchId: manifest.firstMatchId, lastMatchId: manifest.lastMatchId!, selected: manifest.selectedCount ?? 0, entities: 0, created: 0, reused: 0,
-    contracts: 0, alreadySynced: 0, transactions: 0, gasUsed: 0n, calldataBytes: 0, seconds: 0, phases, skippedContracts: [] as { matchId?: string; address?: string; reason: string }[] };
+    contracts: 0, alreadySynced: 0, transactions: 0, gasUsed: 0n, calldataBytes: 0, seconds: 0, phases, skippedContracts: [] as { matchId?: string; address?: string; reason: string }[],
+    ...(settings.format === 'udc' ? { patched: 0, rentFeeWei: 0n } : {}) };
   phase('prepare');
   if (!result.selected) { await rm(work, { recursive: true, force: true }); return result; }
 
@@ -302,6 +328,7 @@ async function syncBatch(context: { after: string; owner: string; chainId: numbe
   for (const skipped of marker.skipped ?? []) result.skippedContracts.push({ matchId: skipped.matchId, reason: `record: ${skipped.reason}` });
   if (marker.records === 0) { await rm(work, { recursive: true, force: true }); return result; }
   const bundle = join(work, 'bundle');
+  if (settings.format === 'udc') return syncBatchUdc({ ...context, work, bundle, records, result, phase });
   await run([settings.processor, 'process', '-i', records, '-o', bundle, '--owner', owner, '--destination-chain-id', String(context.chainId), '--require-source-complete'], { stderr: join(work, 'process.log') });
   phase('process');
   const wires: Wire[] = [];
@@ -367,6 +394,34 @@ async function syncBatch(context: { after: string; owner: string; chainId: numbe
   result.gasUsed += sentContracts.gasUsed; result.calldataBytes += sentContracts.calldataBytes;
   result.seconds = +((performance.now() - started) / 1000).toFixed(1);
   if (!context.dryRun) await rm(work, { recursive: true, force: true });
+  return result;
+}
+
+/** The UDC (v4) part of a batch: the records as a v4 bundle, then arkiv/udc.ts plans and writes it. */
+async function syncBatchUdc(context: { owner: string; chainId: number; client: any; wallet: any; dryRun: boolean; work: string; bundle: string; records: string;
+  result: Awaited<ReturnType<typeof syncBatch>>; phase: (name: string) => void }) {
+  const { owner, client, wallet, result, phase } = context;
+  const started = performance.now();
+  await run([settings.processor, 'process', '-i', context.records, '-o', context.bundle, '--format', 'udc', '--schema-prefix', settings.prefix, '--owner', owner,
+    '--destination-chain-id', String(context.chainId), '--require-source-complete'], { stderr: join(context.work, 'process.log') });
+  phase('process');
+  const lines = udc.readBundle(context.bundle, settings.prefix);
+  result.entities = lines.length;
+  // Our node answers ServerBusy with about eight requests in flight: four lookups at a time (and the transport asks again).
+  const lookups = await udc.lookup(client, lines, owner, settings.prefix, 4);
+  phase('lookup');
+  const plan = udc.plan(lines, lookups);
+  for (const d of plan.duplicates) log('dependency-duplicate', d);
+  result.skippedContracts.push(...plan.skipped);
+  const sent = await udc.write(plan, { client, wallet, owner, dryRun: context.dryRun, maxTxBytes: settings.maxTxBytes, maxTxOps: settings.maxTxOps,
+    inFlight: settings.inFlight, maxGasPrice: settings.maxGasPrice, gas: settings.gas as 'estimate' | 'computed', log });
+  phase('write');
+  const contracts = plan.levels[3]!;
+  Object.assign(result, { created: sent.created, reused: plan.reused, contracts: contracts.filter(o => o.op === 'create').length,
+    patched: contracts.filter(o => o.op === 'patch').length, alreadySynced: plan.alreadySynced, transactions: sent.transactions,
+    gasUsed: sent.gasUsed, rentFeeWei: sent.rentFee, calldataBytes: sent.calldataBytes });
+  result.seconds = +((performance.now() - started) / 1000 + Object.values(result.phases).slice(0, 2).reduce((a, b) => a + b, 0)).toFixed(1);
+  if (!context.dryRun) await rm(context.work, { recursive: true, force: true });
   return result;
 }
 

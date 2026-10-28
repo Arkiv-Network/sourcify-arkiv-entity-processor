@@ -1,6 +1,9 @@
 //! Async read sessions own one consistent Arkiv view. CPU hydration has no transport.
 use anyhow::Result;
-use arkiv_entity_processor::Entity;
+use arkiv_entity_processor::{
+    udc::{Select, UdcEntity},
+    Entity,
+};
 use serde_json::Value;
 use std::{fmt, future::Future, pin::Pin};
 
@@ -36,6 +39,35 @@ pub trait Backend: Send + Sync + 'static {
     fn check_ready(&self) -> ReadFuture<'_, ()> {
         Box::pin(async { self.begin_read().await.map(|_| ()) })
     }
+    /// A backend of v4 (UDC) entities; the HTTP layer then hydrates through `udc::Reader`.
+    fn udc(&self) -> Option<&dyn UdcBackend> {
+        None
+    }
+}
+
+/// A v4 dataset: entities tagged `<prefix>.<kind>`, owned by `owner`.
+pub trait UdcBackend: Send + Sync {
+    fn prefix(&self) -> &str;
+    fn owner(&self) -> [u8; 20];
+    /// A read session with one view (one pinned block, or the head of a head-only node).
+    fn begin_udc_read(
+        &self,
+        trace: Option<crate::trace::RpcTrace>,
+    ) -> ReadFuture<'_, Box<dyn UdcSession>>;
+}
+
+/// One read of a v4 dataset.
+pub trait UdcSession: Send {
+    /// The dataset's contract at a (lowercase 0x) Mainnet address; two are ambiguous.
+    fn find_contract<'a>(&'a mut self, address: &'a str) -> ReadFuture<'a, Option<UdcEntity>>;
+    /// Entities by key with one selection, at most 8 keys per query; every key must be found.
+    fn fetch<'a>(
+        &'a mut self,
+        keys: &'a [[u8; 32]],
+        select: &'a Select,
+    ) -> ReadFuture<'a, Vec<UdcEntity>>;
+    /// Check that the view still denotes the same block before responding.
+    fn finish(&mut self) -> ReadFuture<'_, ()>;
 }
 
 #[derive(Debug)]

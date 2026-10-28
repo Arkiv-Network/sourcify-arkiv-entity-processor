@@ -1,5 +1,10 @@
+use anyhow::Context;
 use arkiv_sourcify_server::{
-    backends::arkiv::{ArkivBackend, Config},
+    backend::Backend,
+    backends::{
+        arkiv::{ArkivBackend, Config},
+        udc::{Config as UdcConfig, UdcBackend, View},
+    },
     ethereum::{Config as EthereumConfig, EthereumRpc},
     Application, Limits,
 };
@@ -31,9 +36,22 @@ struct Args {
     owner: String,
     #[arg(long)]
     arkiv_chain_id: u64,
-    /// Validated state root of block 0 containing the completed import
+    /// Entity format: v3 payload entities (prefill) or udc (v4 UDC entities)
+    #[arg(long, value_enum, default_value = "v3")]
+    format: Format,
+    /// v3: validated state root of block 0 containing the completed import (required)
     #[arg(long)]
-    genesis_state_root: String,
+    genesis_state_root: Option<String>,
+    /// udc: arkiv.schema prefix of the dataset (entities are <prefix>.<kind>)
+    #[arg(long, default_value = "sourcify.v4")]
+    schema_prefix: String,
+    /// udc: pinned (one block per request; a node with history), head (a head-only node such
+    /// as Jalebi) or auto (decided at startup)
+    #[arg(long, value_enum, default_value = "auto")]
+    read_view: ReadView,
+    /// udc: expected hash of block 0, checked at the start of every read
+    #[arg(long)]
+    genesis_hash: Option<String>,
     #[arg(long, default_value = "127.0.0.1:3000")]
     listen: SocketAddr,
     #[arg(long, default_value_t = 8)]
@@ -42,8 +60,9 @@ struct Args {
     request_timeout_seconds: u64,
     #[arg(long, default_value_t = 100_000)]
     max_dependency_reads: usize,
-    #[arg(long, default_value_t = 16)]
-    max_rpc_concurrency: usize,
+    /// Parallel Arkiv RPC calls of the whole server [default: 16 for v3, 4 for udc]
+    #[arg(long)]
+    max_rpc_concurrency: Option<usize>,
     #[arg(long, default_value_t = 15)]
     rpc_timeout_seconds: u64,
     #[arg(long, default_value_t = 100_000)]
@@ -52,6 +71,18 @@ struct Args {
     max_rpc_response_bytes: usize,
     #[arg(long, default_value_t = 256 * 1024 * 1024)]
     max_read_bytes: usize,
+}
+
+#[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+enum Format {
+    V3,
+    Udc,
+}
+#[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+enum ReadView {
+    Auto,
+    Pinned,
+    Head,
 }
 
 #[tokio::main]
@@ -67,18 +98,51 @@ async fn main() -> anyhow::Result<()> {
         request_timeout: Duration::from_secs(args.request_timeout_seconds),
         max_dependency_reads: args.max_dependency_reads,
     };
-    let mut config = Config::new(
-        args.rpc_url,
-        args.owner,
-        args.arkiv_chain_id,
-        args.genesis_state_root,
-    );
-    config.max_rpc_concurrency = args.max_rpc_concurrency;
-    config.rpc_timeout = Duration::from_secs(args.rpc_timeout_seconds);
-    config.max_rpc_requests = args.max_rpc_requests;
-    config.max_rpc_response_bytes = args.max_rpc_response_bytes;
-    config.max_read_bytes = args.max_read_bytes;
-    let backend = ArkivBackend::connect(config).await?;
+    let backend: Arc<dyn Backend> = match args.format {
+        Format::V3 => {
+            anyhow::ensure!(
+                args.genesis_hash.is_none(),
+                "--genesis-hash applies to --format udc; v3 checks --genesis-state-root"
+            );
+            let root = args
+                .genesis_state_root
+                .context("--genesis-state-root is required with --format v3")?;
+            let mut config = Config::new(args.rpc_url, args.owner, args.arkiv_chain_id, root);
+            config.max_rpc_concurrency = args.max_rpc_concurrency.unwrap_or(16);
+            config.rpc_timeout = Duration::from_secs(args.rpc_timeout_seconds);
+            config.max_rpc_requests = args.max_rpc_requests;
+            config.max_rpc_response_bytes = args.max_rpc_response_bytes;
+            config.max_read_bytes = args.max_read_bytes;
+            Arc::new(ArkivBackend::connect(config).await?)
+        }
+        Format::Udc => {
+            anyhow::ensure!(
+                args.genesis_state_root.is_none(),
+                "--genesis-state-root applies to --format v3; udc checks --genesis-hash"
+            );
+            let mut config = UdcConfig::new(args.rpc_url, args.owner, args.arkiv_chain_id);
+            config.api_key = std::env::var("ARKIV_RPC_API_KEY")
+                .ok()
+                .filter(|k| !k.is_empty());
+            config.prefix = args.schema_prefix;
+            config.view = match args.read_view {
+                ReadView::Auto => View::Auto,
+                ReadView::Pinned => View::Pinned,
+                ReadView::Head => View::Head,
+            };
+            config.genesis_hash = args.genesis_hash;
+            if let Some(concurrency) = args.max_rpc_concurrency {
+                config.max_rpc_concurrency = concurrency;
+            }
+            config.rpc_timeout = Duration::from_secs(args.rpc_timeout_seconds);
+            config.max_rpc_requests = args.max_rpc_requests;
+            config.max_rpc_response_bytes = args.max_rpc_response_bytes;
+            config.max_read_bytes = args.max_read_bytes;
+            let backend = UdcBackend::connect(config).await?;
+            tracing::info!(view = backend.read_view(), "v4 (UDC) dataset");
+            Arc::new(backend)
+        }
+    };
     let ethereum = args
         .ethereum_rpc_url
         .map(|url| {
@@ -92,7 +156,7 @@ async fn main() -> anyhow::Result<()> {
             EthereumRpc::new(config)
         })
         .transpose()?;
-    let app = Application::with_ethereum(Arc::new(backend), limits, ethereum)?;
+    let app = Application::with_ethereum(backend, limits, ethereum)?;
     let listener = tokio::net::TcpListener::bind(args.listen).await?;
     tracing::info!(address = %listener.local_addr()?, mode = "arkiv", "contract reader listening");
     axum::serve(listener, app.router())

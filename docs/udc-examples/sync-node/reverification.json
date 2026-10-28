@@ -1,0 +1,43 @@
+{
+ "note": "The re-verification patch end to end (udc/e2e/reverify.sql, then arkiv/sync.ts --once with SYNC_FORMAT=udc): contract 0x36F3FD68E7325a35EB768F1AedaAe9EA0689d723 re-verified under matchId 60000001 with a new compilation. The sync created the compilation at block 74,631 and patched the contract entity in place at block 74,632 (same key; createdAt 74,590, updatedAt 74,632). read-arkiv --format udc --block 74631 returns the original record and the head the re-verified one, each byte-identical to v3 hydration of the record it was written from.",
+ "address": "0x36F3FD68E7325a35EB768F1AedaAe9EA0689d723",
+ "key": "0x84598996786e1b71a1306e396677c12f5e1e7ace433213d02d271badbdd86086",
+ "createdAt": 74590,
+ "updatedAt": 74632,
+ "compilationref": {
+  "74631": "0x5d4f2929137a7d39c926d29b08d4cf45f0743886e5bd2e9ced3fd522427f6b5f",
+  "74632": "0x257387965b007e3bac16dafc947ea057e93a7a43bbc50f7588eb0143dbd4ca6e"
+ },
+ "transactions": {
+  "compilation": "0x9a13a5eb4b7bb8ee95645215d5f639dcc4fdeb6d9cccd23697fdfaeb7b5e8119",
+  "patch": "0xc5762bb95a4d45071d1f9794bef9b2f23996d0c51e0b9de368fd8d42d53002ea"
+ },
+ "atBlock74631": {
+  "matchId": "468227",
+  "match": "match",
+  "creationMatch": "match",
+  "runtimeMatch": "match",
+  "verifiedAt": "2024-08-08T11:25:46Z",
+  "compilation.compiler": "solc",
+  "recordSha256": "b7fa3f6402fafcdd81b5cbbdbdbbabe81da6c76b466ff4118eb2ec86539d10a3",
+  "bytes": 253582
+ },
+ "atBlock74632": {
+  "matchId": "60000001",
+  "match": "exact_match",
+  "creationMatch": "exact_match",
+  "runtimeMatch": "exact_match",
+  "verifiedAt": "2026-10-28T13:40:00Z",
+  "compilation.compiler": "solc-reverify-test",
+  "recordSha256": "08be9452dd259bdeb6e3782ca8edfc648f3342ee025dc20dd9ad60d2724d34b7",
+  "bytes": 253616
+ },
+ "topLevelFieldsChanged": [
+  "compilation",
+  "creationMatch",
+  "match",
+  "matchId",
+  "runtimeMatch",
+  "verifiedAt"
+ ]
+}

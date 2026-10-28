@@ -161,7 +161,7 @@ positive/negative cross-request cache.
 | `--max-concurrent-requests` | 8 | Reject excess reads with 503 rather than queue CPU workers |
 | `--request-timeout-seconds` | 120 | Bound lookup, hydration, proxy resolution, names and final checks; deployment uses 55 |
 | `--max-dependency-reads` | 100,000 | Bound logical resolver operations across the contract and implementation names |
-| `--max-rpc-concurrency` | 16 | Bound in-flight Arkiv HTTP RPC requests across sessions |
+| `--max-rpc-concurrency` | 16 (v3), 4 (udc) | Bound in-flight Arkiv HTTP RPC requests across sessions |
 | `--rpc-timeout-seconds` | 15 | Bound each RPC transport/body read |
 | `--max-rpc-requests` | 100,000 | Bound calls inside one session |
 | `--max-rpc-response-bytes` | 8 MiB | Bound one RPC envelope, including hex expansion |
@@ -193,6 +193,55 @@ limits are separate from field count. There is no blanket HTTP response-byte cap
 The maximum supported field set is fixed by the validated Sourcify selector matrix.
 The current driver resolves logical dependencies sequentially; direct staging-key
 reads can overlap. Wider dependency batching is a measured follow-up optimization.
+
+## v4 (UDC) entities
+
+`--format udc` reads the v4 dataset of [the UDC proposal](udc-proposal.md) (branch `udc`):
+entities tagged `<prefix>.<kind>` in the indexed `arkiv.schema` attribute, all content in
+codec-tagged `bytes` attributes, references as `key` attributes. The HTTP contract, field
+selection, projection, signature and proxy policies are those of the v3 path; only the backend
+and the hydrator differ, and every response is byte-identical to the v3 path's for the same
+record (`crates/server/tests/udc.rs` compares 21 selections, absence and an invalid field on
+three records).
+
+```sh
+RUST_LOG=info target/release/arkiv-sourcify-server --format udc \
+  --rpc-url http://127.0.0.1:18545 --arkiv-chain-id 7706815 \
+  --owner 0x3ffcb8c66ba2a35df36d73b213399220fd59f42f \
+  --schema-prefix sourcify-udc-proposal.v4 \
+  --listen 127.0.0.1:3100
+```
+
+| Flag | Default | Meaning |
+| --- | --- | --- |
+| `--format` | `v3` | `udc` selects this backend; `--genesis-state-root` is then not used |
+| `--schema-prefix` | `sourcify.v4` | The dataset's `arkiv.schema` prefix (the proposal's test entities use `sourcify-udc-proposal.v4`) |
+| `--read-view` | `auto` | `pinned`: every query of a request at the head when it started (a node that keeps history, our node); `head`: no `atBlock` (a head-only node, Jalebi); `auto`: decided once at startup by a query at the block before the head (answered: pinned; "not retained": head) |
+| `--genesis-hash` | none | Hash of block 0, checked at the start of every read |
+| `ARKIV_RPC_API_KEY` | unset | Sent as `X-API-KEY` (Jalebi's API keys), never logged |
+
+A request reads the contract with one query (`$owner`, `arkiv.schema`, `chainid = u64(1)`,
+`address`, limit 2: two rows are ambiguous), then hands it to the processor's `udc::Reader` on a
+CPU worker. The reader asks for keys in rounds and the async session answers each round with
+`$key = key(…) OR …` queries of at most 8 keys (our node's planned path), run under the global
+RPC gate: the compilation and on-chain code; then the sources, recompiled code and chunks the
+selected fields need; then their chunks. `fields=abi,compilation` selects only the compilation's
+`arkiv.schema`, `hash`, `manifest`, `abi` and `compilation` attributes: 2 queries. A full
+SafeProxy read is 3 queries (measured on our node). Every fetched key counts against
+`--max-dependency-reads`. The reader checks owner, kind, codecs, chunk lists, digests and content
+hashes; a missing key is `missing_dependency`, two contracts for an address `ambiguous_record`, any
+failed check `corrupt_data`.
+
+In the pinned view every query carries the request's `atBlock` and must answer at it, and the
+block's hash is checked again before responding (`state_changed` otherwise). In the head view the
+contract is one query and its dependencies are never changed once written (only contracts are
+patched), so a read stays consistent while the head moves.
+
+Our node sheds load with HTTP 429 or the JSON-RPC error `-32010 ServerBusy` when about 8 to 12
+requests are in flight. The v4 backend asks again after 100, 200, 400, 800 and 1,600 ms (each
+attempt counts against `--max-rpc-requests`, all within the request deadline), then fails with
+`backend_unavailable`; any other error fails at once. Its default `--max-rpc-concurrency` is 4.
+The v3 backend does not retry.
 
 ## Operations
 

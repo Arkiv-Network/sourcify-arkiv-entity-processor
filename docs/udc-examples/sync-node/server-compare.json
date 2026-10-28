@@ -1,0 +1,2359 @@
+{
+ "note": "crates/server --format udc against our node (block range 74,7xx), every synced contract x the 21 queries of crates/server/tests/udc.rs, compared byte for byte (fresh errorId UUIDs masked) with the v3 path serving the same records: UDC_LIVE_SERVER=... UDC_LIVE_RECORDS=... cargo test -p arkiv-sourcify-server --test udc live_server -- --ignored",
+ "responses": 336,
+ "identical": 336,
+ "results": [
+  {
+   "address": "0x4f932770648a1f53c19342d38bc02dba06527246",
+   "query": "",
+   "status": 200,
+   "bytes": 201,
+   "identical": true
+  },
+  {
+   "address": "0x4f932770648a1f53c19342d38bc02dba06527246",
+   "query": "?fields=all",
+   "status": 200,
+   "bytes": 460522,
+   "identical": true
+  },
+  {
+   "address": "0x4f932770648a1f53c19342d38bc02dba06527246",
+   "query": "?fields=abi,compilation",
+   "status": 200,
+   "bytes": 6418,
+   "identical": true
+  },
+  {
+   "address": "0x4f932770648a1f53c19342d38bc02dba06527246",
+   "query": "?omit=proxyResolution",
+   "status": 200,
+   "bytes": 460312,
+   "identical": true
+  },
+  {
+   "address": "0x4f932770648a1f53c19342d38bc02dba06527246",
+   "query": "?fields=sources",
+   "status": 200,
+   "bytes": 77481,
+   "identical": true
+  },
+  {
+   "address": "0x4f932770648a1f53c19342d38bc02dba06527246",
+   "query": "?fields=metadata",
+   "status": 200,
+   "bytes": 86651,
+   "identical": true
+  },
+  {
+   "address": "0x4f932770648a1f53c19342d38bc02dba06527246",
+   "query": "?fields=signatures",
+   "status": 200,
+   "bytes": 1875,
+   "identical": true
+  },
+  {
+   "address": "0x4f932770648a1f53c19342d38bc02dba06527246",
+   "query": "?fields=abi,signatures",
+   "status": 200,
+   "bytes": 7734,
+   "identical": true
+  },
+  {
+   "address": "0x4f932770648a1f53c19342d38bc02dba06527246",
+   "query": "?fields=stdJsonInput,stdJsonOutput",
+   "status": 200,
+   "bytes": 218749,
+   "identical": true
+  },
+  {
+   "address": "0x4f932770648a1f53c19342d38bc02dba06527246",
+   "query": "?fields=creationBytecode,runtimeBytecode",
+   "status": 200,
+   "bytes": 66736,
+   "identical": true
+  },
+  {
+   "address": "0x4f932770648a1f53c19342d38bc02dba06527246",
+   "query": "?fields=creationBytecode.sourceMap,runtimeBytecode.onchainBytecode,runtimeBytecode.immutableReferences",
+   "status": 200,
+   "bytes": 12462,
+   "identical": true
+  },
+  {
+   "address": "0x4f932770648a1f53c19342d38bc02dba06527246",
+   "query": "?fields=deployment",
+   "status": 200,
+   "bytes": 409,
+   "identical": true
+  },
+  {
+   "address": "0x4f932770648a1f53c19342d38bc02dba06527246",
+   "query": "?fields=compilation.name",
+   "status": 200,
+   "bytes": 239,
+   "identical": true
+  },
+  {
+   "address": "0x4f932770648a1f53c19342d38bc02dba06527246",
+   "query": "?fields=proxyResolution",
+   "status": 200,
+   "bytes": 411,
+   "identical": true
+  },
+  {
+   "address": "0x4f932770648a1f53c19342d38bc02dba06527246",
+   "query": "?fields=proxyResolution.onchainRuntimeBytecode,proxyResolution.onchainCreationBytecode",
+   "status": 200,
+   "bytes": 24594,
+   "identical": true
+  },
+  {
+   "address": "0x4f932770648a1f53c19342d38bc02dba06527246",
+   "query": "?fields=storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput",
+   "status": 200,
+   "bytes": 3400,
+   "identical": true
+  },
+  {
+   "address": "0x4f932770648a1f53c19342d38bc02dba06527246",
+   "query": "?fields=compilation.language,deployment.transactionHash,runtimeBytecode.immutableReferences,storageLayout,transientStorageLayout",
+   "status": 200,
+   "bytes": 1423,
+   "identical": true
+  },
+  {
+   "address": "0x4f932770648a1f53c19342d38bc02dba06527246",
+   "query": "?omit=creationBytecode,runtimeBytecode,sources,compilation,abi,metadata,storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput,stdJsonInput,stdJsonOutput,signatures,proxyResolution",
+   "status": 200,
+   "bytes": 409,
+   "identical": true
+  },
+  {
+   "address": "0x4f932770648a1f53c19342d38bc02dba06527246",
+   "query": "?omit=creationBytecode,runtimeBytecode,sources,compilation,abi,metadata,storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput,stdJsonInput,stdJsonOutput,signatures,proxyResolution,deployment.transactionHash,deployment.blockNumber",
+   "status": 200,
+   "bytes": 409,
+   "identical": true
+  },
+  {
+   "address": "0x4f932770648a1f53c19342d38bc02dba06527246",
+   "query": "?omit=creationBytecode,runtimeBytecode,sources,compilation,abi,metadata,storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput,stdJsonInput,stdJsonOutput,signatures,proxyResolution,matchId,creationMatch,runtimeMatch,verifiedAt",
+   "status": 200,
+   "bytes": 409,
+   "identical": true
+  },
+  {
+   "address": "0x4f932770648a1f53c19342d38bc02dba06527246",
+   "query": "?fields=nope",
+   "status": 400,
+   "bytes": 136,
+   "identical": true
+  },
+  {
+   "address": "0x00000000000009ca62911fdd88c8cf50565ab183",
+   "query": "",
+   "status": 200,
+   "bytes": 202,
+   "identical": true
+  },
+  {
+   "address": "0x00000000000009ca62911fdd88c8cf50565ab183",
+   "query": "?fields=all",
+   "status": 200,
+   "bytes": 281561,
+   "identical": true
+  },
+  {
+   "address": "0x00000000000009ca62911fdd88c8cf50565ab183",
+   "query": "?fields=abi,compilation",
+   "status": 200,
+   "bytes": 9420,
+   "identical": true
+  },
+  {
+   "address": "0x00000000000009ca62911fdd88c8cf50565ab183",
+   "query": "?omit=proxyResolution",
+   "status": 200,
+   "bytes": 281351,
+   "identical": true
+  },
+  {
+   "address": "0x00000000000009ca62911fdd88c8cf50565ab183",
+   "query": "?fields=sources",
+   "status": 200,
+   "bytes": 56538,
+   "identical": true
+  },
+  {
+   "address": "0x00000000000009ca62911fdd88c8cf50565ab183",
+   "query": "?fields=metadata",
+   "status": 200,
+   "bytes": 15830,
+   "identical": true
+  },
+  {
+   "address": "0x00000000000009ca62911fdd88c8cf50565ab183",
+   "query": "?fields=signatures",
+   "status": 200,
+   "bytes": 8476,
+   "identical": true
+  },
+  {
+   "address": "0x00000000000009ca62911fdd88c8cf50565ab183",
+   "query": "?fields=abi,signatures",
+   "status": 200,
+   "bytes": 16706,
+   "identical": true
+  },
+  {
+   "address": "0x00000000000009ca62911fdd88c8cf50565ab183",
+   "query": "?fields=stdJsonInput,stdJsonOutput",
+   "status": 200,
+   "bytes": 126302,
+   "identical": true
+  },
+  {
+   "address": "0x00000000000009ca62911fdd88c8cf50565ab183",
+   "query": "?fields=creationBytecode,runtimeBytecode",
+   "status": 200,
+   "bytes": 59239,
+   "identical": true
+  },
+  {
+   "address": "0x00000000000009ca62911fdd88c8cf50565ab183",
+   "query": "?fields=creationBytecode.sourceMap,runtimeBytecode.onchainBytecode,runtimeBytecode.immutableReferences",
+   "status": 200,
+   "bytes": 11244,
+   "identical": true
+  },
+  {
+   "address": "0x00000000000009ca62911fdd88c8cf50565ab183",
+   "query": "?fields=deployment",
+   "status": 200,
+   "bytes": 409,
+   "identical": true
+  },
+  {
+   "address": "0x00000000000009ca62911fdd88c8cf50565ab183",
+   "query": "?fields=compilation.name",
+   "status": 200,
+   "bytes": 241,
+   "identical": true
+  },
+  {
+   "address": "0x00000000000009ca62911fdd88c8cf50565ab183",
+   "query": "?fields=proxyResolution",
+   "status": 200,
+   "bytes": 412,
+   "identical": true
+  },
+  {
+   "address": "0x00000000000009ca62911fdd88c8cf50565ab183",
+   "query": "?fields=proxyResolution.onchainRuntimeBytecode,proxyResolution.onchainCreationBytecode",
+   "status": 200,
+   "bytes": 21775,
+   "identical": true
+  },
+  {
+   "address": "0x00000000000009ca62911fdd88c8cf50565ab183",
+   "query": "?fields=storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput",
+   "status": 200,
+   "bytes": 6551,
+   "identical": true
+  },
+  {
+   "address": "0x00000000000009ca62911fdd88c8cf50565ab183",
+   "query": "?fields=compilation.language,deployment.transactionHash,runtimeBytecode.immutableReferences,storageLayout,transientStorageLayout",
+   "status": 200,
+   "bytes": 1339,
+   "identical": true
+  },
+  {
+   "address": "0x00000000000009ca62911fdd88c8cf50565ab183",
+   "query": "?omit=creationBytecode,runtimeBytecode,sources,compilation,abi,metadata,storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput,stdJsonInput,stdJsonOutput,signatures,proxyResolution",
+   "status": 200,
+   "bytes": 409,
+   "identical": true
+  },
+  {
+   "address": "0x00000000000009ca62911fdd88c8cf50565ab183",
+   "query": "?omit=creationBytecode,runtimeBytecode,sources,compilation,abi,metadata,storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput,stdJsonInput,stdJsonOutput,signatures,proxyResolution,deployment.transactionHash,deployment.blockNumber",
+   "status": 200,
+   "bytes": 409,
+   "identical": true
+  },
+  {
+   "address": "0x00000000000009ca62911fdd88c8cf50565ab183",
+   "query": "?omit=creationBytecode,runtimeBytecode,sources,compilation,abi,metadata,storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput,stdJsonInput,stdJsonOutput,signatures,proxyResolution,matchId,creationMatch,runtimeMatch,verifiedAt",
+   "status": 200,
+   "bytes": 409,
+   "identical": true
+  },
+  {
+   "address": "0x00000000000009ca62911fdd88c8cf50565ab183",
+   "query": "?fields=nope",
+   "status": 400,
+   "bytes": 136,
+   "identical": true
+  },
+  {
+   "address": "0x0000000000003f5e74c1ba8a66b48e6f3d71ae82",
+   "query": "",
+   "status": 200,
+   "bytes": 203,
+   "identical": true
+  },
+  {
+   "address": "0x0000000000003f5e74c1ba8a66b48e6f3d71ae82",
+   "query": "?fields=all",
+   "status": 200,
+   "bytes": 233052,
+   "identical": true
+  },
+  {
+   "address": "0x0000000000003f5e74c1ba8a66b48e6f3d71ae82",
+   "query": "?fields=abi,compilation",
+   "status": 200,
+   "bytes": 3864,
+   "identical": true
+  },
+  {
+   "address": "0x0000000000003f5e74c1ba8a66b48e6f3d71ae82",
+   "query": "?omit=proxyResolution",
+   "status": 200,
+   "bytes": 232842,
+   "identical": true
+  },
+  {
+   "address": "0x0000000000003f5e74c1ba8a66b48e6f3d71ae82",
+   "query": "?fields=sources",
+   "status": 200,
+   "bytes": 18913,
+   "identical": true
+  },
+  {
+   "address": "0x0000000000003f5e74c1ba8a66b48e6f3d71ae82",
+   "query": "?fields=metadata",
+   "status": 200,
+   "bytes": 4167,
+   "identical": true
+  },
+  {
+   "address": "0x0000000000003f5e74c1ba8a66b48e6f3d71ae82",
+   "query": "?fields=signatures",
+   "status": 200,
+   "bytes": 2266,
+   "identical": true
+  },
+  {
+   "address": "0x0000000000003f5e74c1ba8a66b48e6f3d71ae82",
+   "query": "?fields=abi,signatures",
+   "status": 200,
+   "bytes": 5600,
+   "identical": true
+  },
+  {
+   "address": "0x0000000000003f5e74c1ba8a66b48e6f3d71ae82",
+   "query": "?fields=stdJsonInput,stdJsonOutput",
+   "status": 200,
+   "bytes": 92016,
+   "identical": true
+  },
+  {
+   "address": "0x0000000000003f5e74c1ba8a66b48e6f3d71ae82",
+   "query": "?fields=creationBytecode,runtimeBytecode",
+   "status": 200,
+   "bytes": 112225,
+   "identical": true
+  },
+  {
+   "address": "0x0000000000003f5e74c1ba8a66b48e6f3d71ae82",
+   "query": "?fields=creationBytecode.sourceMap,runtimeBytecode.onchainBytecode,runtimeBytecode.immutableReferences",
+   "status": 200,
+   "bytes": 23789,
+   "identical": true
+  },
+  {
+   "address": "0x0000000000003f5e74c1ba8a66b48e6f3d71ae82",
+   "query": "?fields=deployment",
+   "status": 200,
+   "bytes": 411,
+   "identical": true
+  },
+  {
+   "address": "0x0000000000003f5e74c1ba8a66b48e6f3d71ae82",
+   "query": "?fields=compilation.name",
+   "status": 200,
+   "bytes": 237,
+   "identical": true
+  },
+  {
+   "address": "0x0000000000003f5e74c1ba8a66b48e6f3d71ae82",
+   "query": "?fields=proxyResolution",
+   "status": 200,
+   "bytes": 413,
+   "identical": true
+  },
+  {
+   "address": "0x0000000000003f5e74c1ba8a66b48e6f3d71ae82",
+   "query": "?fields=proxyResolution.onchainRuntimeBytecode,proxyResolution.onchainCreationBytecode",
+   "status": 200,
+   "bytes": 47144,
+   "identical": true
+  },
+  {
+   "address": "0x0000000000003f5e74c1ba8a66b48e6f3d71ae82",
+   "query": "?fields=storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput",
+   "status": 200,
+   "bytes": 401,
+   "identical": true
+  },
+  {
+   "address": "0x0000000000003f5e74c1ba8a66b48e6f3d71ae82",
+   "query": "?fields=compilation.language,deployment.transactionHash,runtimeBytecode.immutableReferences,storageLayout,transientStorageLayout",
+   "status": 200,
+   "bytes": 462,
+   "identical": true
+  },
+  {
+   "address": "0x0000000000003f5e74c1ba8a66b48e6f3d71ae82",
+   "query": "?omit=creationBytecode,runtimeBytecode,sources,compilation,abi,metadata,storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput,stdJsonInput,stdJsonOutput,signatures,proxyResolution",
+   "status": 200,
+   "bytes": 411,
+   "identical": true
+  },
+  {
+   "address": "0x0000000000003f5e74c1ba8a66b48e6f3d71ae82",
+   "query": "?omit=creationBytecode,runtimeBytecode,sources,compilation,abi,metadata,storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput,stdJsonInput,stdJsonOutput,signatures,proxyResolution,deployment.transactionHash,deployment.blockNumber",
+   "status": 200,
+   "bytes": 411,
+   "identical": true
+  },
+  {
+   "address": "0x0000000000003f5e74c1ba8a66b48e6f3d71ae82",
+   "query": "?omit=creationBytecode,runtimeBytecode,sources,compilation,abi,metadata,storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput,stdJsonInput,stdJsonOutput,signatures,proxyResolution,matchId,creationMatch,runtimeMatch,verifiedAt",
+   "status": 200,
+   "bytes": 411,
+   "identical": true
+  },
+  {
+   "address": "0x0000000000003f5e74c1ba8a66b48e6f3d71ae82",
+   "query": "?fields=nope",
+   "status": 400,
+   "bytes": 136,
+   "identical": true
+  },
+  {
+   "address": "0x00000000000061ad8ee190710508a818ae5325c3",
+   "query": "",
+   "status": 200,
+   "bytes": 203,
+   "identical": true
+  },
+  {
+   "address": "0x00000000000061ad8ee190710508a818ae5325c3",
+   "query": "?fields=all",
+   "status": 200,
+   "bytes": 842443,
+   "identical": true
+  },
+  {
+   "address": "0x00000000000061ad8ee190710508a818ae5325c3",
+   "query": "?fields=abi,compilation",
+   "status": 200,
+   "bytes": 10942,
+   "identical": true
+  },
+  {
+   "address": "0x00000000000061ad8ee190710508a818ae5325c3",
+   "query": "?omit=proxyResolution",
+   "status": 200,
+   "bytes": 842233,
+   "identical": true
+  },
+  {
+   "address": "0x00000000000061ad8ee190710508a818ae5325c3",
+   "query": "?fields=sources",
+   "status": 200,
+   "bytes": 124296,
+   "identical": true
+  },
+  {
+   "address": "0x00000000000061ad8ee190710508a818ae5325c3",
+   "query": "?fields=metadata",
+   "status": 200,
+   "bytes": 27250,
+   "identical": true
+  },
+  {
+   "address": "0x00000000000061ad8ee190710508a818ae5325c3",
+   "query": "?fields=signatures",
+   "status": 200,
+   "bytes": 10770,
+   "identical": true
+  },
+  {
+   "address": "0x00000000000061ad8ee190710508a818ae5325c3",
+   "query": "?fields=abi,signatures",
+   "status": 200,
+   "bytes": 21109,
+   "identical": true
+  },
+  {
+   "address": "0x00000000000061ad8ee190710508a818ae5325c3",
+   "query": "?fields=stdJsonInput,stdJsonOutput",
+   "status": 200,
+   "bytes": 349640,
+   "identical": true
+  },
+  {
+   "address": "0x00000000000061ad8ee190710508a818ae5325c3",
+   "query": "?fields=creationBytecode,runtimeBytecode",
+   "status": 200,
+   "bytes": 301107,
+   "identical": true
+  },
+  {
+   "address": "0x00000000000061ad8ee190710508a818ae5325c3",
+   "query": "?fields=creationBytecode.sourceMap,runtimeBytecode.onchainBytecode,runtimeBytecode.immutableReferences",
+   "status": 200,
+   "bytes": 48168,
+   "identical": true
+  },
+  {
+   "address": "0x00000000000061ad8ee190710508a818ae5325c3",
+   "query": "?fields=deployment",
+   "status": 200,
+   "bytes": 410,
+   "identical": true
+  },
+  {
+   "address": "0x00000000000061ad8ee190710508a818ae5325c3",
+   "query": "?fields=compilation.name",
+   "status": 200,
+   "bytes": 235,
+   "identical": true
+  },
+  {
+   "address": "0x00000000000061ad8ee190710508a818ae5325c3",
+   "query": "?fields=proxyResolution",
+   "status": 200,
+   "bytes": 413,
+   "identical": true
+  },
+  {
+   "address": "0x00000000000061ad8ee190710508a818ae5325c3",
+   "query": "?fields=proxyResolution.onchainRuntimeBytecode,proxyResolution.onchainCreationBytecode",
+   "status": 200,
+   "bytes": 133798,
+   "identical": true
+  },
+  {
+   "address": "0x00000000000061ad8ee190710508a818ae5325c3",
+   "query": "?fields=storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput",
+   "status": 200,
+   "bytes": 19239,
+   "identical": true
+  },
+  {
+   "address": "0x00000000000061ad8ee190710508a818ae5325c3",
+   "query": "?fields=compilation.language,deployment.transactionHash,runtimeBytecode.immutableReferences,storageLayout,transientStorageLayout",
+   "status": 200,
+   "bytes": 3843,
+   "identical": true
+  },
+  {
+   "address": "0x00000000000061ad8ee190710508a818ae5325c3",
+   "query": "?omit=creationBytecode,runtimeBytecode,sources,compilation,abi,metadata,storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput,stdJsonInput,stdJsonOutput,signatures,proxyResolution",
+   "status": 200,
+   "bytes": 410,
+   "identical": true
+  },
+  {
+   "address": "0x00000000000061ad8ee190710508a818ae5325c3",
+   "query": "?omit=creationBytecode,runtimeBytecode,sources,compilation,abi,metadata,storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput,stdJsonInput,stdJsonOutput,signatures,proxyResolution,deployment.transactionHash,deployment.blockNumber",
+   "status": 200,
+   "bytes": 410,
+   "identical": true
+  },
+  {
+   "address": "0x00000000000061ad8ee190710508a818ae5325c3",
+   "query": "?omit=creationBytecode,runtimeBytecode,sources,compilation,abi,metadata,storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput,stdJsonInput,stdJsonOutput,signatures,proxyResolution,matchId,creationMatch,runtimeMatch,verifiedAt",
+   "status": 200,
+   "bytes": 410,
+   "identical": true
+  },
+  {
+   "address": "0x00000000000061ad8ee190710508a818ae5325c3",
+   "query": "?fields=nope",
+   "status": 400,
+   "bytes": 136,
+   "identical": true
+  },
+  {
+   "address": "0x000000000034065b3a94c2118cfe5b4c0067b615",
+   "query": "",
+   "status": 200,
+   "bytes": 203,
+   "identical": true
+  },
+  {
+   "address": "0x000000000034065b3a94c2118cfe5b4c0067b615",
+   "query": "?fields=all",
+   "status": 200,
+   "bytes": 20225,
+   "identical": true
+  },
+  {
+   "address": "0x000000000034065b3a94c2118cfe5b4c0067b615",
+   "query": "?fields=abi,compilation",
+   "status": 200,
+   "bytes": 747,
+   "identical": true
+  },
+  {
+   "address": "0x000000000034065b3a94c2118cfe5b4c0067b615",
+   "query": "?omit=proxyResolution",
+   "status": 200,
+   "bytes": 20015,
+   "identical": true
+  },
+  {
+   "address": "0x000000000034065b3a94c2118cfe5b4c0067b615",
+   "query": "?fields=sources",
+   "status": 200,
+   "bytes": 2347,
+   "identical": true
+  },
+  {
+   "address": "0x000000000034065b3a94c2118cfe5b4c0067b615",
+   "query": "?fields=metadata",
+   "status": 200,
+   "bytes": 3428,
+   "identical": true
+  },
+  {
+   "address": "0x000000000034065b3a94c2118cfe5b4c0067b615",
+   "query": "?fields=signatures",
+   "status": 200,
+   "bytes": 254,
+   "identical": true
+  },
+  {
+   "address": "0x000000000034065b3a94c2118cfe5b4c0067b615",
+   "query": "?fields=abi,signatures",
+   "status": 200,
+   "bytes": 439,
+   "identical": true
+  },
+  {
+   "address": "0x000000000034065b3a94c2118cfe5b4c0067b615",
+   "query": "?fields=stdJsonInput,stdJsonOutput",
+   "status": 200,
+   "bytes": 9027,
+   "identical": true
+  },
+  {
+   "address": "0x000000000034065b3a94c2118cfe5b4c0067b615",
+   "query": "?fields=creationBytecode,runtimeBytecode",
+   "status": 200,
+   "bytes": 4220,
+   "identical": true
+  },
+  {
+   "address": "0x000000000034065b3a94c2118cfe5b4c0067b615",
+   "query": "?fields=creationBytecode.sourceMap,runtimeBytecode.onchainBytecode,runtimeBytecode.immutableReferences",
+   "status": 200,
+   "bytes": 857,
+   "identical": true
+  },
+  {
+   "address": "0x000000000034065b3a94c2118cfe5b4c0067b615",
+   "query": "?fields=deployment",
+   "status": 200,
+   "bytes": 410,
+   "identical": true
+  },
+  {
+   "address": "0x000000000034065b3a94c2118cfe5b4c0067b615",
+   "query": "?fields=compilation.name",
+   "status": 200,
+   "bytes": 238,
+   "identical": true
+  },
+  {
+   "address": "0x000000000034065b3a94c2118cfe5b4c0067b615",
+   "query": "?fields=proxyResolution",
+   "status": 200,
+   "bytes": 413,
+   "identical": true
+  },
+  {
+   "address": "0x000000000034065b3a94c2118cfe5b4c0067b615",
+   "query": "?fields=proxyResolution.onchainRuntimeBytecode,proxyResolution.onchainCreationBytecode",
+   "status": 200,
+   "bytes": 1662,
+   "identical": true
+  },
+  {
+   "address": "0x000000000034065b3a94c2118cfe5b4c0067b615",
+   "query": "?fields=storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput",
+   "status": 200,
+   "bytes": 1003,
+   "identical": true
+  },
+  {
+   "address": "0x000000000034065b3a94c2118cfe5b4c0067b615",
+   "query": "?fields=compilation.language,deployment.transactionHash,runtimeBytecode.immutableReferences,storageLayout,transientStorageLayout",
+   "status": 200,
+   "bytes": 661,
+   "identical": true
+  },
+  {
+   "address": "0x000000000034065b3a94c2118cfe5b4c0067b615",
+   "query": "?omit=creationBytecode,runtimeBytecode,sources,compilation,abi,metadata,storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput,stdJsonInput,stdJsonOutput,signatures,proxyResolution",
+   "status": 200,
+   "bytes": 410,
+   "identical": true
+  },
+  {
+   "address": "0x000000000034065b3a94c2118cfe5b4c0067b615",
+   "query": "?omit=creationBytecode,runtimeBytecode,sources,compilation,abi,metadata,storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput,stdJsonInput,stdJsonOutput,signatures,proxyResolution,deployment.transactionHash,deployment.blockNumber",
+   "status": 200,
+   "bytes": 410,
+   "identical": true
+  },
+  {
+   "address": "0x000000000034065b3a94c2118cfe5b4c0067b615",
+   "query": "?omit=creationBytecode,runtimeBytecode,sources,compilation,abi,metadata,storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput,stdJsonInput,stdJsonOutput,signatures,proxyResolution,matchId,creationMatch,runtimeMatch,verifiedAt",
+   "status": 200,
+   "bytes": 410,
+   "identical": true
+  },
+  {
+   "address": "0x000000000034065b3a94c2118cfe5b4c0067b615",
+   "query": "?fields=nope",
+   "status": 400,
+   "bytes": 136,
+   "identical": true
+  },
+  {
+   "address": "0x00000000005affe6623a1753f7c055a28bc6628c",
+   "query": "",
+   "status": 200,
+   "bytes": 203,
+   "identical": true
+  },
+  {
+   "address": "0x00000000005affe6623a1753f7c055a28bc6628c",
+   "query": "?fields=all",
+   "status": 200,
+   "bytes": 392620,
+   "identical": true
+  },
+  {
+   "address": "0x00000000005affe6623a1753f7c055a28bc6628c",
+   "query": "?fields=abi,compilation",
+   "status": 200,
+   "bytes": 10113,
+   "identical": true
+  },
+  {
+   "address": "0x00000000005affe6623a1753f7c055a28bc6628c",
+   "query": "?omit=proxyResolution",
+   "status": 200,
+   "bytes": 392410,
+   "identical": true
+  },
+  {
+   "address": "0x00000000005affe6623a1753f7c055a28bc6628c",
+   "query": "?fields=sources",
+   "status": 200,
+   "bytes": 72189,
+   "identical": true
+  },
+  {
+   "address": "0x00000000005affe6623a1753f7c055a28bc6628c",
+   "query": "?fields=metadata",
+   "status": 200,
+   "bytes": 19175,
+   "identical": true
+  },
+  {
+   "address": "0x00000000005affe6623a1753f7c055a28bc6628c",
+   "query": "?fields=signatures",
+   "status": 200,
+   "bytes": 9777,
+   "identical": true
+  },
+  {
+   "address": "0x00000000005affe6623a1753f7c055a28bc6628c",
+   "query": "?fields=abi,signatures",
+   "status": 200,
+   "bytes": 19089,
+   "identical": true
+  },
+  {
+   "address": "0x00000000005affe6623a1753f7c055a28bc6628c",
+   "query": "?fields=stdJsonInput,stdJsonOutput",
+   "status": 200,
+   "bytes": 173034,
+   "identical": true
+  },
+  {
+   "address": "0x00000000005affe6623a1753f7c055a28bc6628c",
+   "query": "?fields=creationBytecode,runtimeBytecode",
+   "status": 200,
+   "bytes": 98311,
+   "identical": true
+  },
+  {
+   "address": "0x00000000005affe6623a1753f7c055a28bc6628c",
+   "query": "?fields=creationBytecode.sourceMap,runtimeBytecode.onchainBytecode,runtimeBytecode.immutableReferences",
+   "status": 200,
+   "bytes": 20775,
+   "identical": true
+  },
+  {
+   "address": "0x00000000005affe6623a1753f7c055a28bc6628c",
+   "query": "?fields=deployment",
+   "status": 200,
+   "bytes": 410,
+   "identical": true
+  },
+  {
+   "address": "0x00000000005affe6623a1753f7c055a28bc6628c",
+   "query": "?fields=compilation.name",
+   "status": 200,
+   "bytes": 236,
+   "identical": true
+  },
+  {
+   "address": "0x00000000005affe6623a1753f7c055a28bc6628c",
+   "query": "?fields=proxyResolution",
+   "status": 200,
+   "bytes": 413,
+   "identical": true
+  },
+  {
+   "address": "0x00000000005affe6623a1753f7c055a28bc6628c",
+   "query": "?fields=proxyResolution.onchainRuntimeBytecode,proxyResolution.onchainCreationBytecode",
+   "status": 200,
+   "bytes": 38650,
+   "identical": true
+  },
+  {
+   "address": "0x00000000005affe6623a1753f7c055a28bc6628c",
+   "query": "?fields=storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput",
+   "status": 200,
+   "bytes": 10822,
+   "identical": true
+  },
+  {
+   "address": "0x00000000005affe6623a1753f7c055a28bc6628c",
+   "query": "?fields=compilation.language,deployment.transactionHash,runtimeBytecode.immutableReferences,storageLayout,transientStorageLayout",
+   "status": 200,
+   "bytes": 4514,
+   "identical": true
+  },
+  {
+   "address": "0x00000000005affe6623a1753f7c055a28bc6628c",
+   "query": "?omit=creationBytecode,runtimeBytecode,sources,compilation,abi,metadata,storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput,stdJsonInput,stdJsonOutput,signatures,proxyResolution",
+   "status": 200,
+   "bytes": 410,
+   "identical": true
+  },
+  {
+   "address": "0x00000000005affe6623a1753f7c055a28bc6628c",
+   "query": "?omit=creationBytecode,runtimeBytecode,sources,compilation,abi,metadata,storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput,stdJsonInput,stdJsonOutput,signatures,proxyResolution,deployment.transactionHash,deployment.blockNumber",
+   "status": 200,
+   "bytes": 410,
+   "identical": true
+  },
+  {
+   "address": "0x00000000005affe6623a1753f7c055a28bc6628c",
+   "query": "?omit=creationBytecode,runtimeBytecode,sources,compilation,abi,metadata,storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput,stdJsonInput,stdJsonOutput,signatures,proxyResolution,matchId,creationMatch,runtimeMatch,verifiedAt",
+   "status": 200,
+   "bytes": 410,
+   "identical": true
+  },
+  {
+   "address": "0x00000000005affe6623a1753f7c055a28bc6628c",
+   "query": "?fields=nope",
+   "status": 400,
+   "bytes": 136,
+   "identical": true
+  },
+  {
+   "address": "0x0000000000a0aa7908bda39fbb8f95e5a0a6ee42",
+   "query": "",
+   "status": 200,
+   "bytes": 203,
+   "identical": true
+  },
+  {
+   "address": "0x0000000000a0aa7908bda39fbb8f95e5a0a6ee42",
+   "query": "?fields=all",
+   "status": 200,
+   "bytes": 275781,
+   "identical": true
+  },
+  {
+   "address": "0x0000000000a0aa7908bda39fbb8f95e5a0a6ee42",
+   "query": "?fields=abi,compilation",
+   "status": 200,
+   "bytes": 2337,
+   "identical": true
+  },
+  {
+   "address": "0x0000000000a0aa7908bda39fbb8f95e5a0a6ee42",
+   "query": "?omit=proxyResolution",
+   "status": 200,
+   "bytes": 275571,
+   "identical": true
+  },
+  {
+   "address": "0x0000000000a0aa7908bda39fbb8f95e5a0a6ee42",
+   "query": "?fields=sources",
+   "status": 200,
+   "bytes": 95370,
+   "identical": true
+  },
+  {
+   "address": "0x0000000000a0aa7908bda39fbb8f95e5a0a6ee42",
+   "query": "?fields=metadata",
+   "status": 200,
+   "bytes": 7605,
+   "identical": true
+  },
+  {
+   "address": "0x0000000000a0aa7908bda39fbb8f95e5a0a6ee42",
+   "query": "?fields=signatures",
+   "status": 200,
+   "bytes": 1485,
+   "identical": true
+  },
+  {
+   "address": "0x0000000000a0aa7908bda39fbb8f95e5a0a6ee42",
+   "query": "?fields=abi,signatures",
+   "status": 200,
+   "bytes": 3210,
+   "identical": true
+  },
+  {
+   "address": "0x0000000000a0aa7908bda39fbb8f95e5a0a6ee42",
+   "query": "?fields=stdJsonInput,stdJsonOutput",
+   "status": 200,
+   "bytes": 130829,
+   "identical": true
+  },
+  {
+   "address": "0x0000000000a0aa7908bda39fbb8f95e5a0a6ee42",
+   "query": "?fields=creationBytecode,runtimeBytecode",
+   "status": 200,
+   "bytes": 35003,
+   "identical": true
+  },
+  {
+   "address": "0x0000000000a0aa7908bda39fbb8f95e5a0a6ee42",
+   "query": "?fields=creationBytecode.sourceMap,runtimeBytecode.onchainBytecode,runtimeBytecode.immutableReferences",
+   "status": 200,
+   "bytes": 8909,
+   "identical": true
+  },
+  {
+   "address": "0x0000000000a0aa7908bda39fbb8f95e5a0a6ee42",
+   "query": "?fields=deployment",
+   "status": 200,
+   "bytes": 410,
+   "identical": true
+  },
+  {
+   "address": "0x0000000000a0aa7908bda39fbb8f95e5a0a6ee42",
+   "query": "?fields=compilation.name",
+   "status": 200,
+   "bytes": 256,
+   "identical": true
+  },
+  {
+   "address": "0x0000000000a0aa7908bda39fbb8f95e5a0a6ee42",
+   "query": "?fields=proxyResolution",
+   "status": 200,
+   "bytes": 413,
+   "identical": true
+  },
+  {
+   "address": "0x0000000000a0aa7908bda39fbb8f95e5a0a6ee42",
+   "query": "?fields=proxyResolution.onchainRuntimeBytecode,proxyResolution.onchainCreationBytecode",
+   "status": 200,
+   "bytes": 12506,
+   "identical": true
+  },
+  {
+   "address": "0x0000000000a0aa7908bda39fbb8f95e5a0a6ee42",
+   "query": "?fields=storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput",
+   "status": 200,
+   "bytes": 3953,
+   "identical": true
+  },
+  {
+   "address": "0x0000000000a0aa7908bda39fbb8f95e5a0a6ee42",
+   "query": "?fields=compilation.language,deployment.transactionHash,runtimeBytecode.immutableReferences,storageLayout,transientStorageLayout",
+   "status": 200,
+   "bytes": 462,
+   "identical": true
+  },
+  {
+   "address": "0x0000000000a0aa7908bda39fbb8f95e5a0a6ee42",
+   "query": "?omit=creationBytecode,runtimeBytecode,sources,compilation,abi,metadata,storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput,stdJsonInput,stdJsonOutput,signatures,proxyResolution",
+   "status": 200,
+   "bytes": 410,
+   "identical": true
+  },
+  {
+   "address": "0x0000000000a0aa7908bda39fbb8f95e5a0a6ee42",
+   "query": "?omit=creationBytecode,runtimeBytecode,sources,compilation,abi,metadata,storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput,stdJsonInput,stdJsonOutput,signatures,proxyResolution,deployment.transactionHash,deployment.blockNumber",
+   "status": 200,
+   "bytes": 410,
+   "identical": true
+  },
+  {
+   "address": "0x0000000000a0aa7908bda39fbb8f95e5a0a6ee42",
+   "query": "?omit=creationBytecode,runtimeBytecode,sources,compilation,abi,metadata,storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput,stdJsonInput,stdJsonOutput,signatures,proxyResolution,matchId,creationMatch,runtimeMatch,verifiedAt",
+   "status": 200,
+   "bytes": 410,
+   "identical": true
+  },
+  {
+   "address": "0x0000000000a0aa7908bda39fbb8f95e5a0a6ee42",
+   "query": "?fields=nope",
+   "status": 400,
+   "bytes": 136,
+   "identical": true
+  },
+  {
+   "address": "0x000000000055217587f821917562867172942189",
+   "query": "",
+   "status": 200,
+   "bytes": 203,
+   "identical": true
+  },
+  {
+   "address": "0x000000000055217587f821917562867172942189",
+   "query": "?fields=all",
+   "status": 200,
+   "bytes": 355864,
+   "identical": true
+  },
+  {
+   "address": "0x000000000055217587f821917562867172942189",
+   "query": "?fields=abi,compilation",
+   "status": 200,
+   "bytes": 11904,
+   "identical": true
+  },
+  {
+   "address": "0x000000000055217587f821917562867172942189",
+   "query": "?omit=proxyResolution",
+   "status": 200,
+   "bytes": 355654,
+   "identical": true
+  },
+  {
+   "address": "0x000000000055217587f821917562867172942189",
+   "query": "?fields=sources",
+   "status": 200,
+   "bytes": 39525,
+   "identical": true
+  },
+  {
+   "address": "0x000000000055217587f821917562867172942189",
+   "query": "?fields=metadata",
+   "status": 200,
+   "bytes": 19427,
+   "identical": true
+  },
+  {
+   "address": "0x000000000055217587f821917562867172942189",
+   "query": "?fields=signatures",
+   "status": 200,
+   "bytes": 8698,
+   "identical": true
+  },
+  {
+   "address": "0x000000000055217587f821917562867172942189",
+   "query": "?fields=abi,signatures",
+   "status": 200,
+   "bytes": 19854,
+   "identical": true
+  },
+  {
+   "address": "0x000000000055217587f821917562867172942189",
+   "query": "?fields=stdJsonInput,stdJsonOutput",
+   "status": 200,
+   "bytes": 153036,
+   "identical": true
+  },
+  {
+   "address": "0x000000000055217587f821917562867172942189",
+   "query": "?fields=creationBytecode,runtimeBytecode",
+   "status": 200,
+   "bytes": 116189,
+   "identical": true
+  },
+  {
+   "address": "0x000000000055217587f821917562867172942189",
+   "query": "?fields=creationBytecode.sourceMap,runtimeBytecode.onchainBytecode,runtimeBytecode.immutableReferences",
+   "status": 200,
+   "bytes": 21887,
+   "identical": true
+  },
+  {
+   "address": "0x000000000055217587f821917562867172942189",
+   "query": "?fields=deployment",
+   "status": 200,
+   "bytes": 410,
+   "identical": true
+  },
+  {
+   "address": "0x000000000055217587f821917562867172942189",
+   "query": "?fields=compilation.name",
+   "status": 200,
+   "bytes": 239,
+   "identical": true
+  },
+  {
+   "address": "0x000000000055217587f821917562867172942189",
+   "query": "?fields=proxyResolution",
+   "status": 200,
+   "bytes": 413,
+   "identical": true
+  },
+  {
+   "address": "0x000000000055217587f821917562867172942189",
+   "query": "?fields=proxyResolution.onchainRuntimeBytecode,proxyResolution.onchainCreationBytecode",
+   "status": 200,
+   "bytes": 43286,
+   "identical": true
+  },
+  {
+   "address": "0x000000000055217587f821917562867172942189",
+   "query": "?fields=storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput",
+   "status": 200,
+   "bytes": 7886,
+   "identical": true
+  },
+  {
+   "address": "0x000000000055217587f821917562867172942189",
+   "query": "?fields=compilation.language,deployment.transactionHash,runtimeBytecode.immutableReferences,storageLayout,transientStorageLayout",
+   "status": 200,
+   "bytes": 3145,
+   "identical": true
+  },
+  {
+   "address": "0x000000000055217587f821917562867172942189",
+   "query": "?omit=creationBytecode,runtimeBytecode,sources,compilation,abi,metadata,storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput,stdJsonInput,stdJsonOutput,signatures,proxyResolution",
+   "status": 200,
+   "bytes": 410,
+   "identical": true
+  },
+  {
+   "address": "0x000000000055217587f821917562867172942189",
+   "query": "?omit=creationBytecode,runtimeBytecode,sources,compilation,abi,metadata,storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput,stdJsonInput,stdJsonOutput,signatures,proxyResolution,deployment.transactionHash,deployment.blockNumber",
+   "status": 200,
+   "bytes": 410,
+   "identical": true
+  },
+  {
+   "address": "0x000000000055217587f821917562867172942189",
+   "query": "?omit=creationBytecode,runtimeBytecode,sources,compilation,abi,metadata,storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput,stdJsonInput,stdJsonOutput,signatures,proxyResolution,matchId,creationMatch,runtimeMatch,verifiedAt",
+   "status": 200,
+   "bytes": 410,
+   "identical": true
+  },
+  {
+   "address": "0x000000000055217587f821917562867172942189",
+   "query": "?fields=nope",
+   "status": 400,
+   "bytes": 136,
+   "identical": true
+  },
+  {
+   "address": "0x0000000000664ceffed39244a8312bd895470803",
+   "query": "",
+   "status": 200,
+   "bytes": 203,
+   "identical": true
+  },
+  {
+   "address": "0x0000000000664ceffed39244a8312bd895470803",
+   "query": "?fields=all",
+   "status": 200,
+   "bytes": 239302,
+   "identical": true
+  },
+  {
+   "address": "0x0000000000664ceffed39244a8312bd895470803",
+   "query": "?fields=abi,compilation",
+   "status": 200,
+   "bytes": 8208,
+   "identical": true
+  },
+  {
+   "address": "0x0000000000664ceffed39244a8312bd895470803",
+   "query": "?omit=proxyResolution",
+   "status": 200,
+   "bytes": 239092,
+   "identical": true
+  },
+  {
+   "address": "0x0000000000664ceffed39244a8312bd895470803",
+   "query": "?fields=sources",
+   "status": 200,
+   "bytes": 38751,
+   "identical": true
+  },
+  {
+   "address": "0x0000000000664ceffed39244a8312bd895470803",
+   "query": "?fields=metadata",
+   "status": 200,
+   "bytes": 12942,
+   "identical": true
+  },
+  {
+   "address": "0x0000000000664ceffed39244a8312bd895470803",
+   "query": "?fields=signatures",
+   "status": 200,
+   "bytes": 7128,
+   "identical": true
+  },
+  {
+   "address": "0x0000000000664ceffed39244a8312bd895470803",
+   "query": "?fields=abi,signatures",
+   "status": 200,
+   "bytes": 14522,
+   "identical": true
+  },
+  {
+   "address": "0x0000000000664ceffed39244a8312bd895470803",
+   "query": "?fields=stdJsonInput,stdJsonOutput",
+   "status": 200,
+   "bytes": 104047,
+   "identical": true
+  },
+  {
+   "address": "0x0000000000664ceffed39244a8312bd895470803",
+   "query": "?fields=creationBytecode,runtimeBytecode",
+   "status": 200,
+   "bytes": 64397,
+   "identical": true
+  },
+  {
+   "address": "0x0000000000664ceffed39244a8312bd895470803",
+   "query": "?fields=creationBytecode.sourceMap,runtimeBytecode.onchainBytecode,runtimeBytecode.immutableReferences",
+   "status": 200,
+   "bytes": 14523,
+   "identical": true
+  },
+  {
+   "address": "0x0000000000664ceffed39244a8312bd895470803",
+   "query": "?fields=deployment",
+   "status": 200,
+   "bytes": 409,
+   "identical": true
+  },
+  {
+   "address": "0x0000000000664ceffed39244a8312bd895470803",
+   "query": "?fields=compilation.name",
+   "status": 200,
+   "bytes": 240,
+   "identical": true
+  },
+  {
+   "address": "0x0000000000664ceffed39244a8312bd895470803",
+   "query": "?fields=proxyResolution",
+   "status": 200,
+   "bytes": 413,
+   "identical": true
+  },
+  {
+   "address": "0x0000000000664ceffed39244a8312bd895470803",
+   "query": "?fields=proxyResolution.onchainRuntimeBytecode,proxyResolution.onchainCreationBytecode",
+   "status": 200,
+   "bytes": 25482,
+   "identical": true
+  },
+  {
+   "address": "0x0000000000664ceffed39244a8312bd895470803",
+   "query": "?fields=storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput",
+   "status": 200,
+   "bytes": 4631,
+   "identical": true
+  },
+  {
+   "address": "0x0000000000664ceffed39244a8312bd895470803",
+   "query": "?fields=compilation.language,deployment.transactionHash,runtimeBytecode.immutableReferences,storageLayout,transientStorageLayout",
+   "status": 200,
+   "bytes": 2661,
+   "identical": true
+  },
+  {
+   "address": "0x0000000000664ceffed39244a8312bd895470803",
+   "query": "?omit=creationBytecode,runtimeBytecode,sources,compilation,abi,metadata,storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput,stdJsonInput,stdJsonOutput,signatures,proxyResolution",
+   "status": 200,
+   "bytes": 409,
+   "identical": true
+  },
+  {
+   "address": "0x0000000000664ceffed39244a8312bd895470803",
+   "query": "?omit=creationBytecode,runtimeBytecode,sources,compilation,abi,metadata,storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput,stdJsonInput,stdJsonOutput,signatures,proxyResolution,deployment.transactionHash,deployment.blockNumber",
+   "status": 200,
+   "bytes": 409,
+   "identical": true
+  },
+  {
+   "address": "0x0000000000664ceffed39244a8312bd895470803",
+   "query": "?omit=creationBytecode,runtimeBytecode,sources,compilation,abi,metadata,storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput,stdJsonInput,stdJsonOutput,signatures,proxyResolution,matchId,creationMatch,runtimeMatch,verifiedAt",
+   "status": 200,
+   "bytes": 409,
+   "identical": true
+  },
+  {
+   "address": "0x0000000000664ceffed39244a8312bd895470803",
+   "query": "?fields=nope",
+   "status": 400,
+   "bytes": 136,
+   "identical": true
+  },
+  {
+   "address": "0x00000000009726632680fb29d3f7a9734e3010e2",
+   "query": "",
+   "status": 200,
+   "bytes": 203,
+   "identical": true
+  },
+  {
+   "address": "0x00000000009726632680fb29d3f7a9734e3010e2",
+   "query": "?fields=all",
+   "status": 200,
+   "bytes": 276115,
+   "identical": true
+  },
+  {
+   "address": "0x00000000009726632680fb29d3f7a9734e3010e2",
+   "query": "?fields=abi,compilation",
+   "status": 200,
+   "bytes": 6151,
+   "identical": true
+  },
+  {
+   "address": "0x00000000009726632680fb29d3f7a9734e3010e2",
+   "query": "?omit=proxyResolution",
+   "status": 200,
+   "bytes": 275905,
+   "identical": true
+  },
+  {
+   "address": "0x00000000009726632680fb29d3f7a9734e3010e2",
+   "query": "?fields=sources",
+   "status": 200,
+   "bytes": 47502,
+   "identical": true
+  },
+  {
+   "address": "0x00000000009726632680fb29d3f7a9734e3010e2",
+   "query": "?fields=metadata",
+   "status": 200,
+   "bytes": 13861,
+   "identical": true
+  },
+  {
+   "address": "0x00000000009726632680fb29d3f7a9734e3010e2",
+   "query": "?fields=signatures",
+   "status": 200,
+   "bytes": 3121,
+   "identical": true
+  },
+  {
+   "address": "0x00000000009726632680fb29d3f7a9734e3010e2",
+   "query": "?fields=abi,signatures",
+   "status": 200,
+   "bytes": 8732,
+   "identical": true
+  },
+  {
+   "address": "0x00000000009726632680fb29d3f7a9734e3010e2",
+   "query": "?fields=stdJsonInput,stdJsonOutput",
+   "status": 200,
+   "bytes": 123086,
+   "identical": true
+  },
+  {
+   "address": "0x00000000009726632680fb29d3f7a9734e3010e2",
+   "query": "?fields=creationBytecode,runtimeBytecode",
+   "status": 200,
+   "bytes": 77049,
+   "identical": true
+  },
+  {
+   "address": "0x00000000009726632680fb29d3f7a9734e3010e2",
+   "query": "?fields=creationBytecode.sourceMap,runtimeBytecode.onchainBytecode,runtimeBytecode.immutableReferences",
+   "status": 200,
+   "bytes": 14251,
+   "identical": true
+  },
+  {
+   "address": "0x00000000009726632680fb29d3f7a9734e3010e2",
+   "query": "?fields=deployment",
+   "status": 200,
+   "bytes": 411,
+   "identical": true
+  },
+  {
+   "address": "0x00000000009726632680fb29d3f7a9734e3010e2",
+   "query": "?fields=compilation.name",
+   "status": 200,
+   "bytes": 242,
+   "identical": true
+  },
+  {
+   "address": "0x00000000009726632680fb29d3f7a9734e3010e2",
+   "query": "?fields=proxyResolution",
+   "status": 200,
+   "bytes": 413,
+   "identical": true
+  },
+  {
+   "address": "0x00000000009726632680fb29d3f7a9734e3010e2",
+   "query": "?fields=proxyResolution.onchainRuntimeBytecode,proxyResolution.onchainCreationBytecode",
+   "status": 200,
+   "bytes": 28030,
+   "identical": true
+  },
+  {
+   "address": "0x00000000009726632680fb29d3f7a9734e3010e2",
+   "query": "?fields=storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput",
+   "status": 200,
+   "bytes": 6145,
+   "identical": true
+  },
+  {
+   "address": "0x00000000009726632680fb29d3f7a9734e3010e2",
+   "query": "?fields=compilation.language,deployment.transactionHash,runtimeBytecode.immutableReferences,storageLayout,transientStorageLayout",
+   "status": 200,
+   "bytes": 1222,
+   "identical": true
+  },
+  {
+   "address": "0x00000000009726632680fb29d3f7a9734e3010e2",
+   "query": "?omit=creationBytecode,runtimeBytecode,sources,compilation,abi,metadata,storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput,stdJsonInput,stdJsonOutput,signatures,proxyResolution",
+   "status": 200,
+   "bytes": 411,
+   "identical": true
+  },
+  {
+   "address": "0x00000000009726632680fb29d3f7a9734e3010e2",
+   "query": "?omit=creationBytecode,runtimeBytecode,sources,compilation,abi,metadata,storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput,stdJsonInput,stdJsonOutput,signatures,proxyResolution,deployment.transactionHash,deployment.blockNumber",
+   "status": 200,
+   "bytes": 411,
+   "identical": true
+  },
+  {
+   "address": "0x00000000009726632680fb29d3f7a9734e3010e2",
+   "query": "?omit=creationBytecode,runtimeBytecode,sources,compilation,abi,metadata,storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput,stdJsonInput,stdJsonOutput,signatures,proxyResolution,matchId,creationMatch,runtimeMatch,verifiedAt",
+   "status": 200,
+   "bytes": 411,
+   "identical": true
+  },
+  {
+   "address": "0x00000000009726632680fb29d3f7a9734e3010e2",
+   "query": "?fields=nope",
+   "status": 400,
+   "bytes": 136,
+   "identical": true
+  },
+  {
+   "address": "0x09ec5377ece8115a97827507e880ba21d6cd38fe",
+   "query": "",
+   "status": 200,
+   "bytes": 205,
+   "identical": true
+  },
+  {
+   "address": "0x09ec5377ece8115a97827507e880ba21d6cd38fe",
+   "query": "?fields=all",
+   "status": 200,
+   "bytes": 1776241,
+   "identical": true
+  },
+  {
+   "address": "0x09ec5377ece8115a97827507e880ba21d6cd38fe",
+   "query": "?fields=abi,compilation",
+   "status": 200,
+   "bytes": 1242,
+   "identical": true
+  },
+  {
+   "address": "0x09ec5377ece8115a97827507e880ba21d6cd38fe",
+   "query": "?omit=proxyResolution",
+   "status": 200,
+   "bytes": 1776031,
+   "identical": true
+  },
+  {
+   "address": "0x09ec5377ece8115a97827507e880ba21d6cd38fe",
+   "query": "?fields=sources",
+   "status": 200,
+   "bytes": 868285,
+   "identical": true
+  },
+  {
+   "address": "0x09ec5377ece8115a97827507e880ba21d6cd38fe",
+   "query": "?fields=metadata",
+   "status": 200,
+   "bytes": 2791,
+   "identical": true
+  },
+  {
+   "address": "0x09ec5377ece8115a97827507e880ba21d6cd38fe",
+   "query": "?fields=signatures",
+   "status": 200,
+   "bytes": 834,
+   "identical": true
+  },
+  {
+   "address": "0x09ec5377ece8115a97827507e880ba21d6cd38fe",
+   "query": "?fields=abi,signatures",
+   "status": 200,
+   "bytes": 1543,
+   "identical": true
+  },
+  {
+   "address": "0x09ec5377ece8115a97827507e880ba21d6cd38fe",
+   "query": "?fields=stdJsonInput,stdJsonOutput",
+   "status": 200,
+   "bytes": 883687,
+   "identical": true
+  },
+  {
+   "address": "0x09ec5377ece8115a97827507e880ba21d6cd38fe",
+   "query": "?fields=creationBytecode,runtimeBytecode",
+   "status": 200,
+   "bytes": 18709,
+   "identical": true
+  },
+  {
+   "address": "0x09ec5377ece8115a97827507e880ba21d6cd38fe",
+   "query": "?fields=creationBytecode.sourceMap,runtimeBytecode.onchainBytecode,runtimeBytecode.immutableReferences",
+   "status": 200,
+   "bytes": 4314,
+   "identical": true
+  },
+  {
+   "address": "0x09ec5377ece8115a97827507e880ba21d6cd38fe",
+   "query": "?fields=deployment",
+   "status": 200,
+   "bytes": 413,
+   "identical": true
+  },
+  {
+   "address": "0x09ec5377ece8115a97827507e880ba21d6cd38fe",
+   "query": "?fields=compilation.name",
+   "status": 200,
+   "bytes": 249,
+   "identical": true
+  },
+  {
+   "address": "0x09ec5377ece8115a97827507e880ba21d6cd38fe",
+   "query": "?fields=proxyResolution",
+   "status": 200,
+   "bytes": 415,
+   "identical": true
+  },
+  {
+   "address": "0x09ec5377ece8115a97827507e880ba21d6cd38fe",
+   "query": "?fields=proxyResolution.onchainRuntimeBytecode,proxyResolution.onchainCreationBytecode",
+   "status": 200,
+   "bytes": 7492,
+   "identical": true
+  },
+  {
+   "address": "0x09ec5377ece8115a97827507e880ba21d6cd38fe",
+   "query": "?fields=storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput",
+   "status": 200,
+   "bytes": 1505,
+   "identical": true
+  },
+  {
+   "address": "0x09ec5377ece8115a97827507e880ba21d6cd38fe",
+   "query": "?fields=compilation.language,deployment.transactionHash,runtimeBytecode.immutableReferences,storageLayout,transientStorageLayout",
+   "status": 200,
+   "bytes": 1190,
+   "identical": true
+  },
+  {
+   "address": "0x09ec5377ece8115a97827507e880ba21d6cd38fe",
+   "query": "?omit=creationBytecode,runtimeBytecode,sources,compilation,abi,metadata,storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput,stdJsonInput,stdJsonOutput,signatures,proxyResolution",
+   "status": 200,
+   "bytes": 413,
+   "identical": true
+  },
+  {
+   "address": "0x09ec5377ece8115a97827507e880ba21d6cd38fe",
+   "query": "?omit=creationBytecode,runtimeBytecode,sources,compilation,abi,metadata,storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput,stdJsonInput,stdJsonOutput,signatures,proxyResolution,deployment.transactionHash,deployment.blockNumber",
+   "status": 200,
+   "bytes": 413,
+   "identical": true
+  },
+  {
+   "address": "0x09ec5377ece8115a97827507e880ba21d6cd38fe",
+   "query": "?omit=creationBytecode,runtimeBytecode,sources,compilation,abi,metadata,storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput,stdJsonInput,stdJsonOutput,signatures,proxyResolution,matchId,creationMatch,runtimeMatch,verifiedAt",
+   "status": 200,
+   "bytes": 413,
+   "identical": true
+  },
+  {
+   "address": "0x09ec5377ece8115a97827507e880ba21d6cd38fe",
+   "query": "?fields=nope",
+   "status": 400,
+   "bytes": 136,
+   "identical": true
+  },
+  {
+   "address": "0x36f3fd68e7325a35eb768f1aedaae9ea0689d723",
+   "query": "",
+   "status": 200,
+   "bytes": 208,
+   "identical": true
+  },
+  {
+   "address": "0x36f3fd68e7325a35eb768f1aedaae9ea0689d723",
+   "query": "?fields=all",
+   "status": 200,
+   "bytes": 257602,
+   "identical": true
+  },
+  {
+   "address": "0x36f3fd68e7325a35eb768f1aedaae9ea0689d723",
+   "query": "?fields=abi,compilation",
+   "status": 200,
+   "bytes": 6388,
+   "identical": true
+  },
+  {
+   "address": "0x36f3fd68e7325a35eb768f1aedaae9ea0689d723",
+   "query": "?omit=proxyResolution",
+   "status": 200,
+   "bytes": 257392,
+   "identical": true
+  },
+  {
+   "address": "0x36f3fd68e7325a35eb768f1aedaae9ea0689d723",
+   "query": "?fields=sources",
+   "status": 200,
+   "bytes": 50493,
+   "identical": true
+  },
+  {
+   "address": "0x36f3fd68e7325a35eb768f1aedaae9ea0689d723",
+   "query": "?fields=metadata",
+   "status": 200,
+   "bytes": 8789,
+   "identical": true
+  },
+  {
+   "address": "0x36f3fd68e7325a35eb768f1aedaae9ea0689d723",
+   "query": "?fields=signatures",
+   "status": 200,
+   "bytes": 4036,
+   "identical": true
+  },
+  {
+   "address": "0x36f3fd68e7325a35eb768f1aedaae9ea0689d723",
+   "query": "?fields=abi,signatures",
+   "status": 200,
+   "bytes": 9930,
+   "identical": true
+  },
+  {
+   "address": "0x36f3fd68e7325a35eb768f1aedaae9ea0689d723",
+   "query": "?fields=stdJsonInput,stdJsonOutput",
+   "status": 200,
+   "bytes": 113655,
+   "identical": true
+  },
+  {
+   "address": "0x36f3fd68e7325a35eb768f1aedaae9ea0689d723",
+   "query": "?fields=creationBytecode,runtimeBytecode",
+   "status": 200,
+   "bytes": 70302,
+   "identical": true
+  },
+  {
+   "address": "0x36f3fd68e7325a35eb768f1aedaae9ea0689d723",
+   "query": "?fields=creationBytecode.sourceMap,runtimeBytecode.onchainBytecode,runtimeBytecode.immutableReferences",
+   "status": 200,
+   "bytes": 14576,
+   "identical": true
+  },
+  {
+   "address": "0x36f3fd68e7325a35eb768f1aedaae9ea0689d723",
+   "query": "?fields=deployment",
+   "status": 200,
+   "bytes": 415,
+   "identical": true
+  },
+  {
+   "address": "0x36f3fd68e7325a35eb768f1aedaae9ea0689d723",
+   "query": "?fields=compilation.name",
+   "status": 200,
+   "bytes": 240,
+   "identical": true
+  },
+  {
+   "address": "0x36f3fd68e7325a35eb768f1aedaae9ea0689d723",
+   "query": "?fields=proxyResolution",
+   "status": 200,
+   "bytes": 418,
+   "identical": true
+  },
+  {
+   "address": "0x36f3fd68e7325a35eb768f1aedaae9ea0689d723",
+   "query": "?fields=proxyResolution.onchainRuntimeBytecode,proxyResolution.onchainCreationBytecode",
+   "status": 200,
+   "bytes": 26691,
+   "identical": true
+  },
+  {
+   "address": "0x36f3fd68e7325a35eb768f1aedaae9ea0689d723",
+   "query": "?fields=storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput",
+   "status": 200,
+   "bytes": 4770,
+   "identical": true
+  },
+  {
+   "address": "0x36f3fd68e7325a35eb768f1aedaae9ea0689d723",
+   "query": "?fields=compilation.language,deployment.transactionHash,runtimeBytecode.immutableReferences,storageLayout,transientStorageLayout",
+   "status": 200,
+   "bytes": 2723,
+   "identical": true
+  },
+  {
+   "address": "0x36f3fd68e7325a35eb768f1aedaae9ea0689d723",
+   "query": "?omit=creationBytecode,runtimeBytecode,sources,compilation,abi,metadata,storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput,stdJsonInput,stdJsonOutput,signatures,proxyResolution",
+   "status": 200,
+   "bytes": 415,
+   "identical": true
+  },
+  {
+   "address": "0x36f3fd68e7325a35eb768f1aedaae9ea0689d723",
+   "query": "?omit=creationBytecode,runtimeBytecode,sources,compilation,abi,metadata,storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput,stdJsonInput,stdJsonOutput,signatures,proxyResolution,deployment.transactionHash,deployment.blockNumber",
+   "status": 200,
+   "bytes": 415,
+   "identical": true
+  },
+  {
+   "address": "0x36f3fd68e7325a35eb768f1aedaae9ea0689d723",
+   "query": "?omit=creationBytecode,runtimeBytecode,sources,compilation,abi,metadata,storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput,stdJsonInput,stdJsonOutput,signatures,proxyResolution,matchId,creationMatch,runtimeMatch,verifiedAt",
+   "status": 200,
+   "bytes": 415,
+   "identical": true
+  },
+  {
+   "address": "0x36f3fd68e7325a35eb768f1aedaae9ea0689d723",
+   "query": "?fields=nope",
+   "status": 400,
+   "bytes": 136,
+   "identical": true
+  },
+  {
+   "address": "0xc52fafdc900cb92ae01e6e4f8979af7f436e2eb2",
+   "query": "",
+   "status": 200,
+   "bytes": 189,
+   "identical": true
+  },
+  {
+   "address": "0xc52fafdc900cb92ae01e6e4f8979af7f436e2eb2",
+   "query": "?fields=all",
+   "status": 200,
+   "bytes": 76558,
+   "identical": true
+  },
+  {
+   "address": "0xc52fafdc900cb92ae01e6e4f8979af7f436e2eb2",
+   "query": "?fields=abi,compilation",
+   "status": 200,
+   "bytes": 4419,
+   "identical": true
+  },
+  {
+   "address": "0xc52fafdc900cb92ae01e6e4f8979af7f436e2eb2",
+   "query": "?omit=proxyResolution",
+   "status": 200,
+   "bytes": 76348,
+   "identical": true
+  },
+  {
+   "address": "0xc52fafdc900cb92ae01e6e4f8979af7f436e2eb2",
+   "query": "?fields=sources",
+   "status": 200,
+   "bytes": 5192,
+   "identical": true
+  },
+  {
+   "address": "0xc52fafdc900cb92ae01e6e4f8979af7f436e2eb2",
+   "query": "?fields=metadata",
+   "status": 200,
+   "bytes": 205,
+   "identical": true
+  },
+  {
+   "address": "0xc52fafdc900cb92ae01e6e4f8979af7f436e2eb2",
+   "query": "?fields=signatures",
+   "status": 200,
+   "bytes": 3562,
+   "identical": true
+  },
+  {
+   "address": "0xc52fafdc900cb92ae01e6e4f8979af7f436e2eb2",
+   "query": "?fields=abi,signatures",
+   "status": 200,
+   "bytes": 7294,
+   "identical": true
+  },
+  {
+   "address": "0xc52fafdc900cb92ae01e6e4f8979af7f436e2eb2",
+   "query": "?fields=stdJsonInput,stdJsonOutput",
+   "status": 200,
+   "bytes": 32731,
+   "identical": true
+  },
+  {
+   "address": "0xc52fafdc900cb92ae01e6e4f8979af7f436e2eb2",
+   "query": "?fields=creationBytecode,runtimeBytecode",
+   "status": 200,
+   "bytes": 30831,
+   "identical": true
+  },
+  {
+   "address": "0xc52fafdc900cb92ae01e6e4f8979af7f436e2eb2",
+   "query": "?fields=creationBytecode.sourceMap,runtimeBytecode.onchainBytecode,runtimeBytecode.immutableReferences",
+   "status": 200,
+   "bytes": 6413,
+   "identical": true
+  },
+  {
+   "address": "0xc52fafdc900cb92ae01e6e4f8979af7f436e2eb2",
+   "query": "?fields=deployment",
+   "status": 200,
+   "bytes": 397,
+   "identical": true
+  },
+  {
+   "address": "0xc52fafdc900cb92ae01e6e4f8979af7f436e2eb2",
+   "query": "?fields=compilation.name",
+   "status": 200,
+   "bytes": 232,
+   "identical": true
+  },
+  {
+   "address": "0xc52fafdc900cb92ae01e6e4f8979af7f436e2eb2",
+   "query": "?fields=proxyResolution",
+   "status": 200,
+   "bytes": 399,
+   "identical": true
+  },
+  {
+   "address": "0xc52fafdc900cb92ae01e6e4f8979af7f436e2eb2",
+   "query": "?fields=proxyResolution.onchainRuntimeBytecode,proxyResolution.onchainCreationBytecode",
+   "status": 200,
+   "bytes": 12564,
+   "identical": true
+  },
+  {
+   "address": "0xc52fafdc900cb92ae01e6e4f8979af7f436e2eb2",
+   "query": "?fields=storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput",
+   "status": 200,
+   "bytes": 334,
+   "identical": true
+  },
+  {
+   "address": "0xc52fafdc900cb92ae01e6e4f8979af7f436e2eb2",
+   "query": "?fields=compilation.language,deployment.transactionHash,runtimeBytecode.immutableReferences,storageLayout,transientStorageLayout",
+   "status": 200,
+   "bytes": 424,
+   "identical": true
+  },
+  {
+   "address": "0xc52fafdc900cb92ae01e6e4f8979af7f436e2eb2",
+   "query": "?omit=creationBytecode,runtimeBytecode,sources,compilation,abi,metadata,storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput,stdJsonInput,stdJsonOutput,signatures,proxyResolution",
+   "status": 200,
+   "bytes": 397,
+   "identical": true
+  },
+  {
+   "address": "0xc52fafdc900cb92ae01e6e4f8979af7f436e2eb2",
+   "query": "?omit=creationBytecode,runtimeBytecode,sources,compilation,abi,metadata,storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput,stdJsonInput,stdJsonOutput,signatures,proxyResolution,deployment.transactionHash,deployment.blockNumber",
+   "status": 200,
+   "bytes": 397,
+   "identical": true
+  },
+  {
+   "address": "0xc52fafdc900cb92ae01e6e4f8979af7f436e2eb2",
+   "query": "?omit=creationBytecode,runtimeBytecode,sources,compilation,abi,metadata,storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput,stdJsonInput,stdJsonOutput,signatures,proxyResolution,matchId,creationMatch,runtimeMatch,verifiedAt",
+   "status": 200,
+   "bytes": 397,
+   "identical": true
+  },
+  {
+   "address": "0xc52fafdc900cb92ae01e6e4f8979af7f436e2eb2",
+   "query": "?fields=nope",
+   "status": 400,
+   "bytes": 136,
+   "identical": true
+  },
+  {
+   "address": "0xe40a38d02c4e594b7b89463b1bdc18b074aa0a7d",
+   "query": "",
+   "status": 200,
+   "bytes": 190,
+   "identical": true
+  },
+  {
+   "address": "0xe40a38d02c4e594b7b89463b1bdc18b074aa0a7d",
+   "query": "?fields=all",
+   "status": 200,
+   "bytes": 114871,
+   "identical": true
+  },
+  {
+   "address": "0xe40a38d02c4e594b7b89463b1bdc18b074aa0a7d",
+   "query": "?fields=abi,compilation",
+   "status": 200,
+   "bytes": 5102,
+   "identical": true
+  },
+  {
+   "address": "0xe40a38d02c4e594b7b89463b1bdc18b074aa0a7d",
+   "query": "?omit=proxyResolution",
+   "status": 200,
+   "bytes": 114661,
+   "identical": true
+  },
+  {
+   "address": "0xe40a38d02c4e594b7b89463b1bdc18b074aa0a7d",
+   "query": "?fields=sources",
+   "status": 200,
+   "bytes": 19481,
+   "identical": true
+  },
+  {
+   "address": "0xe40a38d02c4e594b7b89463b1bdc18b074aa0a7d",
+   "query": "?fields=metadata",
+   "status": 200,
+   "bytes": 206,
+   "identical": true
+  },
+  {
+   "address": "0xe40a38d02c4e594b7b89463b1bdc18b074aa0a7d",
+   "query": "?fields=signatures",
+   "status": 200,
+   "bytes": 4546,
+   "identical": true
+  },
+  {
+   "address": "0xe40a38d02c4e594b7b89463b1bdc18b074aa0a7d",
+   "query": "?fields=abi,signatures",
+   "status": 200,
+   "bytes": 9212,
+   "identical": true
+  },
+  {
+   "address": "0xe40a38d02c4e594b7b89463b1bdc18b074aa0a7d",
+   "query": "?fields=stdJsonInput,stdJsonOutput",
+   "status": 200,
+   "bytes": 46916,
+   "identical": true
+  },
+  {
+   "address": "0xe40a38d02c4e594b7b89463b1bdc18b074aa0a7d",
+   "query": "?fields=creationBytecode,runtimeBytecode",
+   "status": 200,
+   "bytes": 39010,
+   "identical": true
+  },
+  {
+   "address": "0xe40a38d02c4e594b7b89463b1bdc18b074aa0a7d",
+   "query": "?fields=creationBytecode.sourceMap,runtimeBytecode.onchainBytecode,runtimeBytecode.immutableReferences",
+   "status": 200,
+   "bytes": 8062,
+   "identical": true
+  },
+  {
+   "address": "0xe40a38d02c4e594b7b89463b1bdc18b074aa0a7d",
+   "query": "?fields=deployment",
+   "status": 200,
+   "bytes": 396,
+   "identical": true
+  },
+  {
+   "address": "0xe40a38d02c4e594b7b89463b1bdc18b074aa0a7d",
+   "query": "?fields=compilation.name",
+   "status": 200,
+   "bytes": 227,
+   "identical": true
+  },
+  {
+   "address": "0xe40a38d02c4e594b7b89463b1bdc18b074aa0a7d",
+   "query": "?fields=proxyResolution",
+   "status": 200,
+   "bytes": 400,
+   "identical": true
+  },
+  {
+   "address": "0xe40a38d02c4e594b7b89463b1bdc18b074aa0a7d",
+   "query": "?fields=proxyResolution.onchainRuntimeBytecode,proxyResolution.onchainCreationBytecode",
+   "status": 200,
+   "bytes": 15957,
+   "identical": true
+  },
+  {
+   "address": "0xe40a38d02c4e594b7b89463b1bdc18b074aa0a7d",
+   "query": "?fields=storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput",
+   "status": 200,
+   "bytes": 334,
+   "identical": true
+  },
+  {
+   "address": "0xe40a38d02c4e594b7b89463b1bdc18b074aa0a7d",
+   "query": "?fields=compilation.language,deployment.transactionHash,runtimeBytecode.immutableReferences,storageLayout,transientStorageLayout",
+   "status": 200,
+   "bytes": 426,
+   "identical": true
+  },
+  {
+   "address": "0xe40a38d02c4e594b7b89463b1bdc18b074aa0a7d",
+   "query": "?omit=creationBytecode,runtimeBytecode,sources,compilation,abi,metadata,storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput,stdJsonInput,stdJsonOutput,signatures,proxyResolution",
+   "status": 200,
+   "bytes": 396,
+   "identical": true
+  },
+  {
+   "address": "0xe40a38d02c4e594b7b89463b1bdc18b074aa0a7d",
+   "query": "?omit=creationBytecode,runtimeBytecode,sources,compilation,abi,metadata,storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput,stdJsonInput,stdJsonOutput,signatures,proxyResolution,deployment.transactionHash,deployment.blockNumber",
+   "status": 200,
+   "bytes": 396,
+   "identical": true
+  },
+  {
+   "address": "0xe40a38d02c4e594b7b89463b1bdc18b074aa0a7d",
+   "query": "?omit=creationBytecode,runtimeBytecode,sources,compilation,abi,metadata,storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput,stdJsonInput,stdJsonOutput,signatures,proxyResolution,matchId,creationMatch,runtimeMatch,verifiedAt",
+   "status": 200,
+   "bytes": 396,
+   "identical": true
+  },
+  {
+   "address": "0xe40a38d02c4e594b7b89463b1bdc18b074aa0a7d",
+   "query": "?fields=nope",
+   "status": 400,
+   "bytes": 136,
+   "identical": true
+  },
+  {
+   "address": "0x71fb6afcd98c5bd611712ad4b8d314ef729aa69d",
+   "query": "",
+   "status": 200,
+   "bytes": 190,
+   "identical": true
+  },
+  {
+   "address": "0x71fb6afcd98c5bd611712ad4b8d314ef729aa69d",
+   "query": "?fields=all",
+   "status": 200,
+   "bytes": 112889,
+   "identical": true
+  },
+  {
+   "address": "0x71fb6afcd98c5bd611712ad4b8d314ef729aa69d",
+   "query": "?fields=abi,compilation",
+   "status": 200,
+   "bytes": 2357,
+   "identical": true
+  },
+  {
+   "address": "0x71fb6afcd98c5bd611712ad4b8d314ef729aa69d",
+   "query": "?omit=proxyResolution",
+   "status": 200,
+   "bytes": 112679,
+   "identical": true
+  },
+  {
+   "address": "0x71fb6afcd98c5bd611712ad4b8d314ef729aa69d",
+   "query": "?fields=sources",
+   "status": 200,
+   "bytes": 16257,
+   "identical": true
+  },
+  {
+   "address": "0x71fb6afcd98c5bd611712ad4b8d314ef729aa69d",
+   "query": "?fields=metadata",
+   "status": 200,
+   "bytes": 206,
+   "identical": true
+  },
+  {
+   "address": "0x71fb6afcd98c5bd611712ad4b8d314ef729aa69d",
+   "query": "?fields=signatures",
+   "status": 200,
+   "bytes": 2228,
+   "identical": true
+  },
+  {
+   "address": "0x71fb6afcd98c5bd611712ad4b8d314ef729aa69d",
+   "query": "?fields=abi,signatures",
+   "status": 200,
+   "bytes": 4225,
+   "identical": true
+  },
+  {
+   "address": "0x71fb6afcd98c5bd611712ad4b8d314ef729aa69d",
+   "query": "?fields=stdJsonInput,stdJsonOutput",
+   "status": 200,
+   "bytes": 42881,
+   "identical": true
+  },
+  {
+   "address": "0x71fb6afcd98c5bd611712ad4b8d314ef729aa69d",
+   "query": "?fields=creationBytecode,runtimeBytecode",
+   "status": 200,
+   "bytes": 49372,
+   "identical": true
+  },
+  {
+   "address": "0x71fb6afcd98c5bd611712ad4b8d314ef729aa69d",
+   "query": "?fields=creationBytecode.sourceMap,runtimeBytecode.onchainBytecode,runtimeBytecode.immutableReferences",
+   "status": 200,
+   "bytes": 12116,
+   "identical": true
+  },
+  {
+   "address": "0x71fb6afcd98c5bd611712ad4b8d314ef729aa69d",
+   "query": "?fields=deployment",
+   "status": 200,
+   "bytes": 398,
+   "identical": true
+  },
+  {
+   "address": "0x71fb6afcd98c5bd611712ad4b8d314ef729aa69d",
+   "query": "?fields=compilation.name",
+   "status": 200,
+   "bytes": 230,
+   "identical": true
+  },
+  {
+   "address": "0x71fb6afcd98c5bd611712ad4b8d314ef729aa69d",
+   "query": "?fields=proxyResolution",
+   "status": 200,
+   "bytes": 400,
+   "identical": true
+  },
+  {
+   "address": "0x71fb6afcd98c5bd611712ad4b8d314ef729aa69d",
+   "query": "?fields=proxyResolution.onchainRuntimeBytecode,proxyResolution.onchainCreationBytecode",
+   "status": 200,
+   "bytes": 24631,
+   "identical": true
+  },
+  {
+   "address": "0x71fb6afcd98c5bd611712ad4b8d314ef729aa69d",
+   "query": "?fields=storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput",
+   "status": 200,
+   "bytes": 310,
+   "identical": true
+  },
+  {
+   "address": "0x71fb6afcd98c5bd611712ad4b8d314ef729aa69d",
+   "query": "?fields=compilation.language,deployment.transactionHash,runtimeBytecode.immutableReferences,storageLayout,transientStorageLayout",
+   "status": 200,
+   "bytes": 422,
+   "identical": true
+  },
+  {
+   "address": "0x71fb6afcd98c5bd611712ad4b8d314ef729aa69d",
+   "query": "?omit=creationBytecode,runtimeBytecode,sources,compilation,abi,metadata,storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput,stdJsonInput,stdJsonOutput,signatures,proxyResolution",
+   "status": 200,
+   "bytes": 398,
+   "identical": true
+  },
+  {
+   "address": "0x71fb6afcd98c5bd611712ad4b8d314ef729aa69d",
+   "query": "?omit=creationBytecode,runtimeBytecode,sources,compilation,abi,metadata,storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput,stdJsonInput,stdJsonOutput,signatures,proxyResolution,deployment.transactionHash,deployment.blockNumber",
+   "status": 200,
+   "bytes": 398,
+   "identical": true
+  },
+  {
+   "address": "0x71fb6afcd98c5bd611712ad4b8d314ef729aa69d",
+   "query": "?omit=creationBytecode,runtimeBytecode,sources,compilation,abi,metadata,storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput,stdJsonInput,stdJsonOutput,signatures,proxyResolution,matchId,creationMatch,runtimeMatch,verifiedAt",
+   "status": 200,
+   "bytes": 398,
+   "identical": true
+  },
+  {
+   "address": "0x71fb6afcd98c5bd611712ad4b8d314ef729aa69d",
+   "query": "?fields=nope",
+   "status": 400,
+   "bytes": 136,
+   "identical": true
+  },
+  {
+   "address": "0x2ffa8b4c15ceb77d863e2993b261536b1d8039f1",
+   "query": "",
+   "status": 200,
+   "bytes": 187,
+   "identical": true
+  },
+  {
+   "address": "0x2ffa8b4c15ceb77d863e2993b261536b1d8039f1",
+   "query": "?fields=all",
+   "status": 200,
+   "bytes": 4078,
+   "identical": true
+  },
+  {
+   "address": "0x2ffa8b4c15ceb77d863e2993b261536b1d8039f1",
+   "query": "?fields=abi,compilation",
+   "status": 200,
+   "bytes": 461,
+   "identical": true
+  },
+  {
+   "address": "0x2ffa8b4c15ceb77d863e2993b261536b1d8039f1",
+   "query": "?omit=proxyResolution",
+   "status": 200,
+   "bytes": 3868,
+   "identical": true
+  },
+  {
+   "address": "0x2ffa8b4c15ceb77d863e2993b261536b1d8039f1",
+   "query": "?fields=sources",
+   "status": 200,
+   "bytes": 620,
+   "identical": true
+  },
+  {
+   "address": "0x2ffa8b4c15ceb77d863e2993b261536b1d8039f1",
+   "query": "?fields=metadata",
+   "status": 200,
+   "bytes": 203,
+   "identical": true
+  },
+  {
+   "address": "0x2ffa8b4c15ceb77d863e2993b261536b1d8039f1",
+   "query": "?fields=signatures",
+   "status": 200,
+   "bytes": 238,
+   "identical": true
+  },
+  {
+   "address": "0x2ffa8b4c15ceb77d863e2993b261536b1d8039f1",
+   "query": "?fields=abi,signatures",
+   "status": 200,
+   "bytes": 249,
+   "identical": true
+  },
+  {
+   "address": "0x2ffa8b4c15ceb77d863e2993b261536b1d8039f1",
+   "query": "?fields=stdJsonInput,stdJsonOutput",
+   "status": 200,
+   "bytes": 1537,
+   "identical": true
+  },
+  {
+   "address": "0x2ffa8b4c15ceb77d863e2993b261536b1d8039f1",
+   "query": "?fields=creationBytecode,runtimeBytecode",
+   "status": 200,
+   "bytes": 1417,
+   "identical": true
+  },
+  {
+   "address": "0x2ffa8b4c15ceb77d863e2993b261536b1d8039f1",
+   "query": "?fields=creationBytecode.sourceMap,runtimeBytecode.onchainBytecode,runtimeBytecode.immutableReferences",
+   "status": 200,
+   "bytes": 512,
+   "identical": true
+  },
+  {
+   "address": "0x2ffa8b4c15ceb77d863e2993b261536b1d8039f1",
+   "query": "?fields=deployment",
+   "status": 200,
+   "bytes": 394,
+   "identical": true
+  },
+  {
+   "address": "0x2ffa8b4c15ceb77d863e2993b261536b1d8039f1",
+   "query": "?fields=compilation.name",
+   "status": 200,
+   "bytes": 229,
+   "identical": true
+  },
+  {
+   "address": "0x2ffa8b4c15ceb77d863e2993b261536b1d8039f1",
+   "query": "?fields=proxyResolution",
+   "status": 200,
+   "bytes": 397,
+   "identical": true
+  },
+  {
+   "address": "0x2ffa8b4c15ceb77d863e2993b261536b1d8039f1",
+   "query": "?fields=proxyResolution.onchainRuntimeBytecode,proxyResolution.onchainCreationBytecode",
+   "status": 200,
+   "bytes": 684,
+   "identical": true
+  },
+  {
+   "address": "0x2ffa8b4c15ceb77d863e2993b261536b1d8039f1",
+   "query": "?fields=storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput",
+   "status": 200,
+   "bytes": 307,
+   "identical": true
+  },
+  {
+   "address": "0x2ffa8b4c15ceb77d863e2993b261536b1d8039f1",
+   "query": "?fields=compilation.language,deployment.transactionHash,runtimeBytecode.immutableReferences,storageLayout,transientStorageLayout",
+   "status": 200,
+   "bytes": 420,
+   "identical": true
+  },
+  {
+   "address": "0x2ffa8b4c15ceb77d863e2993b261536b1d8039f1",
+   "query": "?omit=creationBytecode,runtimeBytecode,sources,compilation,abi,metadata,storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput,stdJsonInput,stdJsonOutput,signatures,proxyResolution",
+   "status": 200,
+   "bytes": 394,
+   "identical": true
+  },
+  {
+   "address": "0x2ffa8b4c15ceb77d863e2993b261536b1d8039f1",
+   "query": "?omit=creationBytecode,runtimeBytecode,sources,compilation,abi,metadata,storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput,stdJsonInput,stdJsonOutput,signatures,proxyResolution,deployment.transactionHash,deployment.blockNumber",
+   "status": 200,
+   "bytes": 394,
+   "identical": true
+  },
+  {
+   "address": "0x2ffa8b4c15ceb77d863e2993b261536b1d8039f1",
+   "query": "?omit=creationBytecode,runtimeBytecode,sources,compilation,abi,metadata,storageLayout,transientStorageLayout,userdoc,devdoc,sourceIds,additionalInput,stdJsonInput,stdJsonOutput,signatures,proxyResolution,matchId,creationMatch,runtimeMatch,verifiedAt",
+   "status": 200,
+   "bytes": 394,
+   "identical": true
+  },
+  {
+   "address": "0x2ffa8b4c15ceb77d863e2993b261536b1d8039f1",
+   "query": "?fields=nope",
+   "status": 400,
+   "bytes": 136,
+   "identical": true
+  }
+ ]
+}

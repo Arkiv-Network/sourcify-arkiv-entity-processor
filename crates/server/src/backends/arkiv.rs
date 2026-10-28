@@ -1,5 +1,6 @@
 //! Read-only HTTP JSON-RPC transport for the prefill entity format.
 //! Every lookup is scoped to owner + project and uses a retained block number.
+use super::transport::{Budget, Limits as TransportLimits, Transport};
 use crate::backend::{Backend, BackendError, ReadFuture, ReadSession};
 use anyhow::{ensure, Context, Result};
 use arkiv_entity_processor::{
@@ -8,15 +9,7 @@ use arkiv_entity_processor::{
 };
 use futures_util::{stream, StreamExt, TryStreamExt};
 use serde_json::{json, Value};
-use std::{
-    collections::HashMap,
-    sync::{
-        atomic::{AtomicU64, Ordering},
-        Arc,
-    },
-    time::Duration,
-};
-use tokio::sync::Semaphore;
+use std::{collections::HashMap, sync::atomic::Ordering, sync::Arc, time::Duration};
 
 #[derive(Clone, Debug)]
 pub struct Config {
@@ -53,17 +46,9 @@ impl Config {
     }
 }
 
-#[derive(Default)]
-struct Counters {
-    requests: AtomicU64,
-    bytes: AtomicU64,
-}
 struct Inner {
     config: Config,
-    client: reqwest::Client,
-    slots: Semaphore,
-    next_id: AtomicU64,
-    counters: Counters,
+    transport: Transport,
 }
 #[derive(Clone)]
 pub struct ArkivBackend(Arc<Inner>);
@@ -108,130 +93,27 @@ impl ArkivBackend {
             config.owner != format!("0x{}", "0".repeat(40)),
             "owner must be nonzero"
         );
-        ensure!(
-            config.arkiv_chain_id > 0
-                && config.max_rpc_concurrency > 0
-                && config.max_rpc_concurrency <= Semaphore::MAX_PERMITS
-                && config.max_rpc_requests > 0
-                && config.max_rpc_response_bytes > 0
-                && config.max_read_bytes > 0
-                && !config.rpc_timeout.is_zero(),
-            "RPC limits must be positive"
-        );
-        let url = reqwest::Url::parse(&config.rpc_url).context("invalid RPC URL")?;
-        ensure!(
-            matches!(url.scheme(), "http" | "https")
-                && url.host_str().is_some()
-                && url.username().is_empty()
-                && url.password().is_none()
-                && url.query().is_none()
-                && url.fragment().is_none(),
-            "RPC URL must be HTTP(S) without credentials, query or fragment"
-        );
-        let client = reqwest::Client::builder()
-            .redirect(reqwest::redirect::Policy::none())
-            .timeout(config.rpc_timeout)
-            .user_agent(concat!("arkiv-sourcify-server/", env!("CARGO_PKG_VERSION")))
-            .build()?;
-        let backend = Self(Arc::new(Inner {
-            slots: Semaphore::new(config.max_rpc_concurrency),
-            config,
-            client,
-            next_id: AtomicU64::new(1),
-            counters: Counters::default(),
-        }));
+        ensure!(config.arkiv_chain_id > 0, "RPC limits must be positive");
+        let transport = Transport::new(
+            config.rpc_url.clone(),
+            None,
+            0,
+            TransportLimits {
+                rpc_timeout: config.rpc_timeout,
+                max_rpc_concurrency: config.max_rpc_concurrency,
+                max_rpc_requests: config.max_rpc_requests,
+                max_rpc_response_bytes: config.max_rpc_response_bytes,
+                max_read_bytes: config.max_read_bytes,
+            },
+        )?;
+        let backend = Self(Arc::new(Inner { config, transport }));
         backend.begin_read().await?;
         Ok(backend)
     }
 }
-#[derive(Default)]
-struct Budget {
-    trace: Option<crate::trace::RpcTrace>,
-    requests: AtomicU64,
-    bytes: AtomicU64,
-}
 impl Inner {
     async fn rpc(&self, budget: &Budget, method: &str, params: Value) -> Result<Value> {
-        ensure!(
-            budget.requests.fetch_add(1, Ordering::Relaxed) < self.config.max_rpc_requests as u64,
-            BackendError::WorkLimit("RPC request limit exceeded".into())
-        );
-        let _permit = self
-            .slots
-            .acquire()
-            .await
-            .context("RPC concurrency gate closed")?;
-        let id = self.next_id.fetch_add(1, Ordering::Relaxed);
-        self.counters.requests.fetch_add(1, Ordering::Relaxed);
-        let call = budget
-            .trace
-            .as_ref()
-            .map(|trace| trace.start("arkiv", method, &params));
-        let result = async {
-            let response = self
-                .client
-                .post(&self.config.rpc_url)
-                .header("Accept-Encoding", "identity")
-                .header("Accept", "application/json")
-                .json(&json!({"jsonrpc":"2.0","id":id,"method":method,"params":params}))
-                .send()
-                .await
-                .map_err(|_| BackendError::Unavailable(format!("{method} transport failed")))?;
-            ensure!(
-                response.status().is_success(),
-                BackendError::Unavailable(format!("{method}: HTTP {}", response.status()))
-            );
-            ensure!(
-                response
-                    .content_length()
-                    .is_none_or(|n| n <= self.config.max_rpc_response_bytes as u64),
-                BackendError::WorkLimit("RPC response exceeds configured size".into())
-            );
-            let mut body = Vec::new();
-            let mut chunks = response.bytes_stream();
-            while let Some(chunk) = chunks.next().await {
-                let chunk = chunk
-                    .map_err(|_| BackendError::Unavailable("RPC response body failed".into()))?;
-                ensure!(
-                    chunk.len()
-                        <= self
-                            .config
-                            .max_rpc_response_bytes
-                            .saturating_sub(body.len()),
-                    BackendError::WorkLimit("RPC response exceeds configured size".into())
-                );
-                let previous = budget
-                    .bytes
-                    .fetch_add(chunk.len() as u64, Ordering::Relaxed);
-                self.counters
-                    .bytes
-                    .fetch_add(chunk.len() as u64, Ordering::Relaxed);
-                ensure!(
-                    previous.saturating_add(chunk.len() as u64)
-                        <= self.config.max_read_bytes as u64,
-                    BackendError::WorkLimit("RPC cumulative byte limit exceeded".into())
-                );
-                body.extend_from_slice(&chunk);
-            }
-            let envelope: Value = serde_json::from_slice(&body).context("invalid RPC JSON")?;
-            ensure!(
-                envelope.is_object()
-                    && envelope["jsonrpc"] == "2.0"
-                    && envelope["id"] == id
-                    && (envelope.get("result").is_some() != envelope.get("error").is_some()),
-                BackendError::Corrupt("invalid JSON-RPC envelope or response ID".into())
-            );
-            ensure!(
-                envelope.get("error").is_none(),
-                BackendError::Unavailable(format!("{method} returned RPC error"))
-            );
-            Ok(envelope["result"].clone())
-        }
-        .await;
-        if let Some(call) = call {
-            call.finish(result.is_ok());
-        }
-        result
+        self.transport.rpc(budget, method, params).await
     }
     async fn read_block(&self, budget: &Budget, selector: &str) -> Result<Block> {
         let result = self
@@ -293,7 +175,7 @@ impl Backend for ArkivBackend {
         })
     }
     fn metadata(&self) -> Value {
-        json!({"backend":"arkiv","arkivChainId":self.0.config.arkiv_chain_id,"sourceChainId":"1","owner":self.0.config.owner,"genesisStateRoot":self.0.config.genesis_state_root,"readView":"current state, pinned per request","schema":"sourcify.verified-contract.v3","rpcRequests":self.0.counters.requests.load(Ordering::Relaxed),"rpcResponseBytes":self.0.counters.bytes.load(Ordering::Relaxed)})
+        json!({"backend":"arkiv","arkivChainId":self.0.config.arkiv_chain_id,"sourceChainId":"1","owner":self.0.config.owner,"genesisStateRoot":self.0.config.genesis_state_root,"readView":"current state, pinned per request","schema":"sourcify.verified-contract.v3","rpcRequests":self.0.transport.counters.requests.load(Ordering::Relaxed),"rpcResponseBytes":self.0.transport.counters.bytes.load(Ordering::Relaxed)})
     }
 }
 impl Session {

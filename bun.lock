@@ -6,6 +6,7 @@
       "name": "sourcify-arkiv-entity-processor",
       "dependencies": {
         "@arkiv-network/sdk": "0.8.1-dev.1",
+        "@arkiv-network/sdk-udc": "npm:@arkiv-network/sdk@0.9.0-next.2",
         "@duckdb/node-api": "1.5.6-r.1",
         "@noble/hashes": "1.8.0",
         "viem": "2.56.3",
@@ -16,6 +17,8 @@
     "@adraffy/ens-normalize": ["@adraffy/ens-normalize@1.11.1", "", {}, "sha512-nhCBV3quEgesuf7c7KYfperqSS14T8bYuvJ8PcLJp6znkZpFc0AuW4qBtr8eKVyPPe/8RSr7sglCWPU5eaxwKQ=="],
 
     "@arkiv-network/sdk": ["@arkiv-network/sdk@0.8.1-dev.1", "", { "dependencies": { "brotli-wasm": "^3.0.1" }, "peerDependencies": { "typescript": ">=5.0.0", "viem": "^2.0.0" }, "optionalPeers": ["typescript"] }, "sha512-vhUSYizO6jiKY3uA8uVNepIwGHD0/N6fWEkjuufxRY+Glzn+mGLq2v/R8YTXOXjQXHSCz3bSOMRxCYl/0MRdvA=="],
+
+    "@arkiv-network/sdk-udc": ["@arkiv-network/sdk@0.9.0-next.2", "", { "peerDependencies": { "typescript": ">=5.0.0", "viem": "^2.0.0" }, "optionalPeers": ["typescript"] }, "sha512-QO9Jkfq0FW9dK6deAyIPQL2AJWn1fbFBeZ1j3OFvmRRUvQS0OG/udl2wOMYGn0y02mKQgdlIT6eie1455ODr6Q=="],
 
     "@duckdb/node-api": ["@duckdb/node-api@1.5.6-r.1", "", { "dependencies": { "@duckdb/node-bindings": "1.5.6-r.1" } }, "sha512-yIPol6P4EQmsAUsb27donJf7iADrM31Ei/WkvhkZpSscjhEErYsuF19lsJ/qz5mUWxsKFQpLdjvrlhPQnMTBqw=="],
 
