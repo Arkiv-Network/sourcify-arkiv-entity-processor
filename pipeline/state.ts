@@ -37,14 +37,19 @@ function config(): Json {
     database: sourceManifest()?.database ?? { host: env.PGHOST ?? null, port: env.PGPORT || '5432', database: env.PGDATABASE ?? null, user: env.PGUSER ?? null, schema: env.PG_SCHEMA },
     prepareLimit: env.PREPARE_LIMIT || null, prepareThreads: env.PREPARE_THREADS, prepareMemoryLimit: env.PREPARE_MEMORY_LIMIT,
     sourceBatchSize: env.SOURCE_BATCH_SIZE, sourceMemoryLimit: env.SOURCE_MEMORY_LIMIT, contractLimit: env.CONTRACT_LIMIT || null,
-    skipMissingReferences: bool(env.SKIP_MISSING_REFERENCES), maxSkipped: env.MAX_SKIPPED, processWorkers: env.PROCESS_WORKERS, compressionWorkers: env.COMPRESSION_WORKERS,
+    skipMissingReferences: bool(env.SKIP_MISSING_REFERENCES), maxSkipped: env.MAX_SKIPPED, processWorkers: env.PROCESS_WORKERS,
+    // v4: the ordered writer compresses, alone.
+    compressionWorkers: env.SEED_FORMAT === 'udc' ? '1' : env.COMPRESSION_WORKERS,
     entityOwner: env.ENTITY_OWNER, destinationChainId: env.DESTINATION_CHAIN_ID, progressInterval: env.PROGRESS_INTERVAL,
+    seedFormat: env.SEED_FORMAT || 'v3', ...(env.SEED_FORMAT === 'udc' ? { schemaPrefix: env.SCHEMA_PREFIX } : {}),
     ...(['prepare', 'run'].includes(env.PIPELINE_COMMAND!) ? {} : { packContents: env.PACK_CONTENTS, zstdLevel: env.ZSTD_LEVEL, r2Bucket: env.R2_BUCKET || null, r2Key: env.R2_KEY || null }),
   };
 }
 /** Settings that change the published bundle; a completed bundle is only reused under the same ones. */
 const outputConfig = (c: Json) => ({ prepareLimit: c.prepareLimit, contractLimit: c.contractLimit, skipMissingReferences: c.skipMissingReferences,
   entityOwner: String(c.entityOwner).toLowerCase(), destinationChainId: c.destinationChainId,
+  // A v3 bundle records no format (as before); a v4 one records its format and prefix, so neither is reused as the other.
+  ...(c.seedFormat === 'udc' ? { seedFormat: 'udc', schemaPrefix: c.schemaPrefix } : {}),
   processorSha256: state.build.processorSha256, scriptsSha256: state.build.scriptsSha256 });
 function build(): Json {
   const root = env.APP_DIR!;
@@ -70,7 +75,9 @@ function records(): Json | undefined {
   const report = read(join(paths.bundle, 'report.json'));
   if (!report) return undefined;
   return { contracts: report.contracts, sourceSkipped: report.sourceSkippedCount ?? 0, entities: report.entities, uniquePayloads: report.uniquePayloads,
-    payloadBytes: report.payloadBytes, parts: report.parts?.length, processSeconds: report.seconds, contractsPerSecond: report.contractsPerSecond };
+    payloadBytes: report.payloadBytes, parts: report.parts?.length, processSeconds: report.seconds, contractsPerSecond: report.contractsPerSecond,
+    // v4 (UDC) bundles: their format and storage totals.
+    ...(report.format ? { bundleFormat: report.format, bytesValues: report.bytesValues, storageUnits: report.storageUnits } : {}) };
 }
 function details(phase: string): Json {
   if (phase === 'prepare') {

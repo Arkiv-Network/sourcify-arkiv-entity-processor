@@ -3,7 +3,8 @@
 Status: proposal, 2026-10-28, on branch `udc`. The open questions but Jalebi's were decided on 2026-10-28
 ([decisions](#decisions-of-2026-10-28)), and steps 3 and 5 of the [plan](#ordered-plan) are implemented on this
 branch and tested on our node: v4 bundles, their readers, the UDC sync with contracts patched in place, and the
-server's v4 backend. Nothing here is merged or deployed. `main`, `develop` and `master` of the Sourcify
+server's v4 backend. The daily v4 seed (`SEED_FORMAT=udc`, its own R2 prefix and pointer, the mirror's sync
+paused for `prepare` only) is wired and stub-tested; it has not run. Nothing here is merged or deployed. `main`, `develop` and `master` of the Sourcify
 repositories stay untouched until after 10 November 2026; every step that needs a default branch waits until then
 ([migration](#migration)). The UI (step 6) reads the test dataset on our node through the
 [reader contract](#reader-contract-for-the-ui).
@@ -707,6 +708,26 @@ November milestone and can be removed after the cutover.
   the cost limit), the request deadline checked before every fetch, decode and reference, default concurrency 4,
   the API key never printed. The HTTP contract, projection, signature and proxy policies do not change: every
   response equals the v3 path's for the same record ([evidence](#prototype-and-evidence)).
+- **The pipeline and the daily seed** (`SEED_FORMAT=udc`, v3 the default): `pipeline/run.sh` and the Compose
+  services run `process --format udc --schema-prefix SCHEMA_PREFIX`, the same `verify` and `pack`, and an upload
+  that requires a v4 archive (`--expect-format udc`; a v3 upload refuses a v4 archive); `timings.json` records the
+  format and prefix, so a bundle is never reused as the other format or under another prefix.
+  `SEED_FORMAT=udc pipeline/daily.sh` (`deploy/sourcify-daily-seed-udc.service` and `.timer`, 04:00 UTC,
+  `TimeoutStartSec=12h`) publishes `seed-inputs/udc/sourcify-ethereum-YYYYMMDD.tar.zst` and its own
+  `seed-inputs/udc/sourcify-ethereum-latest.json` (with `seedFormat`, `bundleFormat`, `seedVersion`,
+  `schemaPrefix`, `owner`, `arkivChainId`) from its own `data/runs-udc`. It refuses a prefix overlapping the v3
+  `R2_KEY_PREFIX`, a `RUNS_DIR` of the v3 seed and a bundle that is not v4, so it never writes, replaces or
+  deletes a v3 seed or the v3 `latest.json` that production reads. Like v3, it pauses the mirror's sync for
+  `prepare` only ([decision 10](#decisions-of-2026-10-28)): `prepare` is bounded by `DAILY_PREPARE_TIMEOUT`
+  (3600 s; its container is stopped before the sync starts again), both jobs take one lock for the pause, so neither restarts the sync during the other's `prepare`, and a
+  marker kept while the sync is stopped lets the next run start a sync an earlier one could not. The v4 unit is
+  ordered after the v3 one (a v4 start that comes with or during a v3 run waits for it), and both must run from
+  one checkout (the lock is in its `data/`).
+  `tests/daily.test.ts` checks the order of the calls against a stub `docker` (stop, prepare, start, then process
+  with the lock free; the start also after a failed, timed-out or signalled prepare), a same-day resume without a
+  second pause, the recovery of a sync left stopped, and the keys, pointer and deletions of both formats;
+  `tests/pipeline.test.ts` runs `SEED_FORMAT=udc` on the fixture (the v4 hydration equals v3's). The units are
+  repository files: nothing is installed or run by this change.
 - Docs: `README.md`, `docs/server.md` and `docs/arkiv-reader.md` describe the v4 path. The docs site pages
   (`docs/*.html`) and `docs/data/` describe the v3 dataset that production serves and change with the cutover
   (step 11).
@@ -754,7 +775,7 @@ Listed in [sourcify-arkiv `docs/UDC_PROPOSAL.md`](https://github.com/Arkiv-Netwo
 | 5 | UDC sync writer (patch in place) and server backend against our node, with test entities under `sourcify-udc-proposal.*` | processor `udc` | Done 2026-10-28 (branch only, our node only) |
 | 6 | UI reader on the `udc` branch, against the test entities on our node (preview deployments only) | sourcify-arkiv `udc` | Before 10 November (branch only) |
 | 7 | Merge the processor `udc` work to `main` (v3 kept until the cutover) | processor `main` | After 10 November |
-| 8 | Full v4 bundle (`process --format udc`) and its verification | build host | After step 7 |
+| 8 | Full v4 bundle (`process --format udc`) and its verification: the daily v4 seed (`SEED_FORMAT=udc pipeline/daily.sh`, own prefix `seed-inputs/udc/…` and pointer), about 7 hours a day with the sync paused for `prepare` only | processor `udc` (wired and stub-tested 2026-10-28); the mirror host's systemd units | Not run yet. On the schedule once the v4 units are installed, from the same checkout as the v3 unit: after step 7, or earlier with the v3 unit moved to the `udc` checkout (it makes the same v3 seed) |
 | 9 | Converter codec 3 and a new genesis for our node; v4 server and UI against it | node repo / arkiv-prefill, operations | After step 8 |
 | 10 | Jalebi: pricing, API key and funding decided, then a live load by the sync writer | Jalebi | After the [Jalebi blockers](#blockers) are resolved |
 | 11 | UI cutover to the v4 profile (`develop`), docs | sourcify-arkiv | After step 9 or 10 |
@@ -781,7 +802,8 @@ sourcify.dev for Ethereum mainnet that the processor's `prepare` and its sync re
     The Arkiv sync writes contracts in `matchId` order and a re-verification arrives as a newer `matchId`, which
     the sync patches in place; the paging rule needs neither order (it pages by `matchid` windows).
   - Matches from 10^12 on are the node's own and stay excluded (the paging rule's windows open past 2^40).
-  - A seed is the database at one `matchId`: the daily run stops the mirror's sync during `prepare`.
+  - A seed is the database at one `matchId`: the daily run stops the mirror's sync during `prepare` only (about
+    5 minutes), for v3 and v4 alike; v4's process (about 6 hours) runs with the sync running.
 - **Known edges, not new with v4:**
   - The import's `skipped-matches.json` back-fill inserts older `matchId`s once, at setup. Done before an Arkiv
     sync starts, it is harmless; inserted behind a running Arkiv cursor, those matches are never synced (true for
@@ -862,7 +884,7 @@ The records, v3 hydration, v4 hydration and v4 hydration of the extracted archiv
 `bdd75de4…a0361`: **byte-identical**. v4 kinds: 100,000 contracts, 54,746 compilations, 88,766 sources, 174,424
 codes, 102 chunks; 1.61 GB of bytes values, 2.64 G storage units. The v4 writer runs in the single ordered thread
 (DEFLATE at level 9 dominates), five times slower than v3's parallel gzip: a full corpus would take about six hours
-([open questions](#open-questions)).
+(accepted, [decision 10](#decisions-of-2026-10-28)).
 
 ### The UDC sync and server on our node
 
@@ -1169,6 +1191,11 @@ re-verified match 60,000,001. The comparisons of every contract with v3 hydratio
    `matchid` order) to [`matchid` windows](#paging), measured to hold on both nodes after patches; the sync patches
    ([migration](#processor-this-repository)); readers and this document follow.
 9. **Owner key: one per chain** (decided here, [ownership](#lifetime-rent-and-ownership)).
+10. **`process --format udc` speed: accepted** (the user's decision: "6 hours no problem, just make sure the mirror is
+    down only for initial copy phase"). No parallel writer; the daily v4 seed runs about 7 hours. The mirror's sync
+    is paused for `prepare` only: `pipeline/daily.sh` starts it again before process (also after a failed
+    `prepare` or a signal), a same-day resume whose `prepare` completed does not pause it again, and v3 and v4
+    jobs share one pause lock ([migration](#processor-this-repository)).
 
 ## Open questions
 
@@ -1179,10 +1206,11 @@ re-verified match 60,000,001. The comparisons of every contract with v3 hydratio
 3. **Window cost on a prefilled chain.** The window rule's cost on our node is the planner's (a range run over the
    window), not yet measured on a chain holding 7.9 million contracts; measure it on the step-9 genesis, and on
    Jalebi once it holds a dataset.
-4. **Throughput of `process --format udc`.** 366 records/s on 100,000 records, bound by the single ordered writer
-   (DEFLATE at level 9): about six hours for the full corpus, against v3's parallel gzip. Moving the v3-to-v4
-   layout into the transform workers and encoding only the distinct values in a pool (deterministic: encodings are
-   pure, keys are assigned in order) would bring it near v3's speed; needed before daily v4 seeds.
+4. **Throughput of `process --format udc`: accepted, no longer open** ([decision 10](#decisions-of-2026-10-28)).
+   366 records/s on 100,000 records, bound by the single ordered writer (DEFLATE at level 9): about six hours for
+   the full corpus, against v3's parallel gzip, with the mirror's sync paused for `prepare` only. Should it matter
+   later, moving the v3-to-v4 layout into the transform workers and encoding only the distinct values in a pool
+   (deterministic: encodings are pure, keys are assigned in order) would bring it near v3's speed.
 5. **Orphaned chunks.** A patch that replaces a chunked contract `data` leaves the old chunks (permanent, rent paid
    once), so that a reader of the previous version still finds them; none of the corpus's contracts is chunked.
    Chunks have no hash to be found by, so a batch that fails after its chunk level and is retried writes its new

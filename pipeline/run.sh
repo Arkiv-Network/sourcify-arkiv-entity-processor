@@ -9,6 +9,10 @@
 #
 # Resumable per phase: rerunning the same command reuses completed phases. Progress is JSON on stdout,
 # per-phase logs are in WORK_DIR/logs and WORK_DIR/timings.json records every phase. See README.md.
+#
+# SEED_FORMAT=udc writes the v4 (UDC) bundle of docs/udc-proposal.md instead of the v3 one (the default): process
+# --format udc --schema-prefix SCHEMA_PREFIX (single ordered writer: about 6 hours for the full corpus), the same
+# verify and pack, and an upload that refuses any archive but a v4 one.
 set -euo pipefail
 
 COMMAND=${1:-run}
@@ -22,6 +26,7 @@ export CONTRACT_LIMIT=${CONTRACT_LIMIT:-} SKIP_MISSING_REFERENCES=${SKIP_MISSING
 export PROCESS_WORKERS=${PROCESS_WORKERS:-4} COMPRESSION_WORKERS=${COMPRESSION_WORKERS:-4}
 export DESTINATION_CHAIN_ID=${DESTINATION_CHAIN_ID:-7706815} PROGRESS_INTERVAL=${PROGRESS_INTERVAL:-60}
 export ENTITY_OWNER=${ENTITY_OWNER:?Set ENTITY_OWNER to the public owner address of every entity}
+export SEED_FORMAT=${SEED_FORMAT:-v3} SCHEMA_PREFIX=${SCHEMA_PREFIX:-sourcify.v4}
 export PACK_CONTENTS=${PACK_CONTENTS:-prefill} ZSTD_LEVEL=${ZSTD_LEVEL:-3} PACK_THREADS=${PACK_THREADS:-8}
 export R2_BUCKET=${R2_BUCKET:-} R2_KEY=${R2_KEY:-} R2_CREDENTIALS_FILE=${R2_CREDENTIALS_FILE:-/run/secrets/r2}
 export UPLOAD_CONCURRENCY=${UPLOAD_CONCURRENCY:-8} UPLOAD_PART_SIZE_MIB=${UPLOAD_PART_SIZE_MIB:-64}
@@ -98,6 +103,8 @@ trap on_exit EXIT
 trap 'failure="interrupted by signal"; exit 143' TERM INT
 
 [[ $SKIP_MISSING_REFERENCES =~ ^[01]$ ]] || die "SKIP_MISSING_REFERENCES must be 0 or 1"
+[[ $SEED_FORMAT =~ ^(v3|udc)$ ]] || die "SEED_FORMAT must be v3 or udc"
+[[ $SCHEMA_PREFIX =~ ^[A-Za-z0-9._-]{1,116}$ ]] || die "SCHEMA_PREFIX must be letters, digits, '.', '_' or '-'"
 [[ $PACK_CONTENTS =~ ^(prefill|full)$ ]] || die "PACK_CONTENTS must be prefill or full"
 for number in PREPARE_THREADS SOURCE_BATCH_SIZE PROCESS_WORKERS COMPRESSION_WORKERS PROGRESS_INTERVAL DESTINATION_CHAIN_ID \
   ZSTD_LEVEL PACK_THREADS UPLOAD_CONCURRENCY UPLOAD_PART_SIZE_MIB; do
@@ -146,7 +153,9 @@ phase_prepare() {
 phase_process() {
   current_phase=process
   state start process
-  local total args codes
+  local total args codes format_args=(--compression-workers "$COMPRESSION_WORKERS")
+  # v4: one ordered writer compresses (no gzip workers); entities are tagged SCHEMA_PREFIX.<kind>.
+  if [[ $SEED_FORMAT == udc ]]; then format_args=(--format udc --schema-prefix "$SCHEMA_PREFIX"); fi
   if [[ -f $BUNDLE/seed.json ]]; then
     state process-reusable || die "refusing to reuse $BUNDLE: it is not a recorded completed bundle with the current settings and processor/source build. Move it aside to reprocess, or use a fresh WORK_DIR."
     state end process reused "completed bundle exists"
@@ -168,7 +177,7 @@ phase_process() {
   start_monitor monitor process "$total"
   set +e
   bun --no-env-file "$APP_DIR/source/stream.ts" "${args[@]}" 2>>"$LOGS/source.log" |
-    "$PROCESSOR_BIN" process --workers "$PROCESS_WORKERS" --compression-workers "$COMPRESSION_WORKERS" --input - \
+    "$PROCESSOR_BIN" process --workers "$PROCESS_WORKERS" "${format_args[@]}" --input - \
       --output "$BUNDLE" --require-source-complete --owner "$ENTITY_OWNER" --destination-chain-id "$DESTINATION_CHAIN_ID" >>"$LOGS/process.log" 2>&1
   codes=("${PIPESTATUS[@]}")
   set -e
@@ -216,9 +225,17 @@ phase_upload() {
   current_phase=upload
   state start upload
   [[ -f $ARCHIVE && -f $ARCHIVE.json ]] || die "no packed archive at $ARCHIVE"
+  # The archive must be of SEED_FORMAT: a v4 archive never goes out under a v3 key, nor a v3 one under a v4 key.
+  local expect=()
+  if [[ $SEED_FORMAT == udc ]]; then
+    expect=(--expect-format udc)
+  elif grep -Eq '"bundleFormat"[[:space:]]*:[[:space:]]*"sourcify-arkiv.udc-bundle.v1"' "$ARCHIVE.json"; then
+    # v3 archives packed before the bundleFormat record still go out; a v4 one never does.
+    die "$ARCHIVE holds a v4 (UDC) bundle, but SEED_FORMAT is v3"
+  fi
   # Existing identical objects are accepted, different ones refused; the object is read back and checked.
   start_monitor monitor upload
-  "$PROCESSOR_BIN" upload "$ARCHIVE" --bucket "$R2_BUCKET" --key "$R2_KEY" --credentials-file "$R2_CREDENTIALS_FILE" \
+  "$PROCESSOR_BIN" upload "$ARCHIVE" --bucket "$R2_BUCKET" --key "$R2_KEY" --credentials-file "$R2_CREDENTIALS_FILE" "${expect[@]}" \
     --concurrency "$UPLOAD_CONCURRENCY" --part-size-mib "$UPLOAD_PART_SIZE_MIB" 2>>"$LOGS/upload.log" >"$TMP/upload-result.json" ||
     die "upload failed (see $LOGS/upload.log); rerun to retry"
   stop_monitor

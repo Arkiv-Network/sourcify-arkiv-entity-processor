@@ -266,6 +266,52 @@ describe('pipeline/run.sh', () => {
     expect(other.stderr).toContain('refusing to reuse');
   }, 60_000);
 
+  test('SEED_FORMAT=udc: a v4 bundle with the v3 records, never reused or uploaded as the other format', () => {
+    // v3Work: a copy of the v3 run above, so that this test leaves that one as it was.
+    const workDir = join(scratch, 'work-udc'), v3Work = join(scratch, 'work-v3-copy'), bundle = join(workDir, 'bundle');
+    Bun.spawnSync(['mkdir', '-p', workDir]);
+    expect(Bun.spawnSync(['cp', '-a', join(scratch, 'work'), v3Work]).exitCode).toBe(0);
+    const udc = run(['bash', 'pipeline/run.sh', 'run'], env(workDir, { SEED_FORMAT: 'udc' }));
+    expect(udc.code, udc.stderr).toBe(0);
+    expect(JSON.parse(readFileSync(join(bundle, 'seed.json'), 'utf8'))).toMatchObject({ version: 2, format: 'sourcify-arkiv.udc-bundle.v1',
+      schemaPrefix: 'sourcify.v4', owner: expected.owner.toLowerCase(), chainId: 7706815, firstNonce: 0 });
+    expect(run([processor, 'verify', bundle]).code).toBe(0);
+    const timings = JSON.parse(readFileSync(join(workDir, 'timings.json'), 'utf8'));
+    expect(timings).toMatchObject({ status: 'completed', config: { seedFormat: 'udc', schemaPrefix: 'sourcify.v4' },
+      records: { contracts: expected.records + 2, sourceSkipped: remainingSkipped.length, bundleFormat: 'sourcify-arkiv.udc-bundle.v1' },
+      phases: { process: { outputConfig: { seedFormat: 'udc', schemaPrefix: 'sourcify.v4' } } } });
+    // The same records as the v3 bundle of the same source.
+    const v4 = run([processor, 'hydrate', bundle]), v3 = run([processor, 'hydrate', join(v3Work, 'bundle')]);
+    expect(v4.code, v4.stderr).toBe(0);
+    expect(v3.code, v3.stderr).toBe(0);
+    expect(v4.stdout.trim().split('\n')).toHaveLength(expected.records + 2);
+    expect(sha256(v4.stdout)).toBe(sha256(v3.stdout));
+
+    const sums = bundleSums(bundle);
+    expect(run(['bash', 'pipeline/run.sh', 'run'], env(workDir, { SEED_FORMAT: 'udc' })).code).toBe(0);
+    expect(JSON.parse(readFileSync(join(workDir, 'timings.json'), 'utf8')).phases.process.status).toBe('reused');
+    // Neither format's bundle is reused as the other, nor a v4 one under another schema prefix.
+    for (const [dir, extra] of [[workDir, {}], [workDir, { SEED_FORMAT: 'udc', SCHEMA_PREFIX: 'sourcify.v5' }], [v3Work, { SEED_FORMAT: 'udc' }]] as const) {
+      const refused = run(['bash', 'pipeline/run.sh', 'run'], env(dir, extra));
+      expect(refused.code).toBe(1);
+      expect(refused.stderr).toContain('refusing to reuse');
+    }
+    expect(bundleSums(bundle)).toEqual(sums);
+
+    // publish packs either way, then refuses to upload an archive of the other format (before any network call).
+    const credentials = join(scratch, 'r2-test.env');
+    writeFileSync(credentials, 'AWS_ACCESS_KEY_ID=test\nAWS_SECRET_ACCESS_KEY=test\nAWS_ENDPOINT_URL_S3=https://127.0.0.1:9\n');
+    const r2 = { R2_BUCKET: 'test-bucket', R2_KEY: 'seed-inputs/test.tar.zst', R2_CREDENTIALS_FILE: credentials };
+    const v4AsV3 = run(['bash', 'pipeline/run.sh', 'publish'], env(workDir, r2));
+    expect(v4AsV3.code).toBe(1);
+    expect(v4AsV3.stderr).toContain('holds a v4 (UDC) bundle, but SEED_FORMAT is v3');
+    expect(JSON.parse(readFileSync(join(workDir, 'archive/seed.tar.zst.json'), 'utf8'))).toMatchObject({ seedVersion: 2, bundleFormat: 'sourcify-arkiv.udc-bundle.v1' });
+    const v3AsUdc = run(['bash', 'pipeline/run.sh', 'publish'], env(v3Work, { ...r2, SEED_FORMAT: 'udc' }));
+    expect(v3AsUdc.code).toBe(1);
+    expect(readFileSync(join(v3Work, 'logs/upload.log'), 'utf8')).toContain('holds bundle format sourcify-arkiv.upload.v1, not sourcify-arkiv.udc-bundle.v1');
+    rmSync(v3Work, { recursive: true, force: true });
+  }, 120_000);
+
   test('prepare reads the database; run then works without database settings', () => {
     const workDir = join(scratch, 'work-split'), fresh = join(scratch, 'work-fresh');
     Bun.spawnSync(['mkdir', '-p', workDir, fresh]);

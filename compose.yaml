@@ -26,6 +26,9 @@ x-environment: &environment
   PROCESS_WORKERS: "${PROCESS_WORKERS:-4}"
   COMPRESSION_WORKERS: "${COMPRESSION_WORKERS:-4}"
   PROGRESS_INTERVAL: "${PROGRESS_INTERVAL:-60}"
+  # v3 (default) or udc: the v4 (UDC) bundle of docs/udc-proposal.md, its entities tagged SCHEMA_PREFIX.<kind>.
+  SEED_FORMAT: "${SEED_FORMAT:-v3}"
+  SCHEMA_PREFIX: "${SCHEMA_PREFIX:-sourcify.v4}"
 
 x-pipeline: &pipeline
   image: arkiv-entity-processor:local

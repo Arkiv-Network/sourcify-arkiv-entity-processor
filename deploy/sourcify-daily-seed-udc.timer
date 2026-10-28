@@ -1,0 +1,13 @@
+[Unit]
+Description=Run the daily Sourcify v4 (UDC) prefill seed at 04:00 UTC
+
+[Timer]
+# Two hours after the v3 seed (02:00, about 1.5 hours): their prepare steps (the sync pauses) never overlap, and a
+# late v3 prepare only delays this one (DAILY_SYNC_LOCK).
+OnCalendar=*-*-* 04:00:00 UTC
+# A run missed while the host was down starts at the next boot.
+Persistent=true
+Unit=sourcify-daily-seed-udc.service
+
+[Install]
+WantedBy=timers.target

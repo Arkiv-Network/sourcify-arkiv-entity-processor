@@ -13,3 +13,5 @@ ExecStart=/home/sourcify/arkiv-network/sourcify-arkiv-entity-processor/pipeline/
 # The wrapper itself is light; the work runs in capped containers.
 Nice=10
 TimeoutStartSec=6h
+# A stop (TERM) lets daily.sh stop prepare and start the sync again before systemd kills what is left.
+TimeoutStopSec=5min

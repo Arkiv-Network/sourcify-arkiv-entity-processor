@@ -83,6 +83,8 @@ arkiv-entity-processor read-arkiv 0x… --format udc --rpc-url … --owner 0x…
 arkiv-entity-processor udc-page --rpc-url … --owner 0x… [--descending] [--filter "language = str('Vyper')"] [--block N] [--all]
 SYNC_FORMAT=udc SYNC_SCHEMA_PREFIX=sourcify.v4 bun arkiv/sync.ts --once        # patches re-verified contracts in place
 arkiv-sourcify-server --format udc --rpc-url … --arkiv-chain-id … --owner 0x…  # same HTTP contract as v3
+SEED_FORMAT=udc docker compose up -d pipeline                                     # the Compose pipeline, v4 bundle
+SEED_FORMAT=udc pipeline/daily.sh                                                 # the daily v4 seed ("Daily seed")
 ```
 
 A v4 bundle is `seed.json` version 2 (`sourcify-arkiv.udc-bundle.v1`), `report.json` (`sourcify-udc-import.v1`),
@@ -243,20 +245,47 @@ The database is read only during the copy steps of `prepare` (about 3 minutes); 
 
 [`pipeline/daily.sh`](pipeline/daily.sh) publishes a fresh seed every day from a sourcify-mirror-node:
 
-1. stops the mirror's sync, runs `prepare` into `data/runs/YYYYMMDD`, and starts the sync again (also on
-   failure), so the dataset is the database at one `matchId`;
-2. `run` (process -> verify, no network) and `publish` to `R2_KEY_PREFIX-YYYYMMDD.tar.zst` (default
-   `seed-inputs/sourcify-ethereum-…`), read back and checked;
-3. writes `R2_KEY_PREFIX-latest.json` (key, `lastMatchId`, counts, size, SHA-256) for readers;
+1. stops the mirror's sync, runs `prepare` into `RUNS_DIR/YYYYMMDD`, and starts the sync again (also on failure
+   or a signal), so the dataset is the database at one `matchId`. The sync is paused for `prepare` only (about
+   6 minutes; one running over `DAILY_PREPARE_TIMEOUT`, 3600 s, is stopped, which takes up to two minutes more) and runs during the rest; a same-day
+   resume whose `prepare` completed does not pause it again. While the sync is stopped,
+   `DAILY_SYNC_LOCK.paused` exists: if a run could not start it again (the start failed, or it was killed), the
+   next run of either job starts it before anything else;
+2. `run` (process -> verify, no network) and `publish` to `PREFIX-YYYYMMDD.tar.zst`, read back and checked;
+3. writes `PREFIX-latest.json` (key, `lastMatchId`, counts, size, SHA-256) for readers;
 4. deletes the seeds it uploaded itself beyond the newest `DAILY_KEEP_REMOTE` (default 2), listed in
-   `data/runs/uploaded.tsv` (nothing else in the bucket is ever deleted), and the local runs older than today's.
+   `RUNS_DIR/uploaded.tsv` (nothing else in the bucket is ever deleted), and the local runs older than today's.
 
-Rerunning on the same day resumes; a published day is skipped. Each run appends a line to `data/runs/status.jsonl`.
-Settings: the processor's `.env` (`ENTITY_OWNER`, `R2_BUCKET`, `R2_CREDENTIALS_FILE`, `PG*`, `./pgpass`) and
-`MIRROR_DIR` (the mirror's directory), `DAILY_MEMORY` (40g), `DAILY_CPUS` (8), `DAILY_PREPARE_MEMORY_LIMIT` (6GB),
-`DAILY_KEEP_REMOTE`, `DAILY_MIN_FREE_GB` (500). A run takes about 1.5 hours; the sync is stopped for about 5 minutes.
+Two formats, each its own job with its own keys, pointer and `RUNS_DIR`:
 
-Install the systemd units ([`deploy/`](deploy/); adjust the paths in the service), then:
+| `SEED_FORMAT` | `PREFIX` (default) | `RUNS_DIR` (default) | Unit | Run |
+| --- | --- | --- | --- | --- |
+| `v3` (default) | `R2_KEY_PREFIX` (`seed-inputs/sourcify-ethereum`) | `data/runs` | `sourcify-daily-seed`, 02:00 UTC | about 1.5 hours |
+| `udc` (v4) | `UDC_R2_KEY_PREFIX` (`seed-inputs/udc/sourcify-ethereum`) | `data/runs-udc` | `sourcify-daily-seed-udc`, 04:00 UTC | about 7 hours (process: one ordered writer, about 6) |
+
+A v4 job never writes, replaces or deletes a v3 key: it refuses a `UDC_R2_KEY_PREFIX` that overlaps
+`R2_KEY_PREFIX` (either `PREFIX-` starting with the other; a v3 job with a custom `R2_KEY_PREFIX` needs the same
+setting in the v4 job's environment), a `RUNS_DIR` marked for v3 (`.seed-format`; an unmarked, non-empty one
+counts as v3's), a bundle that is not v4 (an image built from an older checkout) and, in `run.sh`'s upload, an
+archive that is not a v4 bundle; a v3 job likewise refuses a v4 bundle or archive. The v4 `latest.json` adds `seedFormat`, `bundleFormat`, `seedVersion`, `schemaPrefix`, `owner`
+and `arkivChainId`; v3's is unchanged. Jobs pausing the same mirror take `DAILY_SYNC_LOCK`
+(`data/.mirror-sync-pause.lock`) for their pause, so one never restarts the sync during the other's `prepare`; a
+job waits up to `DAILY_SYNC_LOCK_WAIT` (7200 s) for it, then fails without pausing. The lock is in the checkout's
+`data/`: install both units from one checkout and build the image there (`main`'s `daily.sh` takes no lock and
+knows no `SEED_FORMAT`). The v4 unit is ordered after the v3 one: started together (both timers fire at boot after
+downtime) or while v3 still runs, it waits for v3 to finish. Runs started otherwise (by hand, or a v4 run still
+going at 02:00) can overlap; each pause is still exclusive.
+
+Rerunning on the same day resumes; a published day is skipped. Each run appends a line to `RUNS_DIR/status.jsonl`.
+Settings: the processor's `.env` (`ENTITY_OWNER`, `R2_BUCKET`, `R2_CREDENTIALS_FILE`, `PG*`, `./pgpass`,
+`SCHEMA_PREFIX`) and `MIRROR_DIR` (the mirror's directory), `SEED_FORMAT`, `R2_KEY_PREFIX`, `UDC_R2_KEY_PREFIX`,
+`RUNS_DIR`, `DAILY_SYNC_LOCK`, `DAILY_SYNC_LOCK_WAIT`, `DAILY_PREPARE_TIMEOUT`, `DAILY_MEMORY` (40g), `DAILY_CPUS`
+(8), `DAILY_PREPARE_MEMORY_LIMIT` (6GB), `DAILY_KEEP_REMOTE`,
+`DAILY_MIN_FREE_GB` (500: v3 needs ~430 GB of source, bundle and archive; v4 ~300 GB, estimated from 100,000
+records; each job checks it when it starts, not counting what a job running at the same time will still write). `tests/daily.test.ts` checks the pause, the
+resume, the recovery and the keys against a stub `docker`.
+
+Install the systemd units ([`deploy/`](deploy/); adjust the paths in the services), then:
 
 ```sh
 sudo cp deploy/sourcify-daily-seed.service deploy/sourcify-daily-seed.timer /etc/systemd/system/
@@ -264,6 +293,7 @@ sudo systemctl daemon-reload
 sudo systemctl start sourcify-daily-seed.service        # one run now
 sudo systemctl enable --now sourcify-daily-seed.timer   # 02:00 UTC daily (catches up after downtime)
 journalctl -u sourcify-daily-seed.service               # progress (JSON lines)
+# v4: the same with sourcify-daily-seed-udc.service and .timer (04:00 UTC, after the v3 unit, TimeoutStartSec=12h)
 ```
 
 ## Postgres → Arkiv sync

@@ -1,0 +1,24 @@
+# Daily Sourcify v4 (UDC) prefill seed (SEED_FORMAT=udc pipeline/daily.sh). Install: see README.md, "Daily seed".
+# Publishes under UDC_R2_KEY_PREFIX (seed-inputs/udc/sourcify-ethereum) from data/runs-udc: never a v3 key or pointer.
+# Install it from the same checkout as sourcify-daily-seed.service (their sync-pause lock is in its data/), with
+# the image built from that checkout.
+[Unit]
+Description=Daily Sourcify Ethereum v4 (UDC) prefill seed: mirror database -> bundle -> R2
+Wants=network-online.target docker.service
+# Started together with the v3 seed (both timers at boot after downtime) or while it runs (late), this one waits for it.
+After=network-online.target docker.service sourcify-daily-seed.service
+
+[Service]
+Type=oneshot
+# Docker access; every container still runs as PIPELINE_UID with the Compose limits.
+User=root
+Environment=MIRROR_DIR=/home/sourcify/argotorg/sourcify/local-node
+Environment=SEED_FORMAT=udc
+ExecStart=/home/sourcify/arkiv-network/sourcify-arkiv-entity-processor/pipeline/daily.sh
+# The wrapper itself is light; the work runs in capped containers.
+Nice=10
+# process --format udc is one ordered writer: about 6 hours for the full corpus, 7 with verify, pack and upload.
+# The mirror's sync is paused only for prepare (minutes), whatever this limit.
+TimeoutStartSec=12h
+# A stop (TERM) lets daily.sh stop prepare and start the sync again before systemd kills what is left.
+TimeoutStopSec=5min
