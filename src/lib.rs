@@ -8,6 +8,7 @@ pub mod arkiv;
 pub mod bundle;
 pub mod hydrate;
 mod split;
+pub mod udc;
 mod wire;
 pub const BUDGET: usize = 122880;
 pub const CHUNK: usize = 100000;

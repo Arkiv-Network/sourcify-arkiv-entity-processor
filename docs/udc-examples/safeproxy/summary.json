@@ -1,0 +1,74 @@
+{
+  "input": "sourcify-response.json",
+  "owner": "0x1111111111111111111111111111111111111111",
+  "chainId": 7706815,
+  "firstNonce": 0,
+  "prefix": "sourcify.v4",
+  "budgetBytes": 120000,
+  "entities": [
+    {
+      "nonce": 0,
+      "kind": "source",
+      "key": "0xa8a795295a5174e67c1a8a39b5a3c478f6d1f3f5b3979eca9ff8105e407b9b60",
+      "attributes": 3,
+      "indexed": 2,
+      "bytesValues": 857,
+      "userUnits": 1192,
+      "storageUnits": 2652
+    },
+    {
+      "nonce": 1,
+      "kind": "code",
+      "key": "0x259025ffb5c238196cdebe1a1e376ea5c294475b8a6019b8f71347d9a1095c8c",
+      "attributes": 3,
+      "indexed": 2,
+      "bytesValues": 322,
+      "userUnits": 652,
+      "storageUnits": 2112
+    },
+    {
+      "nonce": 2,
+      "kind": "code",
+      "key": "0xf79db4a2985c718d0416727179f090e57c88c00d5395f8d41890d19efec7e882",
+      "attributes": 3,
+      "indexed": 2,
+      "bytesValues": 152,
+      "userUnits": 482,
+      "storageUnits": 1942
+    },
+    {
+      "nonce": 3,
+      "kind": "compilation",
+      "key": "0x71331937485fca53dce301ab3c9b85417adcc2d4e22bc595112080edec5f4072",
+      "attributes": 9,
+      "indexed": 2,
+      "bytesValues": 3237,
+      "userUnits": 3716,
+      "storageUnits": 5176
+    },
+    {
+      "nonce": 4,
+      "kind": "code",
+      "key": "0x31aa8f579aa2089442645ebb32fcd944d995817d990c46679bfd986e1c280280",
+      "attributes": 3,
+      "indexed": 2,
+      "bytesValues": 350,
+      "userUnits": 680,
+      "storageUnits": 2140
+    },
+    {
+      "nonce": 5,
+      "kind": "contract",
+      "key": "0x0699aab09f21d8881398b8d9be3118a5795b19a9dd8b8d779cf2934c4a754900",
+      "attributes": 24,
+      "indexed": 21,
+      "bytesValues": 463,
+      "userUnits": 3794,
+      "storageUnits": 5254
+    }
+  ],
+  "totalEntities": 6,
+  "totalBytesValues": 5381,
+  "totalStorageUnits": 19276,
+  "storageUnitsNote": "user cells (name + value + 2, +128 when indexed) plus 1,460 for the entity and its system cells, as arkiv-state-db-experiment charges rent"
+}

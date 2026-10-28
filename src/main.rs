@@ -18,6 +18,7 @@ mod arkiv_cli;
 mod hydrate_cli;
 mod pack;
 mod s3;
+mod udc_cli;
 mod upload;
 mod verify;
 
@@ -113,6 +114,12 @@ enum Command {
     /// Upload an archive to S3-compatible storage (R2) without overwriting, then verify it
     #[command(long_about = upload::LONG_ABOUT, after_help = upload::EXAMPLES)]
     Upload(upload::UploadArgs),
+    /// Prototype: write one record as UDC entities (docs/udc-proposal.md)
+    #[command(long_about = udc_cli::EXAMPLE_ABOUT)]
+    UdcExample(udc_cli::ExampleArgs),
+    /// Prototype: rebuild a contract from UDC entities
+    #[command(long_about = udc_cli::HYDRATE_ABOUT)]
+    UdcHydrate(udc_cli::HydrateArgs),
 }
 
 #[derive(Args, Debug)]
@@ -792,6 +799,8 @@ fn main() -> Result<()> {
         }
         Command::Pack(a) => pack::pack(&a),
         Command::Upload(a) => upload::upload(&a),
+        Command::UdcExample(a) => udc_cli::example(&a),
+        Command::UdcHydrate(a) => udc_cli::hydrate(&a),
     }
 }
 /// `process`: the offline importer. Writes the bundle and publishes seed.json last.

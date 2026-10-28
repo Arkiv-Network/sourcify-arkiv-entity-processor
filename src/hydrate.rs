@@ -408,13 +408,13 @@ where
         Ok(value)
     }
 }
-fn within(path: &str, parent: &str) -> bool {
+pub(crate) fn within(path: &str, parent: &str) -> bool {
     path == parent
         || path
             .strip_prefix(parent)
             .is_some_and(|suffix| suffix.starts_with('/'))
 }
-fn validate_pointer(pointer: &str, allow_root: bool) -> Result<()> {
+pub(crate) fn validate_pointer(pointer: &str, allow_root: bool) -> Result<()> {
     ensure!(
         (allow_root && pointer.is_empty()) || pointer.starts_with('/'),
         "invalid JSON pointer"
@@ -430,7 +430,7 @@ fn validate_pointer(pointer: &str, allow_root: bool) -> Result<()> {
     }
     Ok(())
 }
-fn validate_destination(data: &Value, path: &str) -> Result<()> {
+pub(crate) fn validate_destination(data: &Value, path: &str) -> Result<()> {
     let (parent, key) = path.rsplit_once('/').context("invalid JSON pointer")?;
     let decoded = key.replace("~1", "/").replace("~0", "~");
     let parent = data.pointer(parent).context("reference parent missing")?;
@@ -446,7 +446,7 @@ fn validate_destination(data: &Value, path: &str) -> Result<()> {
     }
     Ok(())
 }
-fn insert(data: &mut Value, path: &str, value: Value) -> Result<()> {
+pub(crate) fn insert(data: &mut Value, path: &str, value: Value) -> Result<()> {
     let (parent, key) = path.rsplit_once('/').context("invalid JSON pointer")?;
     let mut chars = key.chars();
     let mut decoded = String::new();
