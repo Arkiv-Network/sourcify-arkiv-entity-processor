@@ -64,7 +64,17 @@ Output directory (must not exist; runs are never resumed or overwritten):
 
 On any error the partial directory is left for diagnosis without seed.json. Published files are
 byte-identical for every --workers / --compression-workers setting; only report.json timing and
-configuration fields differ.";
+configuration fields differ.
+
+--format udc writes the v4 (UDC) bundle of docs/udc-proposal.md instead, from the same input and with
+the same completion and fail-closed rules:
+  entities/NNNNNN.jsonl  one UDC entity per line in creation order: nonce, key (the salt-0 key of
+                         --destination-chain-id, --owner and the nonce, from 0), permanent expiry and
+                         typed attributes tagged <--schema-prefix>.<kind>, bytes values in base64
+  report.json            sourcify-udc-import.v1: counts by kind, bytes, storage units, parts
+  SHA256SUMS             the parts, report.json and seed.json
+  seed.json              version 2 (sourcify-arkiv.udc-bundle.v1), published atomically last
+Sources, code and compilations are deduplicated by content hash; one contract per address.";
 
 const PROCESS_EXAMPLES: &str = "\
 Examples:

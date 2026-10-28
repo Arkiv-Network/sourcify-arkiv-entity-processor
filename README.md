@@ -57,14 +57,39 @@ the HTTP server derives serving signatures from ABI. See the
 
 | Path | Contents |
 | --- | --- |
-| `src/` | `arkiv-entity-processor` (Rust): `process`, `verify`, `hydrate`, `read-arkiv`, `pack`, `upload` |
+| `src/` | `arkiv-entity-processor` (Rust): `process`, `verify`, `hydrate`, `read-arkiv`, `pack`, `upload`, each also for the [v4 UDC dataset](#the-v4-udc-dataset-branch-udc) (`src/udc*.rs`) |
 | `crates/server/` | `arkiv-sourcify-server`: Arkiv-backed Mainnet contract reads; [API and runbook](docs/server.md) |
 | `source/` | Bun + DuckDB source stage: `prepare.ts` (PostgreSQL → DuckDB), `stream.ts` (DuckDB → NDJSON records) |
 | `pipeline/` | `run.sh` (resumable phases, progress, `timings.json`), `state.ts` (its bookkeeping) |
-| `arkiv/` | [Postgres → Arkiv sync](#postgres--arkiv-sync) (`sync.ts`) and a helper CLI (`cli.ts`), Bun + `@arkiv-network/sdk` |
+| `arkiv/` | [Postgres → Arkiv sync](#postgres--arkiv-sync) (`sync.ts`; `udc.ts`, its v4 writer) and a helper CLI (`cli.ts`), Bun + `@arkiv-network/sdk` (v3) and `@arkiv-network/sdk-udc` (0.9.0-next.2, v4) |
+| `udc/` | The [UDC proposal](docs/udc-proposal.md)'s prototype, measurements (`measure/`) and end-to-end run on our node (`e2e/`) |
 | `dashboard/` | [Sync dashboard](#sync-dashboard): `status.ts` (writes `status.json`) and the static page nginx serves |
 | `Dockerfile`, `compose.yaml`, `.env.example` | container deployment |
 | `tests/` | end-to-end tests on a small real-data PostgreSQL fixture; [opt-in live contract comparison](docs/live-conformance.md) |
+
+## The v4 (UDC) dataset (branch `udc`)
+
+[docs/udc-proposal.md](docs/udc-proposal.md) moves the dataset to Arkiv's user-defined-columns entities: no payloads,
+only typed attributes, five kinds tagged `sourcify.v4.<kind>` in `arkiv.schema`, content in codec-tagged `bytes`
+attributes (identity, raw DEFLATE or a chunk list) and references as `key` attributes. Hydration rebuilds the v3
+record byte for byte. On this branch every stage has a v4 mode next to the v3 one, which stays unchanged:
+
+```sh
+arkiv-entity-processor process -i records.ndjson -o bundle --format udc --owner 0x… [--schema-prefix sourcify.v4]
+arkiv-entity-processor verify bundle            # also line by line: nonces, keys, schema, every reference
+arkiv-entity-processor hydrate bundle           # the v3-identical records
+arkiv-entity-processor pack bundle -o seed.tar.zst && arkiv-entity-processor upload seed.tar.zst … --expect-format udc
+arkiv-entity-processor read-arkiv 0x… --format udc --rpc-url … --owner 0x… [--read-view auto|pinned|head]
+arkiv-entity-processor udc-page --rpc-url … --owner 0x… [--descending] [--filter "language = str('Vyper')"]
+SYNC_FORMAT=udc SYNC_SCHEMA_PREFIX=sourcify.v4 bun arkiv/sync.ts --once        # patches re-verified contracts in place
+arkiv-sourcify-server --format udc --rpc-url … --arkiv-chain-id … --owner 0x…  # same HTTP contract as v3
+```
+
+A v4 bundle is `seed.json` version 2 (`sourcify-arkiv.udc-bundle.v1`), `report.json` (`sourcify-udc-import.v1`),
+`SHA256SUMS` and `entities/NNNNNN.jsonl`, one entity per line in creation order: `{"nonce","key","expiresAt",
+"attributes":[{"name","type","indexed","value"}]}` with `bytes` values in base64, keys the salt-0 keys of the bundle's
+chain, owner and nonce. It has no `payloads.bin` or `metadata.jsonl`. Test entities on our node (chain 7706815) are
+listed in [docs/udc-examples/sync-node/](docs/udc-examples/sync-node/); `udc/e2e/run.sh` reproduces them.
 
 ## Entity parity documentation
 
@@ -255,7 +280,7 @@ alike. One batch (`SYNC_BATCH`, default 200 matches):
    readable, so a contract is never visible before its dependencies. An address that already has a
    `verified_contract` is not written again: the same entity counts as synced, a different one is skipped and listed
    in `SYNC_DIR/skipped.jsonl` (changed contracts are not updated yet,
-   [#13](https://github.com/Arkiv-Network/sourcify-arkiv-entity-processor/issues/13));
+   [#13](https://github.com/Arkiv-Network/sourcify-arkiv-entity-processor/issues/13); the UDC sync below patches them);
 4. every created entity is read back and compared; only then does the cursor move. Each batch appends a line
    (counts, gas, phase timings) to `SYNC_DIR/sync.jsonl`.
 
@@ -278,6 +303,26 @@ only see the writer's own entities, so on a chain prefilled from a seed of anoth
 and the server reads a single owner.
 
 The server accepts the keys the chain assigns: entity identity is the staging ID it recomputes from the content.
+
+### UDC sync (`SYNC_FORMAT=udc`)
+
+With `SYNC_FORMAT=udc` the same loop (cursor, lock, prepare, records) writes the [v4 dataset](docs/udc-proposal.md)
+through [`arkiv/udc.ts`](arkiv/udc.ts): `process --format udc --schema-prefix SYNC_SCHEMA_PREFIX`, then
+
+1. sources, codes and compilations already on the chain (`$owner`, `arkiv.schema` and `hash`) are reused, their chunks
+   not written again; contracts are looked up by address;
+2. new entities go in four levels, each mined and read back before the next names it: chunks; sources and codes;
+   compilations; contracts. References are rewritten from bundle keys to the chain keys of the receipts
+   (`EntityCreated`, salt 0);
+3. a contract whose address already has one is **patched in place** when its `matchId` is at least the chain's (a
+   re-verification under a new `matchId`, or a correction under the same one): every attribute is set, attributes the
+   new version lacks are unset, and its key stays. The same content counts as synced; an older `matchId` than the
+   chain's is skipped.
+
+At most `SYNC_MAX_TX_OPS` (16, our node's limit) operations per transaction; gas is estimated unless `SYNC_GAS` says
+otherwise. Our node answers HTTP 429 / `-32010 ServerBusy` when about eight requests are in flight: lookups run four
+at a time and every call is asked again with a backoff. Each target names its own `ENTITY_OWNER` and writer key: the
+v4 dataset has one owner per chain.
 
 ### Sync targets
 

@@ -47,6 +47,11 @@ services:
       SYNC_MAX_TX_BYTES: "${SYNC_MAX_TX_BYTES:-120000}"
       SYNC_IN_FLIGHT: "${SYNC_IN_FLIGHT:-4}"
       SYNC_BATCH_DELAY_SECONDS: "${SYNC_BATCH_DELAY_SECONDS:-0}"
+      # v3 (payload entities) or udc (the v4 UDC dataset, docs/udc-proposal.md); udc estimates gas unless SYNC_GAS says.
+      SYNC_FORMAT: "${SYNC_FORMAT:-v3}"
+      SYNC_SCHEMA_PREFIX: "${SYNC_SCHEMA_PREFIX:-sourcify.v4}"
+      SYNC_MAX_TX_OPS: "${SYNC_MAX_TX_OPS:-16}"
+      SYNC_GAS: "${SYNC_GAS:-}"
     volumes:
       # Created by pipeline/sync-targets.sh, writable by PIPELINE_UID.
       - type: bind

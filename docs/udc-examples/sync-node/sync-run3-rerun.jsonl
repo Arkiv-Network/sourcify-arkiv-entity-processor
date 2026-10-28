@@ -1,0 +1,3 @@
+{"sync":"start","at":"2026-10-28T13:56:53.800Z","rpcUrl":"http://127.0.0.1:18545","chainId":7706815,"writer":"0x3Ffcb8c66BA2A35DF36D73b213399220fD59F42F","dir":"SYNC_DIR","batch":200,"batchDelaySeconds":0,"dryRun":false,"format":"udc","schemaPrefix":"sourcify-udc-proposal.v4"}
+{"sync":"cursor","at":"2026-10-28T13:56:53.801Z","lastMatchId":"0","from":"argument"}
+{"sync":"batch","at":"2026-10-28T13:56:54.354Z","firstMatchId":"1","lastMatchId":"60000001","selected":18,"entities":216,"created":0,"reused":197,"contracts":0,"alreadySynced":16,"transactions":0,"gasUsed":"0","calldataBytes":0,"seconds":0.5,"phases":{"prepare":0.2,"records":0.1,"process":0.2,"lookup":0,"write":0},"skippedContracts":2,"patched":0,"rentFeeWei":"0"}

@@ -110,10 +110,7 @@ fn v3_application() -> Application {
     v3_application_for(&records())
 }
 fn v3_application_for(records: &[Value]) -> Application {
-    let entities = records
-        .iter()
-        .flat_map(|r| transform(r).unwrap())
-        .collect();
+    let entities = records.iter().flat_map(|r| transform(r).unwrap()).collect();
     Application::new(Arc::new(Memory(Arc::new(entities))), Limits::default()).unwrap()
 }
 
