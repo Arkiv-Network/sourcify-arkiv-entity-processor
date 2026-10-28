@@ -40,8 +40,10 @@ The archive is written to <FILE>.partial, synced and renamed to <FILE> only on s
 it goes the record <FILE>.json:
   {\"schema\":\"arkiv-entity-processor.archive.v1\",\"archive\":\"<file name>\",\"bytes\":N,
    \"sha256\":\"<archive SHA-256>\",\"sourceSha256\":\"<SHA-256 of the bundle's SHA256SUMS>\",
-   \"contents\":\"prefill\",\"files\":N,\"bundleBytes\":N,\"zstdLevel\":N}
-(bundleBytes: the packed files' total size.)
+   \"contents\":\"prefill\",\"files\":N,\"bundleBytes\":N,\"zstdLevel\":N,\"seedVersion\":1|2,
+   \"bundleFormat\":\"sourcify-arkiv.upload.v1\"|\"sourcify-arkiv.udc-bundle.v1\"}
+(bundleBytes: the packed files' total size. A v4 bundle has no audit files, so both --contents
+pack the same files.)
 The record is also printed to stdout as one JSON line; progress goes to stderr as JSON lines.
 
 An existing <FILE> is never overwritten. If its record matches (same sourceSha256, size, contents
@@ -220,6 +222,8 @@ fn pack_record(a: &PackArgs) -> Result<Value> {
         "files": entries.len(),
         "bundleBytes": bundle_bytes,
         "zstdLevel": a.level,
+        "seedVersion": summary.version,
+        "bundleFormat": summary.format(),
     });
     // Record first: a crash before the rename leaves a stale record but no archive, which the
     // next run simply replaces.
@@ -797,6 +801,8 @@ mod tests {
             limit: None,
             workers: 1,
             compression_workers: 1,
+            format: crate::Format::V3,
+            schema_prefix: "sourcify.v4".into(),
         };
         let _ = fs::remove_dir_all(&a.output);
         let mut w = Writer::new(&a).unwrap();

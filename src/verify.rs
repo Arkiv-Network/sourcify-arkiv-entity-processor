@@ -11,15 +11,25 @@ use std::{
 };
 
 pub const LONG_ABOUT: &str = "\
-Verify a finished bundle written by `process`.
+Verify a finished bundle written by `process`, of either format (seed.json version 1 or 2).
 
 Checks that every file listed in SHA256SUMS exists and matches its SHA-256 digest, that
-SHA256SUMS covers payloads.bin, metadata.jsonl, report.json, seed.json and every entity part
-named in seed.json, that report.json has \"status\": \"completed\", and that seed.json exists.
+SHA256SUMS covers report.json, seed.json and every entity part named in seed.json (and, for a
+v3 bundle, payloads.bin and metadata.jsonl), that report.json has \"status\": \"completed\", and
+that seed.json exists.
+
+A v4 (UDC) bundle is also checked line by line: nonces from seed.json's firstNonce in order, each
+key the salt-0 key of the bundle's chain, owner and nonce, every entity permanent and within the
+node's rules and the format's schema, every key an entity names (key attributes, sourcerefs,
+chunk lists) an earlier line of the right kind, chunk lists as long as their chunks, one contract
+per address and one entity per content hash, and the counts report.json gives. Values are not
+decompressed; `hydrate` checks content.
+
 Exits non-zero and lists every problem found otherwise.";
 
-/// Files every completed bundle lists in SHA256SUMS.
-const REQUIRED: [&str; 4] = ["payloads.bin", "metadata.jsonl", "report.json", "seed.json"];
+/// Files every completed bundle lists in SHA256SUMS, by seed.json version.
+const REQUIRED_V3: [&str; 4] = ["payloads.bin", "metadata.jsonl", "report.json", "seed.json"];
+const REQUIRED_V4: [&str; 2] = ["report.json", "seed.json"];
 
 #[derive(Debug)]
 pub struct Summary {
@@ -27,6 +37,19 @@ pub struct Summary {
     bytes: u64,
     parts: usize,
     entities: u64,
+    /// seed.json version: 1 (v3 payload bundle) or 2 (v4 UDC bundle).
+    pub version: u64,
+    /// The v4 check's reference count, when it ran.
+    references: Option<u64>,
+}
+impl Summary {
+    /// The bundle format, as `pack` records it.
+    pub fn format(&self) -> &'static str {
+        match self.version {
+            2 => arkiv_entity_processor::udc_bundle::FORMAT,
+            _ => "sourcify-arkiv.upload.v1",
+        }
+    }
 }
 
 impl fmt::Display for Summary {
@@ -35,7 +58,15 @@ impl fmt::Display for Summary {
             f,
             "{} files ({} bytes) match SHA256SUMS; report.json completed with {} entities; seed.json lists {} entity part(s)",
             self.files, self.bytes, self.entities, self.parts
-        )
+        )?;
+        if let Some(references) = self.references {
+            write!(
+                f,
+                "; {}: every line in nonce order, {references} key references resolve to earlier lines",
+                self.format()
+            )?;
+        }
+        Ok(())
     }
 }
 
@@ -47,6 +78,16 @@ pub fn verify(dir: &Path) -> Result<Summary> {
     let mut problems = Vec::new();
     let mut listed = HashSet::new();
     let mut bytes = 0;
+    // The version decides which files are required; an unreadable seed.json is reported below.
+    let version = read_json(&dir.join("seed.json"))
+        .ok()
+        .and_then(|seed| seed["version"].as_u64())
+        .unwrap_or(1);
+    let required: &[&str] = if version == 2 {
+        &REQUIRED_V4
+    } else {
+        &REQUIRED_V3
+    };
     match fs::read_to_string(dir.join("SHA256SUMS")) {
         Err(e) => problems.push(format!("SHA256SUMS: {e}")),
         Ok(sums) => {
@@ -80,8 +121,8 @@ pub fn verify(dir: &Path) -> Result<Summary> {
                     Err(e) => problems.push(format!("{path}: {e:#}")),
                 }
             }
-            for path in REQUIRED {
-                if !listed.contains(path) {
+            for path in required {
+                if !listed.contains(*path) {
                     problems.push(format!("{path}: not listed in SHA256SUMS"));
                 }
             }
@@ -123,6 +164,19 @@ pub fn verify(dir: &Path) -> Result<Summary> {
             }
         },
     }
+    let mut references = None;
+    if problems.is_empty() && version == 2 {
+        use arkiv_entity_processor::udc_bundle;
+        match udc_bundle::read_sums(dir)
+            .and_then(|sums| udc_bundle::manifest(dir, &sums))
+            .and_then(|m| udc_bundle::check(dir, &m))
+        {
+            Ok(checked) => references = Some(checked.references),
+            Err(e) => problems.push(format!("{e:#}")),
+        }
+    } else if version != 1 && version != 2 {
+        problems.push(format!("seed.json: unknown version {version}"));
+    }
     if !problems.is_empty() {
         bail!(
             "bundle {} failed verification:\n  {}",
@@ -135,6 +189,8 @@ pub fn verify(dir: &Path) -> Result<Summary> {
         bytes,
         parts,
         entities,
+        version,
+        references,
     })
 }
 

@@ -24,10 +24,11 @@ use crate::hydrate::{insert, payload_with, validate_destination, validate_pointe
 use crate::split::json_bytes;
 use crate::{hx, sha, Entity};
 use anyhow::{bail, ensure, Context, Result};
+use base64::{engine::general_purpose::STANDARD, Engine};
 use flate2::{read::DeflateDecoder, write::DeflateEncoder, Compression};
 use serde_json::{json, Map, Value};
 use sha3::{Digest, Keccak256};
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::io::{Read, Write};
 use std::rc::Rc;
 
@@ -393,6 +394,192 @@ impl UdcEntity {
     }
 }
 
+/// The kind of entity a `key` attribute names.
+pub fn key_target(attribute: &str) -> Option<&'static str> {
+    match attribute {
+        "compilationref" => Some("compilation"),
+        "creationcoderef" | "runtimecoderef" => Some("code"),
+        _ => None,
+    }
+}
+impl UdcEntity {
+    /// One line of a v4 bundle (`entities/NNNNNN.jsonl`): `nonce`, `key`, `expiresAt` and the
+    /// attributes in name order, each `{name, type, indexed, value}` in the node's RPC encoding
+    /// except `bytes`, which is standard base64.
+    pub fn to_line(&self, nonce: u64) -> Value {
+        json!({
+            "nonce": nonce,
+            "key": hx(self.key),
+            "expiresAt": format!("0x{:x}", self.expires_at),
+            "attributes": self.attributes.iter().map(|a| json!({
+                "name": a.name,
+                "type": a.value.tag(),
+                "indexed": a.indexed,
+                "value": match &a.value {
+                    Val::Bytes(b) => json!(STANDARD.encode(b)),
+                    v => v.to_json(),
+                },
+            })).collect::<Vec<_>>(),
+        })
+    }
+    /// Reads a bundle line written by [`UdcEntity::to_line`] (the owner comes from seed.json).
+    pub fn from_line(line: &Value, owner: [u8; 20]) -> Result<(u64, Self)> {
+        let object = line.as_object().context("bundle line must be an object")?;
+        ensure!(
+            object.len() == 4
+                && ["nonce", "key", "expiresAt", "attributes"]
+                    .iter()
+                    .all(|k| object.contains_key(*k)),
+            "bundle line must have exactly nonce, key, expiresAt and attributes"
+        );
+        let nonce = line["nonce"].as_u64().context("nonce")?;
+        let mut attributes = vec![];
+        for a in line["attributes"].as_array().context("attributes")? {
+            ensure!(
+                a.as_object().is_some_and(|o| o.len() == 4),
+                "attribute must have exactly name, type, indexed and value"
+            );
+            let tag = a["type"].as_str().context("attribute type")?;
+            let value = match tag {
+                "bytes" => Val::Bytes(
+                    STANDARD
+                        .decode(a["value"].as_str().context("bytes value must be base64")?)
+                        .context("invalid base64")?,
+                ),
+                _ => Val::from_json(tag, &a["value"])?,
+            };
+            attributes.push(Attr {
+                name: a["name"].as_str().context("attribute name")?.into(),
+                indexed: a["indexed"].as_bool().context("indexed flag")?,
+                value,
+            });
+        }
+        let entity = Self {
+            key: fixed(line["key"].as_str().context("key")?)?,
+            owner,
+            expires_at: quantity(line["expiresAt"].as_str().context("expiresAt")?)?,
+            attributes,
+            unselected: vec![],
+        };
+        Ok((nonce, entity))
+    }
+    /// Every key the entity names, with the kind the named entity must have: its `key`
+    /// attributes, its `sourcerefs` (codec 0) and the chunks of its chunk lists.
+    pub fn references(&self) -> Result<Vec<([u8; 32], &'static str)>> {
+        let chunk = self.schema().is_some_and(|s| s.ends_with(".chunk"));
+        let mut out = vec![];
+        for a in &self.attributes {
+            match &a.value {
+                Val::Key(k) => out.push((
+                    *k,
+                    key_target(&a.name)
+                        .with_context(|| format!("unknown key attribute {}", a.name))?,
+                )),
+                Val::Bytes(b) if !chunk => {
+                    if let Some((_, _, keys)) = chunk_manifest(b)? {
+                        out.extend(keys.into_iter().map(|k| (k, "chunk")));
+                    } else if a.name == "sourcerefs" {
+                        let (&codec, body) = b.split_first().context("empty sourcerefs")?;
+                        ensure!(
+                            codec == IDENTITY && body.len().is_multiple_of(32) && !body.is_empty(),
+                            "malformed sourcerefs"
+                        );
+                        out.extend(body.chunks(32).map(|k| (k.try_into().unwrap(), "source")));
+                    }
+                }
+                _ => {}
+            }
+        }
+        Ok(out)
+    }
+    /// The kind named by `arkiv.schema` under `prefix` (`contract`, `compilation`, ...).
+    pub fn kind<'s>(&'s self, prefix: &str) -> Option<&'s str> {
+        self.schema()?
+            .strip_prefix(prefix)?
+            .strip_prefix('.')
+            .filter(|k| KINDS.contains(k))
+    }
+}
+/// The five entity kinds.
+pub const KINDS: [&str; 5] = ["contract", "compilation", "source", "code", "chunk"];
+/// Every attribute a kind may carry besides `arkiv.schema` (an indexed `str` on every entity):
+/// kind, name, type, indexed, required. This is the format's schema (docs/udc-proposal.md).
+pub const ATTRIBUTES: &[(&str, &str, &str, bool, bool)] = &[
+    ("contract", "abihash", "bytes32", true, true),
+    ("contract", "address", "addr", true, true),
+    ("contract", "blocknumber", "u64", true, true),
+    ("contract", "chainid", "u64", true, true),
+    ("contract", "compilationhash", "bytes32", true, true),
+    ("contract", "compilationref", "key", false, true),
+    ("contract", "compilerversion", "str", true, true),
+    ("contract", "creationcodehash", "bytes32", true, false),
+    ("contract", "creationcoderef", "key", false, false),
+    ("contract", "data", "bytes", false, true),
+    ("contract", "deployer", "addr", true, true),
+    ("contract", "evmversion", "str", true, true),
+    ("contract", "isproxy", "bool", true, false),
+    ("contract", "language", "str", true, true),
+    ("contract", "match", "str", true, true),
+    ("contract", "matchid", "u64", true, true),
+    ("contract", "name", "str", true, true),
+    ("contract", "optimizer", "bool", true, true),
+    ("contract", "optimizerruns", "i32", true, false),
+    ("contract", "proxytype", "str", true, false),
+    ("contract", "runtimecodehash", "bytes32", true, false),
+    ("contract", "runtimecoderef", "key", false, false),
+    ("contract", "verifiedat", "u64", true, true),
+    ("contract", "viair", "bool", true, true),
+    ("compilation", "abi", "bytes", false, false),
+    ("compilation", "artifacts", "bytes", false, false),
+    ("compilation", "compilation", "bytes", false, false),
+    ("compilation", "creationcoderef", "key", false, false),
+    ("compilation", "hash", "bytes32", true, true),
+    ("compilation", "manifest", "bytes", false, true),
+    ("compilation", "runtimecoderef", "key", false, false),
+    ("compilation", "sourcerefs", "bytes", false, false),
+    ("source", "content", "bytes", false, true),
+    ("source", "hash", "bytes32", true, true),
+    ("code", "code", "bytes", false, true),
+    ("code", "hash", "bytes32", true, true),
+    ("chunk", "data", "bytes", false, true),
+];
+impl UdcEntity {
+    /// Checks the entity against [`ATTRIBUTES`] and the node's rules; returns its kind.
+    pub fn check_schema(&self, prefix: &str) -> Result<&'static str> {
+        self.validate()?;
+        let tag = self.schema().context("no arkiv.schema")?;
+        let kind = KINDS
+            .iter()
+            .copied()
+            .find(|k| tag.strip_prefix(prefix).and_then(|t| t.strip_prefix('.')) == Some(k))
+            .with_context(|| format!("arkiv.schema {tag} is not a {prefix} kind"))?;
+        for a in &self.attributes {
+            if a.name == "arkiv.schema" {
+                ensure!(a.indexed, "arkiv.schema must be indexed");
+                continue;
+            }
+            let spec = ATTRIBUTES
+                .iter()
+                .find(|(k, n, _, _, _)| *k == kind && *n == a.name)
+                .with_context(|| format!("{kind} has no attribute {}", a.name))?;
+            ensure!(
+                spec.2 == a.value.tag() && spec.3 == a.indexed,
+                "{kind} attribute {} must be {}{}",
+                a.name,
+                if spec.3 { "indexed " } else { "stored " },
+                spec.2
+            );
+        }
+        for (_, name, ..) in ATTRIBUTES
+            .iter()
+            .filter(|(k, .., required)| *k == kind && *required)
+        {
+            ensure!(self.get(name).is_some(), "{kind} is missing {name}");
+        }
+        Ok(kind)
+    }
+}
+
 /// The node's entity key derivation: Keccak-256 of chain ID (32 bytes), the Arkiv address,
 /// owner, the owner's entity nonce and the salt (`predictEntityKey` in the SDK).
 pub fn entity_key(chain_id: u64, owner: &[u8; 20], nonce: u64, salt: u128) -> [u8; 32] {
@@ -487,7 +674,8 @@ impl Profile {
 
 /// Builds entities in creation order and deduplicates shared content across contracts.
 /// Keys are those the node assigns to creates with salt 0, starting at `next_nonce`. A contract
-/// is written all or nothing: on an error the writer is left as it was before it.
+/// is written all or nothing: on an error the writer is left as it was before it. The writer
+/// keeps only the content-hash-to-key maps; each contract's new entities are handed back.
 pub struct Writer {
     pub profile: Profile,
     pub next_nonce: u64,
@@ -592,12 +780,13 @@ impl Writer {
     /// first, the verified contract last). Returns the entities created for it; shared content
     /// created for an earlier contract is referenced, not repeated. All or nothing.
     pub fn contract(&mut self, v3: &[Entity]) -> Result<Vec<UdcEntity>> {
-        let (start, nonce) = (self.out.len(), self.next_nonce);
+        let nonce = self.next_nonce;
+        self.out.clear();
         self.journal.clear();
         match self.contract_inner(v3) {
-            Ok(()) => Ok(self.out[start..].to_vec()),
+            Ok(()) => Ok(std::mem::take(&mut self.out)),
             Err(e) => {
-                self.out.truncate(start);
+                self.out.clear();
                 self.next_nonce = nonce;
                 for (map, hash) in std::mem::take(&mut self.journal) {
                     match map {
@@ -888,8 +1077,13 @@ impl Writer {
         self.create("contract", attrs)?;
         Ok(())
     }
-    pub fn entities(&self) -> &[UdcEntity] {
-        &self.out
+    /// Entities created so far, by kind: (sources, codes, compilations).
+    pub fn distinct(&self) -> (usize, usize, usize) {
+        (
+            self.sources.len(),
+            self.codes.len(),
+            self.compilations.len(),
+        )
     }
 }
 #[derive(Clone)]
@@ -930,39 +1124,106 @@ pub struct ReadStep {
     pub attributes: Vec<String>,
 }
 
-/// Reconstructs contracts. `fetch` returns the entity with a key (from a node query or a
-/// local list); the reader checks owner, kind and every digest before using a value.
+/// The attributes a fetch must return: all of them, or the named ones. A node still lists the
+/// others in `attributeSchema`, so a reader never mistakes an unselected attribute for an absent
+/// one.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Select {
+    All,
+    Named(Vec<String>),
+}
+
+/// Fetches one entity by key.
+pub type FetchOne<'a> = dyn FnMut(&[u8; 32]) -> Result<UdcEntity> + 'a;
+/// Fetches several entities by key with one selection. A transport batches the keys (at most 8
+/// per query); every requested key must come back exactly once.
+pub type FetchMany<'a> = dyn FnMut(&[[u8; 32]], &Select) -> Result<Vec<UdcEntity>> + 'a;
+enum Source<'a> {
+    One(&'a mut FetchOne<'a>),
+    Many(&'a mut FetchMany<'a>),
+}
+
+/// Reconstructs contracts. Entities come from `fetch` (node queries or a local list); the reader
+/// checks owner, kind and every digest before using a value. It fetches in rounds: the contract's
+/// chunks, compilation and on-chain code; then what the selected fields' references need
+/// (sources, recompiled code, chunks); then their chunks. A key missed by a round is fetched on
+/// its own; an attribute a narrow selection left out is fetched again with every attribute.
 pub struct Reader<'a> {
     pub prefix: String,
     pub owner: Option<[u8; 20]>,
-    fetch: &'a mut dyn FnMut(&[u8; 32]) -> Result<UdcEntity>,
+    source: Source<'a>,
     cache: HashMap<[u8; 32], UdcEntity>,
     pub reads: Vec<ReadStep>,
+    /// Fetch calls made and keys fetched in them.
+    pub fetches: usize,
+    pub fetched: usize,
 }
 impl<'a> Reader<'a> {
-    pub fn new(
-        prefix: &str,
-        owner: Option<[u8; 20]>,
-        fetch: &'a mut dyn FnMut(&[u8; 32]) -> Result<UdcEntity>,
-    ) -> Self {
+    pub fn new(prefix: &str, owner: Option<[u8; 20]>, fetch: &'a mut FetchOne<'a>) -> Self {
+        Self::with(prefix, owner, Source::One(fetch))
+    }
+    pub fn batched(prefix: &str, owner: Option<[u8; 20]>, fetch: &'a mut FetchMany<'a>) -> Self {
+        Self::with(prefix, owner, Source::Many(fetch))
+    }
+    fn with(prefix: &str, owner: Option<[u8; 20]>, source: Source<'a>) -> Self {
         Self {
             prefix: prefix.into(),
             owner,
-            fetch,
+            source,
             cache: HashMap::new(),
             reads: vec![],
+            fetches: 0,
+            fetched: 0,
         }
     }
-    fn entity(&mut self, key: &[u8; 32], kind: &str, attribute: &str) -> Result<UdcEntity> {
-        let entity = match self.cache.get(key) {
-            Some(e) => e.clone(),
-            None => {
-                let e = (self.fetch)(key)?;
-                ensure!(&e.key == key, "fetched another key");
-                self.cache.insert(*key, e.clone());
-                e
-            }
+    /// Fetches, in one call, the keys not cached yet.
+    pub fn prefetch(&mut self, keys: &[[u8; 32]], select: &Select) -> Result<()> {
+        let mut seen = HashSet::new();
+        let want: Vec<[u8; 32]> = keys
+            .iter()
+            .filter(|k| !self.cache.contains_key(*k) && seen.insert(**k))
+            .copied()
+            .collect();
+        if want.is_empty() {
+            return Ok(());
+        }
+        self.fetch(&want, select)
+    }
+    fn fetch(&mut self, keys: &[[u8; 32]], select: &Select) -> Result<()> {
+        self.fetches += 1;
+        self.fetched += keys.len();
+        let got = match &mut self.source {
+            Source::One(fetch) => keys.iter().map(fetch).collect::<Result<Vec<_>>>()?,
+            Source::Many(fetch) => fetch(keys, select)?,
         };
+        let wanted: HashSet<&[u8; 32]> = keys.iter().collect();
+        let mut returned = HashSet::new();
+        for e in &got {
+            ensure!(
+                wanted.contains(&e.key) && returned.insert(e.key),
+                "fetched another key"
+            );
+        }
+        ensure!(returned.len() == keys.len(), "fetch left out a key");
+        for e in got {
+            self.cache.insert(e.key, e);
+        }
+        Ok(())
+    }
+    /// The cached entity with `names` selected, fetched again with every attribute if a narrow
+    /// selection left one out. Records no read.
+    fn selected(&mut self, key: &[u8; 32], names: &[&str]) -> Result<UdcEntity> {
+        let stale = match self.cache.get(key) {
+            None => true,
+            Some(e) => names.iter().any(|n| e.unselected.iter().any(|u| u == n)),
+        };
+        if stale {
+            self.fetch(&[*key], &Select::All)?;
+        }
+        Ok(self.cache[key].clone())
+    }
+    fn entity(&mut self, key: &[u8; 32], kind: &str, attribute: &str) -> Result<UdcEntity> {
+        let entity = self.selected(key, &[attribute])?;
         self.check(&entity, kind)?;
         match self.reads.iter_mut().find(|r| &r.key == key) {
             Some(r) if !r.attributes.iter().any(|a| a == attribute) => {
@@ -996,6 +1257,7 @@ impl<'a> Reader<'a> {
         let joined = match chunk_manifest(&raw)? {
             None => raw,
             Some((digest, len, keys)) => {
+                self.prefetch(&keys, &Select::All)?;
                 let mut joined = Vec::with_capacity(len);
                 for key in keys {
                     let chunk = self.entity(&key, "chunk", "data")?;
@@ -1025,10 +1287,62 @@ impl<'a> Reader<'a> {
         ensure!(&keccak(&code) == hash, "code hash mismatch");
         Ok(code)
     }
+    /// Chunk keys of the cached entities' named values (for the next fetch round).
+    fn chunks_of(&self, keys: &[[u8; 32]], name: &str) -> Vec<[u8; 32]> {
+        keys.iter()
+            .filter_map(|k| self.cache.get(k))
+            .flat_map(|e| chunk_keys(e, name))
+            .collect()
+    }
     /// The complete contract (`fields` None) or minimal fields plus the selected top-level fields.
     pub fn hydrate(&mut self, contract: &UdcEntity, fields: Option<&[&str]>) -> Result<Value> {
         self.check(contract, "contract")?;
         let want = |f: &str| fields.is_none_or(|fs| fs.contains(&f));
+        let lanes: Vec<&str> = LANES.iter().copied().filter(|l| want(l)).collect();
+        let top: Vec<&str> = TOP_FIELDS.iter().copied().filter(|f| want(f)).collect();
+        let needs_compilation = !top.is_empty() || !lanes.is_empty();
+        // First round: the contract's chunks, its on-chain code and its compilation. A read of
+        // `abi` and `compilation` alone selects only the attributes it uses.
+        // A chunk list is bounded before anything is fetched.
+        let mut keys = match contract.bytes("data")? {
+            Some(raw) => chunk_manifest(raw)?.map(|c| c.2).unwrap_or_default(),
+            None => vec![],
+        };
+        let mut onchain = vec![];
+        for (lane, attr, _) in ONCHAIN {
+            if want(lane) {
+                onchain.extend(contract.key_attr(attr)?);
+            }
+        }
+        keys.extend(&onchain);
+        let compilation = match needs_compilation {
+            true => Some(
+                contract
+                    .key_attr("compilationref")?
+                    .context("compilationref")?,
+            ),
+            false => None,
+        };
+        let hot = lanes.is_empty() && top.iter().all(|f| HOT.contains(f));
+        match compilation {
+            Some(key) if hot => {
+                self.prefetch(&keys, &Select::All)?;
+                let mut names: Vec<String> = ["arkiv.schema", "hash", "manifest"]
+                    .iter()
+                    .chain(&top)
+                    .map(|n| n.to_string())
+                    .collect();
+                names.dedup();
+                self.prefetch(&[key], &Select::Named(names))?;
+            }
+            Some(key) => {
+                keys.push(key);
+                self.prefetch(&keys, &Select::All)?;
+            }
+            None => self.prefetch(&keys, &Select::All)?,
+        }
+        let more = self.chunks_of(&onchain, "code");
+        self.prefetch(&more, &Select::All)?;
         let raw = self.value(contract, "data")?.context("contract data")?;
         let mut data: Value = serde_json::from_slice(&raw)?;
         ensure!(data.is_object(), "contract data must be an object");
@@ -1060,35 +1374,34 @@ impl<'a> Reader<'a> {
                 json!(format!("0x{}", hex::encode(code))),
             )?;
         }
-        let needs_compilation = TOP_FIELDS.iter().chain(&LANES).any(|f| want(f));
-        if needs_compilation {
-            let key = contract
-                .key_attr("compilationref")?
-                .context("compilationref")?;
+        if let Some(key) = compilation {
             let hash = contract
                 .bytes32_attr("compilationhash")?
                 .context("compilationhash")?;
             let mut comp = Compilation::load(self, &key, &hash)?;
+            let mut pointers: Vec<String> = top.iter().map(|f| format!("/{}", escape(f))).collect();
+            for lane in &lanes {
+                pointers.extend(LANE_FIELDS.iter().map(|f| format!("/{lane}/{f}")));
+            }
+            comp.prefetch(self, &pointers)?;
             let abihash = contract.bytes32_attr("abihash")?;
-            for field in TOP_FIELDS {
-                if want(field) && comp.exists(self, &format!("/{field}"))? {
+            for field in &top {
+                let pointer = format!("/{}", escape(field));
+                if comp.exists(self, &pointer)? {
                     let value = comp
-                        .expand(self, &format!("/{field}"), 0)?
+                        .expand(self, &pointer, 0)?
                         .context("missing compilation field")?;
-                    if field == "abi" {
+                    if *field == "abi" {
                         let abihash = abihash.context("abihash")?;
                         ensure!(
                             sha(json_bytes(&value)) == abihash,
                             "abihash does not match the compilation"
                         );
                     }
-                    insert(&mut data, &format!("/{}", escape(field)), value)?;
+                    insert(&mut data, &pointer, value)?;
                 }
             }
-            for lane in LANES {
-                if !want(lane) {
-                    continue;
-                }
+            for lane in &lanes {
                 for f in LANE_FIELDS {
                     let path = format!("/{lane}/{f}");
                     if comp.exists(self, &path)? {
@@ -1109,6 +1422,17 @@ impl<'a> Reader<'a> {
                 .retain(|k, _| keep.contains(k.as_str()));
         }
         Ok(data)
+    }
+}
+/// The chunk keys of a selected bytes value that is a chunk list (none otherwise).
+fn chunk_keys(e: &UdcEntity, name: &str) -> Vec<[u8; 32]> {
+    match e.get(name) {
+        Some(Val::Bytes(b)) => chunk_manifest(b)
+            .ok()
+            .flatten()
+            .map(|(_, _, keys)| keys)
+            .unwrap_or_default(),
+        _ => vec![],
     }
 }
 /// The contract's query attributes are projections of its record: those the stored data
@@ -1163,7 +1487,7 @@ fn unescape(s: &str) -> String {
 
 /// A compilation being expanded: its manifest, and its attribute groups loaded on first use.
 struct Compilation {
-    entity: UdcEntity,
+    key: [u8; 32],
     refs: Rc<Vec<Value>>,
     digests: Map<String, Value>,
     sources: Vec<[u8; 32]>,
@@ -1235,7 +1559,7 @@ impl Compilation {
             );
         }
         Ok(Self {
-            entity,
+            key: entity.key,
             refs: Rc::new(refs),
             digests: manifest["digests"].as_object().context("digests")?.clone(),
             sources,
@@ -1262,15 +1586,78 @@ impl Compilation {
         };
         Ok((group, field))
     }
+    /// Fetches, in rounds, what expanding `pointers` will read: the chunks of the groups (and of
+    /// `sourcerefs`) it decodes, then the sources and recompiled code its references name (local
+    /// references followed), then their chunks. The expansion itself still checks everything.
+    fn prefetch(&mut self, reader: &mut Reader, pointers: &[String]) -> Result<()> {
+        let (mut groups, mut sources, mut slots) =
+            (BTreeSet::new(), BTreeSet::new(), BTreeSet::new());
+        let mut todo: Vec<String> = pointers.to_vec();
+        let mut seen = HashSet::new();
+        while let Some(p) = todo.pop() {
+            if seen.len() > 4096 || !seen.insert(p.clone()) {
+                continue;
+            }
+            groups.extend(Self::group_of(&p).ok().map(|g| g.0));
+            for r in self.refs.iter() {
+                let path = r["path"].as_str().unwrap_or_default();
+                if !(within(path, &p) || within(&p, path)) {
+                    continue;
+                }
+                groups.extend(Self::group_of(path).ok().map(|g| g.0));
+                match r["kind"].as_str() {
+                    Some("source") => sources.extend(r["source"].as_u64().map(|i| i as usize)),
+                    Some("code") => slots.extend(r["code"].as_str().map(String::from)),
+                    Some("local") => todo.extend(r["pointer"].as_str().map(String::from)),
+                    _ => {}
+                }
+            }
+        }
+        let mut names: Vec<String> = groups.iter().cloned().collect();
+        if !sources.is_empty() {
+            names.push("sourcerefs".into());
+        }
+        names.extend(slots.iter().map(|s| format!("{s}coderef")));
+        let refs: Vec<&str> = names.iter().map(String::as_str).collect();
+        let e = reader.selected(&self.key, &refs)?;
+        let chunks: Vec<[u8; 32]> = names.iter().flat_map(|n| chunk_keys(&e, n)).collect();
+        reader.prefetch(&chunks, &Select::All)?;
+        let mut keys = vec![];
+        if !sources.is_empty() {
+            let source_keys = self.source_keys(reader)?;
+            keys.extend(sources.iter().filter_map(|i| source_keys.get(*i)).copied());
+        }
+        for slot in &slots {
+            keys.extend(e.key_attr(&format!("{slot}coderef"))?);
+        }
+        reader.prefetch(&keys, &Select::All)?;
+        let mut more = reader.chunks_of(&keys, "content");
+        more.extend(reader.chunks_of(&keys, "code"));
+        reader.prefetch(&more, &Select::All)
+    }
+    /// The source keys (`sourcerefs`), in manifest order.
+    fn source_keys(&mut self, reader: &mut Reader) -> Result<Vec<[u8; 32]>> {
+        if self.source_keys.is_empty() {
+            let key = self.key;
+            let e = reader.entity(&key, "compilation", "sourcerefs")?;
+            let raw = reader.value(&e, "sourcerefs")?.context("sourcerefs")?;
+            ensure!(
+                raw.len() == 32 * self.sources.len(),
+                "sourcerefs do not match the manifest"
+            );
+            self.source_keys = raw.chunks(32).map(|k| k.try_into().unwrap()).collect();
+        }
+        Ok(self.source_keys.clone())
+    }
     /// Loads and verifies the group holding `pointer`.
     fn load_group(&mut self, reader: &mut Reader, pointer: &str) -> Result<()> {
         let (group, _) = Self::group_of(pointer)?;
         if self.groups.contains_key(&group) {
             return Ok(());
         }
-        let key = self.entity.key;
-        reader.entity(&key, "compilation", &group)?;
-        let value = match reader.value(&self.entity, &group)? {
+        let key = self.key;
+        let entity = reader.entity(&key, "compilation", &group)?;
+        let value = match reader.value(&entity, &group)? {
             None => {
                 ensure!(!self.digests.contains_key(&group), "group {group} missing");
                 None
@@ -1382,19 +1769,8 @@ impl Compilation {
                 if let Some(text) = self.texts.get(&i) {
                     return Ok(json!(text));
                 }
-                if self.source_keys.is_empty() {
-                    let key = self.entity.key;
-                    reader.entity(&key, "compilation", "sourcerefs")?;
-                    let raw = reader
-                        .value(&self.entity, "sourcerefs")?
-                        .context("sourcerefs")?;
-                    ensure!(
-                        raw.len() == 32 * self.sources.len(),
-                        "sourcerefs do not match the manifest"
-                    );
-                    self.source_keys = raw.chunks(32).map(|k| k.try_into().unwrap()).collect();
-                }
-                let e = reader.entity(&self.source_keys[i], "source", "content")?;
+                let source_key = self.source_keys(reader)?[i];
+                let e = reader.entity(&source_key, "source", "content")?;
                 let hash = self.sources[i];
                 ensure!(
                     e.bytes32_attr("hash")? == Some(hash),
@@ -1413,9 +1789,11 @@ impl Compilation {
                     None => {
                         let hash: [u8; 32] =
                             fixed(self.codes[&slot].as_str().context("code hash")?)?;
-                        let key = self
-                            .entity
-                            .key_attr(&format!("{slot}coderef"))?
+                        let attr = format!("{slot}coderef");
+                        let compilation = self.key;
+                        let key = reader
+                            .entity(&compilation, "compilation", &attr)?
+                            .key_attr(&attr)?
                             .context("code reference attribute")?;
                         let code = reader.code(&key, &hash)?;
                         let h = hex::encode(code);
@@ -1428,6 +1806,62 @@ impl Compilation {
             kind => bail!("unsupported reference kind {kind}"),
         }
     }
+}
+
+/// Keys per `arkiv_query` when reading by key: eight `OR` groups is our node's planned path (more
+/// fall back to a bounded scan), and both nodes accept it.
+pub const KEY_BATCH: usize = 8;
+/// A dataset's `arkiv.schema` prefix: letters, digits, `.`, `_` and `-`, short enough for every
+/// `<prefix>.<kind>` tag to be a valid `str`.
+pub fn check_prefix(prefix: &str) -> Result<()> {
+    ensure!(
+        !prefix.is_empty()
+            && prefix.len() <= 116
+            && prefix
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || "._-".contains(c)),
+        "invalid schema prefix {prefix:?}"
+    );
+    Ok(())
+}
+/// The query for the dataset's contract at `address` (read with limit 2: two rows are ambiguous).
+pub fn contract_query(prefix: &str, owner: &[u8; 20], address: &[u8; 20]) -> String {
+    format!(
+        "$owner = addr({}) AND arkiv.schema = str('{prefix}.contract') AND chainid = u64(1) AND address = addr({})",
+        hx(owner),
+        hx(address)
+    )
+}
+/// The query for entities by key (`$key = key(…) OR …`), at most [`KEY_BATCH`] keys.
+pub fn key_query(keys: &[[u8; 32]]) -> String {
+    keys.iter()
+        .map(|k| format!("$key = key({})", hx(k)))
+        .collect::<Vec<_>>()
+        .join(" OR ")
+}
+/// The `select` of an entity read: the entity fields a reader checks plus `attributeSchema` (so
+/// unselected attributes are known) and every or the named attributes.
+pub fn select_json(select: &Select) -> Value {
+    let attributes = match select {
+        Select::All => json!(true),
+        Select::Named(names) => {
+            Value::Object(names.iter().map(|n| (n.clone(), json!(true))).collect())
+        }
+    };
+    json!({"key": true, "owner": true, "creator": true, "expiresAt": true, "attributeSchema": true, "attributes": attributes})
+}
+/// The entities of an `arkiv_query` result (`data`), refusing a continuation cursor.
+pub fn query_entities(result: &Value) -> Result<Vec<UdcEntity>> {
+    ensure!(
+        result.get("cursor").is_none_or(Value::is_null),
+        "query result continues past its limit"
+    );
+    result["data"]
+        .as_array()
+        .context("query result has no data array")?
+        .iter()
+        .map(UdcEntity::from_json)
+        .collect()
 }
 
 /// Human-readable view of an entity: bytes attributes decoded (JSON, text, hex or chunk list).
@@ -1840,8 +2274,8 @@ mod tests {
         b["sources"]["A.sol"]["content"] = json!("contract A { /* other */ }");
         let mut w = Writer::new(profile(), 0);
         let first = w.contract(&transform(&a).unwrap()).unwrap();
-        w.contract(&transform(&b).unwrap()).unwrap();
-        let all = w.entities().to_vec();
+        let second = w.contract(&transform(&b).unwrap()).unwrap();
+        let all: Vec<UdcEntity> = first.iter().chain(&second).cloned().collect();
         let mut contract_b = all.last().unwrap().clone();
         let comp_a = first
             .last()
@@ -1913,7 +2347,7 @@ mod tests {
         let error = w.contract(&transform(&r).unwrap()).unwrap_err();
         assert!(error.to_string().contains("exceeds"), "{error}");
         assert_eq!(w.next_nonce, 10);
-        assert!(w.entities().is_empty());
+        assert_eq!(w.distinct(), (0, 0, 0));
         // A.sol was created before the failure; the next contract must create it again.
         let created = w.contract(&transform(&base()).unwrap()).unwrap();
         assert!(created
@@ -2082,6 +2516,7 @@ mod tests {
             .unwrap_or(2000);
         let mut g = Rng(0x9e37_79b9_7f4a_7c15);
         let mut w = Writer::new(profile(), 0);
+        let mut store: HashMap<[u8; 32], UdcEntity> = HashMap::new();
         let mut checked = 0;
         for i in 0..n {
             let mut r = random_record(&mut g);
@@ -2094,8 +2529,10 @@ mod tests {
             let created = w
                 .contract(&v3)
                 .unwrap_or_else(|e| panic!("writer: {e:#}\n{r}"));
-            let all = w.entities();
-            let got = hydrate_all(all, created.last().unwrap())
+            store.extend(created.iter().map(|e| (e.key, e.clone())));
+            let mut fetch = |k: &[u8; 32]| store.get(k).cloned().context("missing");
+            let got = Reader::new("sourcify.v4", Some([0x11; 20]), &mut fetch)
+                .hydrate(created.last().unwrap(), None)
                 .unwrap_or_else(|e| panic!("reader: {e:#}\n{r}"));
             assert_eq!(
                 serde_json::to_string(&got).unwrap(),

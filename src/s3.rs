@@ -438,11 +438,12 @@ fn body_timeout(bytes: u64) -> Duration {
     Duration::from_secs(120 + 2 * bytes.div_ceil(1 << 20))
 }
 
-/// Size and `sha256` user metadata of an existing object.
+/// Size and `sha256` / `bundle-format` user metadata of an existing object.
 #[derive(Debug)]
 pub struct ObjectInfo {
     pub size: u64,
     pub sha256: Option<String>,
+    pub bundle_format: Option<String>,
 }
 
 /// Blocking client for one endpoint; shareable between threads.
@@ -563,21 +564,27 @@ impl Client {
         Ok(Some(ObjectInfo {
             size,
             sha256: header("x-amz-meta-sha256").map(|v| v.to_ascii_lowercase()),
+            bundle_format: header("x-amz-meta-bundle-format"),
         }))
     }
 
-    /// CreateMultipartUpload with `x-amz-meta-sha256`; returns the upload ID.
+    /// CreateMultipartUpload with `x-amz-meta-sha256` (and `x-amz-meta-bundle-format` when the
+    /// archive's bundle format is known); returns the upload ID.
     pub fn create_multipart(
         &self,
         bucket: &str,
         key: &str,
         content_type: &str,
         sha256: &str,
+        bundle_format: Option<&str>,
     ) -> Result<String, S3Error> {
-        let headers = [
+        let mut headers = vec![
             ("content-type", content_type),
             ("x-amz-meta-sha256", sha256),
         ];
+        if let Some(format) = bundle_format {
+            headers.push(("x-amz-meta-bundle-format", format));
+        }
         let response = self.send(
             Method::POST,
             bucket,

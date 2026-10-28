@@ -1,0 +1,577 @@
+{
+ "note": "udc-page (src/udc_rpc.rs page_contracts over src/udc_page.rs) on our node, 2026-10-28, over the sync's test contracts (prefix sourcify-udc-proposal.v4, owner 0x3ffcb8c66ba2a35df36d73b213399220fd59f42f) after the re-verification patch of 0x36f3\u2026d723 (matchid 468227 -> 60000001, block 74,632). nodeOrder is arkiv_query's own order (record ID = creation order) at block 74830; every walk returns matchid order whatever that order.",
+ "nodeOrder": [
+  {
+   "matchid": 607,
+   "createdAt": 68938,
+   "updatedAt": 74590,
+   "key": "0x6bfd289df2184ea640d1c3f1d16ca4dcd27392272c73c0328dc2fcc4bdf0ad6a"
+  },
+  {
+   "matchid": 1,
+   "createdAt": 74590,
+   "updatedAt": 74590,
+   "key": "0xec1f9565a84047c9b78f142f007d749cb0d1e20b64ac9008ed33bc8233e053ec"
+  },
+  {
+   "matchid": 32,
+   "createdAt": 74590,
+   "updatedAt": 74590,
+   "key": "0x2cdb5c35cb4075eb0da7e1250efac531cf9d4a7ae8730099e42cfdeb8f709da0"
+  },
+  {
+   "matchid": 235,
+   "createdAt": 74590,
+   "updatedAt": 74590,
+   "key": "0xe9fba63a99f012bbbf405c73bebd402e1976cd7c98046556b65ffbab55fd4b09"
+  },
+  {
+   "matchid": 452,
+   "createdAt": 74590,
+   "updatedAt": 74590,
+   "key": "0x364c520225cd3693f2af11491b93be9e2dc9ca2628ea4db87e4fe45cf5dbdac2"
+  },
+  {
+   "matchid": 673,
+   "createdAt": 74590,
+   "updatedAt": 74590,
+   "key": "0xd5791597143e1940dd15b7db4e4bb6938fb4410e452b3f2ee99056814eacbce8"
+  },
+  {
+   "matchid": 877,
+   "createdAt": 74590,
+   "updatedAt": 74590,
+   "key": "0xae6ba7f52ff60c0c47e4187e5dde528242e667f14d5cd1905fa2259ea9f2681b"
+  },
+  {
+   "matchid": 881,
+   "createdAt": 74590,
+   "updatedAt": 74590,
+   "key": "0xfd053705e71aab3972231c8ba154ccfcd91d0c57a6bf305dfc7c34977128b677"
+  },
+  {
+   "matchid": 911,
+   "createdAt": 74590,
+   "updatedAt": 74590,
+   "key": "0xeaf5e0b197bb9d24a1e8f7693e6abf504feb2752411f9a8cc22294121bd91cbd"
+  },
+  {
+   "matchid": 990,
+   "createdAt": 74590,
+   "updatedAt": 74590,
+   "key": "0x631f7d45c940f3322c7e700a2247d7e70f299caa427fff3317ff08cebe3d5057"
+  },
+  {
+   "matchid": 21561,
+   "createdAt": 74590,
+   "updatedAt": 74590,
+   "key": "0x3075ca16d644cd47e56d33bc266ed30d23d97ff552a3cf6b60c0d0f862e01e26"
+  },
+  {
+   "matchid": 60000001,
+   "createdAt": 74590,
+   "updatedAt": 74632,
+   "key": "0x84598996786e1b71a1306e396677c12f5e1e7ace433213d02d271badbdd86086"
+  },
+  {
+   "matchid": 5888028,
+   "createdAt": 74590,
+   "updatedAt": 74590,
+   "key": "0xd848c62a6a3c696ec743565ad8bbfaff3b5c13c8752398c955d49849a569c02c"
+  },
+  {
+   "matchid": 23813307,
+   "createdAt": 74590,
+   "updatedAt": 74590,
+   "key": "0x4f3df7a6380a6d32d07b6d4de1dd4b8c6b71ddcfeef1dc9c0b21b75c4a49b1bc"
+  },
+  {
+   "matchid": 28469961,
+   "createdAt": 74590,
+   "updatedAt": 74590,
+   "key": "0xaf748380cb8712c738d81c9f7d083a1524bf1c8d7822ebeefeb20679b9386d14"
+  },
+  {
+   "matchid": 28759260,
+   "createdAt": 74590,
+   "updatedAt": 74590,
+   "key": "0xacd61d3bfbba48be2a9226325bf61691706c2f8b7eb09a7d0d60e661b291ff39"
+  }
+ ],
+ "ascending size 3 limit 4 width 100 (all pages)": [
+  {
+   "rows": [
+    {
+     "matchid": 1,
+     "address": "0x4f932770648a1f53c19342d38bc02dba06527246",
+     "key": "0xec1f9565a84047c9b78f142f007d749cb0d1e20b64ac9008ed33bc8233e053ec"
+    },
+    {
+     "matchid": 32,
+     "address": "0x00000000000009ca62911fdd88c8cf50565ab183",
+     "key": "0x2cdb5c35cb4075eb0da7e1250efac531cf9d4a7ae8730099e42cfdeb8f709da0"
+    },
+    {
+     "matchid": 235,
+     "address": "0x0000000000003f5e74c1ba8a66b48e6f3d71ae82",
+     "key": "0xe9fba63a99f012bbbf405c73bebd402e1976cd7c98046556b65ffbab55fd4b09"
+    }
+   ],
+   "next": 235,
+   "width": 400,
+   "queries": 2,
+   "view": "pinned",
+   "blocks": [
+    74830,
+    74830
+   ]
+  },
+  {
+   "rows": [
+    {
+     "matchid": 452,
+     "address": "0x00000000000061ad8ee190710508a818ae5325c3",
+     "key": "0x364c520225cd3693f2af11491b93be9e2dc9ca2628ea4db87e4fe45cf5dbdac2"
+    },
+    {
+     "matchid": 607,
+     "address": "0x000000000034065b3a94c2118cfe5b4c0067b615",
+     "key": "0x6bfd289df2184ea640d1c3f1d16ca4dcd27392272c73c0328dc2fcc4bdf0ad6a"
+    },
+    {
+     "matchid": 673,
+     "address": "0x00000000005affe6623a1753f7c055a28bc6628c",
+     "key": "0xd5791597143e1940dd15b7db4e4bb6938fb4410e452b3f2ee99056814eacbce8"
+    }
+   ],
+   "next": 673,
+   "width": 38,
+   "queries": 3,
+   "view": "pinned",
+   "blocks": [
+    74830,
+    74830
+   ]
+  },
+  {
+   "rows": [
+    {
+     "matchid": 877,
+     "address": "0x0000000000a0aa7908bda39fbb8f95e5a0a6ee42",
+     "key": "0xae6ba7f52ff60c0c47e4187e5dde528242e667f14d5cd1905fa2259ea9f2681b"
+    },
+    {
+     "matchid": 881,
+     "address": "0x000000000055217587f821917562867172942189",
+     "key": "0xfd053705e71aab3972231c8ba154ccfcd91d0c57a6bf305dfc7c34977128b677"
+    },
+    {
+     "matchid": 911,
+     "address": "0x0000000000664ceffed39244a8312bd895470803",
+     "key": "0xeaf5e0b197bb9d24a1e8f7693e6abf504feb2752411f9a8cc22294121bd91cbd"
+    }
+   ],
+   "next": 911,
+   "width": 608,
+   "queries": 2,
+   "view": "pinned",
+   "blocks": [
+    74830,
+    74830
+   ]
+  },
+  {
+   "rows": [
+    {
+     "matchid": 990,
+     "address": "0x00000000009726632680fb29d3f7a9734e3010e2",
+     "key": "0x631f7d45c940f3322c7e700a2247d7e70f299caa427fff3317ff08cebe3d5057"
+    },
+    {
+     "matchid": 21561,
+     "address": "0x09ec5377ece8115a97827507e880ba21d6cd38fe",
+     "key": "0x3075ca16d644cd47e56d33bc266ed30d23d97ff552a3cf6b60c0d0f862e01e26"
+    },
+    {
+     "matchid": 5888028,
+     "address": "0xc52fafdc900cb92ae01e6e4f8979af7f436e2eb2",
+     "key": "0xd848c62a6a3c696ec743565ad8bbfaff3b5c13c8752398c955d49849a569c02c"
+    }
+   ],
+   "next": 5888028,
+   "width": 39845888,
+   "queries": 6,
+   "view": "pinned",
+   "blocks": [
+    74830,
+    74830
+   ]
+  },
+  {
+   "rows": [
+    {
+     "matchid": 23813307,
+     "address": "0xe40a38d02c4e594b7b89463b1bdc18b074aa0a7d",
+     "key": "0x4f3df7a6380a6d32d07b6d4de1dd4b8c6b71ddcfeef1dc9c0b21b75c4a49b1bc"
+    },
+    {
+     "matchid": 28469961,
+     "address": "0x71fb6afcd98c5bd611712ad4b8d314ef729aa69d",
+     "key": "0xaf748380cb8712c738d81c9f7d083a1524bf1c8d7822ebeefeb20679b9386d14"
+    },
+    {
+     "matchid": 28759260,
+     "address": "0x2ffa8b4c15ceb77d863e2993b261536b1d8039f1",
+     "key": "0xacd61d3bfbba48be2a9226325bf61691706c2f8b7eb09a7d0d60e661b291ff39"
+    }
+   ],
+   "next": 28759260,
+   "width": 39845888,
+   "queries": 1,
+   "view": "pinned",
+   "blocks": [
+    74830,
+    74830
+   ]
+  },
+  {
+   "rows": [
+    {
+     "matchid": 60000001,
+     "address": "0x36f3fd68e7325a35eb768f1aedaae9ea0689d723",
+     "key": "0x84598996786e1b71a1306e396677c12f5e1e7ace433213d02d271badbdd86086"
+    }
+   ],
+   "next": null,
+   "width": 167125767421952,
+   "queries": 6,
+   "view": "pinned",
+   "blocks": [
+    74830,
+    74830
+   ]
+  }
+ ],
+ "ascending size 20 limit 100": [
+  {
+   "rows": [
+    {
+     "matchid": 1,
+     "address": "0x4f932770648a1f53c19342d38bc02dba06527246",
+     "key": "0xec1f9565a84047c9b78f142f007d749cb0d1e20b64ac9008ed33bc8233e053ec"
+    },
+    {
+     "matchid": 32,
+     "address": "0x00000000000009ca62911fdd88c8cf50565ab183",
+     "key": "0x2cdb5c35cb4075eb0da7e1250efac531cf9d4a7ae8730099e42cfdeb8f709da0"
+    },
+    {
+     "matchid": 235,
+     "address": "0x0000000000003f5e74c1ba8a66b48e6f3d71ae82",
+     "key": "0xe9fba63a99f012bbbf405c73bebd402e1976cd7c98046556b65ffbab55fd4b09"
+    },
+    {
+     "matchid": 452,
+     "address": "0x00000000000061ad8ee190710508a818ae5325c3",
+     "key": "0x364c520225cd3693f2af11491b93be9e2dc9ca2628ea4db87e4fe45cf5dbdac2"
+    },
+    {
+     "matchid": 607,
+     "address": "0x000000000034065b3a94c2118cfe5b4c0067b615",
+     "key": "0x6bfd289df2184ea640d1c3f1d16ca4dcd27392272c73c0328dc2fcc4bdf0ad6a"
+    },
+    {
+     "matchid": 673,
+     "address": "0x00000000005affe6623a1753f7c055a28bc6628c",
+     "key": "0xd5791597143e1940dd15b7db4e4bb6938fb4410e452b3f2ee99056814eacbce8"
+    },
+    {
+     "matchid": 877,
+     "address": "0x0000000000a0aa7908bda39fbb8f95e5a0a6ee42",
+     "key": "0xae6ba7f52ff60c0c47e4187e5dde528242e667f14d5cd1905fa2259ea9f2681b"
+    },
+    {
+     "matchid": 881,
+     "address": "0x000000000055217587f821917562867172942189",
+     "key": "0xfd053705e71aab3972231c8ba154ccfcd91d0c57a6bf305dfc7c34977128b677"
+    },
+    {
+     "matchid": 911,
+     "address": "0x0000000000664ceffed39244a8312bd895470803",
+     "key": "0xeaf5e0b197bb9d24a1e8f7693e6abf504feb2752411f9a8cc22294121bd91cbd"
+    },
+    {
+     "matchid": 990,
+     "address": "0x00000000009726632680fb29d3f7a9734e3010e2",
+     "key": "0x631f7d45c940f3322c7e700a2247d7e70f299caa427fff3317ff08cebe3d5057"
+    },
+    {
+     "matchid": 21561,
+     "address": "0x09ec5377ece8115a97827507e880ba21d6cd38fe",
+     "key": "0x3075ca16d644cd47e56d33bc266ed30d23d97ff552a3cf6b60c0d0f862e01e26"
+    },
+    {
+     "matchid": 5888028,
+     "address": "0xc52fafdc900cb92ae01e6e4f8979af7f436e2eb2",
+     "key": "0xd848c62a6a3c696ec743565ad8bbfaff3b5c13c8752398c955d49849a569c02c"
+    },
+    {
+     "matchid": 23813307,
+     "address": "0xe40a38d02c4e594b7b89463b1bdc18b074aa0a7d",
+     "key": "0x4f3df7a6380a6d32d07b6d4de1dd4b8c6b71ddcfeef1dc9c0b21b75c4a49b1bc"
+    },
+    {
+     "matchid": 28469961,
+     "address": "0x71fb6afcd98c5bd611712ad4b8d314ef729aa69d",
+     "key": "0xaf748380cb8712c738d81c9f7d083a1524bf1c8d7822ebeefeb20679b9386d14"
+    },
+    {
+     "matchid": 28759260,
+     "address": "0x2ffa8b4c15ceb77d863e2993b261536b1d8039f1",
+     "key": "0xacd61d3bfbba48be2a9226325bf61691706c2f8b7eb09a7d0d60e661b291ff39"
+    },
+    {
+     "matchid": 60000001,
+     "address": "0x36f3fd68e7325a35eb768f1aedaae9ea0689d723",
+     "key": "0x84598996786e1b71a1306e396677c12f5e1e7ace433213d02d271badbdd86086"
+    }
+   ],
+   "next": null,
+   "width": 17592186044416,
+   "queries": 8,
+   "view": "pinned",
+   "blocks": [
+    74830,
+    74830
+   ]
+  }
+ ],
+ "descending size 5 limit 100 (all pages)": [
+  {
+   "rows": [
+    {
+     "matchid": 60000001,
+     "address": "0x36f3fd68e7325a35eb768f1aedaae9ea0689d723",
+     "key": "0x84598996786e1b71a1306e396677c12f5e1e7ace433213d02d271badbdd86086"
+    },
+    {
+     "matchid": 28759260,
+     "address": "0x2ffa8b4c15ceb77d863e2993b261536b1d8039f1",
+     "key": "0xacd61d3bfbba48be2a9226325bf61691706c2f8b7eb09a7d0d60e661b291ff39"
+    },
+    {
+     "matchid": 28469961,
+     "address": "0x71fb6afcd98c5bd611712ad4b8d314ef729aa69d",
+     "key": "0xaf748380cb8712c738d81c9f7d083a1524bf1c8d7822ebeefeb20679b9386d14"
+    },
+    {
+     "matchid": 23813307,
+     "address": "0xe40a38d02c4e594b7b89463b1bdc18b074aa0a7d",
+     "key": "0x4f3df7a6380a6d32d07b6d4de1dd4b8c6b71ddcfeef1dc9c0b21b75c4a49b1bc"
+    },
+    {
+     "matchid": 5888028,
+     "address": "0xc52fafdc900cb92ae01e6e4f8979af7f436e2eb2",
+     "key": "0xd848c62a6a3c696ec743565ad8bbfaff3b5c13c8752398c955d49849a569c02c"
+    }
+   ],
+   "next": 5888028,
+   "width": 1099511627776,
+   "queries": 7,
+   "view": "pinned",
+   "blocks": [
+    74830,
+    74830
+   ]
+  },
+  {
+   "rows": [
+    {
+     "matchid": 21561,
+     "address": "0x09ec5377ece8115a97827507e880ba21d6cd38fe",
+     "key": "0x3075ca16d644cd47e56d33bc266ed30d23d97ff552a3cf6b60c0d0f862e01e26"
+    },
+    {
+     "matchid": 990,
+     "address": "0x00000000009726632680fb29d3f7a9734e3010e2",
+     "key": "0x631f7d45c940f3322c7e700a2247d7e70f299caa427fff3317ff08cebe3d5057"
+    },
+    {
+     "matchid": 911,
+     "address": "0x0000000000664ceffed39244a8312bd895470803",
+     "key": "0xeaf5e0b197bb9d24a1e8f7693e6abf504feb2752411f9a8cc22294121bd91cbd"
+    },
+    {
+     "matchid": 881,
+     "address": "0x000000000055217587f821917562867172942189",
+     "key": "0xfd053705e71aab3972231c8ba154ccfcd91d0c57a6bf305dfc7c34977128b677"
+    },
+    {
+     "matchid": 877,
+     "address": "0x0000000000a0aa7908bda39fbb8f95e5a0a6ee42",
+     "key": "0xae6ba7f52ff60c0c47e4187e5dde528242e667f14d5cd1905fa2259ea9f2681b"
+    }
+   ],
+   "next": 877,
+   "width": 1099511627776,
+   "queries": 1,
+   "view": "pinned",
+   "blocks": [
+    74830,
+    74830
+   ]
+  },
+  {
+   "rows": [
+    {
+     "matchid": 673,
+     "address": "0x00000000005affe6623a1753f7c055a28bc6628c",
+     "key": "0xd5791597143e1940dd15b7db4e4bb6938fb4410e452b3f2ee99056814eacbce8"
+    },
+    {
+     "matchid": 607,
+     "address": "0x000000000034065b3a94c2118cfe5b4c0067b615",
+     "key": "0x6bfd289df2184ea640d1c3f1d16ca4dcd27392272c73c0328dc2fcc4bdf0ad6a"
+    },
+    {
+     "matchid": 452,
+     "address": "0x00000000000061ad8ee190710508a818ae5325c3",
+     "key": "0x364c520225cd3693f2af11491b93be9e2dc9ca2628ea4db87e4fe45cf5dbdac2"
+    },
+    {
+     "matchid": 235,
+     "address": "0x0000000000003f5e74c1ba8a66b48e6f3d71ae82",
+     "key": "0xe9fba63a99f012bbbf405c73bebd402e1976cd7c98046556b65ffbab55fd4b09"
+    },
+    {
+     "matchid": 32,
+     "address": "0x00000000000009ca62911fdd88c8cf50565ab183",
+     "key": "0x2cdb5c35cb4075eb0da7e1250efac531cf9d4a7ae8730099e42cfdeb8f709da0"
+    }
+   ],
+   "next": 32,
+   "width": 1099511627776,
+   "queries": 1,
+   "view": "pinned",
+   "blocks": [
+    74830,
+    74830
+   ]
+  },
+  {
+   "rows": [
+    {
+     "matchid": 1,
+     "address": "0x4f932770648a1f53c19342d38bc02dba06527246",
+     "key": "0xec1f9565a84047c9b78f142f007d749cb0d1e20b64ac9008ed33bc8233e053ec"
+    }
+   ],
+   "next": null,
+   "width": 4398046511104,
+   "queries": 1,
+   "view": "pinned",
+   "blocks": [
+    74830,
+    74830
+   ]
+  }
+ ],
+ "ascending size 5 filter match = str('exact_match') (all pages)": [
+  {
+   "rows": [
+    {
+     "matchid": 1,
+     "address": "0x4f932770648a1f53c19342d38bc02dba06527246",
+     "key": "0xec1f9565a84047c9b78f142f007d749cb0d1e20b64ac9008ed33bc8233e053ec"
+    },
+    {
+     "matchid": 32,
+     "address": "0x00000000000009ca62911fdd88c8cf50565ab183",
+     "key": "0x2cdb5c35cb4075eb0da7e1250efac531cf9d4a7ae8730099e42cfdeb8f709da0"
+    },
+    {
+     "matchid": 235,
+     "address": "0x0000000000003f5e74c1ba8a66b48e6f3d71ae82",
+     "key": "0xe9fba63a99f012bbbf405c73bebd402e1976cd7c98046556b65ffbab55fd4b09"
+    },
+    {
+     "matchid": 452,
+     "address": "0x00000000000061ad8ee190710508a818ae5325c3",
+     "key": "0x364c520225cd3693f2af11491b93be9e2dc9ca2628ea4db87e4fe45cf5dbdac2"
+    },
+    {
+     "matchid": 607,
+     "address": "0x000000000034065b3a94c2118cfe5b4c0067b615",
+     "key": "0x6bfd289df2184ea640d1c3f1d16ca4dcd27392272c73c0328dc2fcc4bdf0ad6a"
+    }
+   ],
+   "next": 607,
+   "width": 65536,
+   "queries": 1,
+   "view": "pinned",
+   "blocks": [
+    74830,
+    74830
+   ]
+  },
+  {
+   "rows": [
+    {
+     "matchid": 673,
+     "address": "0x00000000005affe6623a1753f7c055a28bc6628c",
+     "key": "0xd5791597143e1940dd15b7db4e4bb6938fb4410e452b3f2ee99056814eacbce8"
+    },
+    {
+     "matchid": 877,
+     "address": "0x0000000000a0aa7908bda39fbb8f95e5a0a6ee42",
+     "key": "0xae6ba7f52ff60c0c47e4187e5dde528242e667f14d5cd1905fa2259ea9f2681b"
+    },
+    {
+     "matchid": 881,
+     "address": "0x000000000055217587f821917562867172942189",
+     "key": "0xfd053705e71aab3972231c8ba154ccfcd91d0c57a6bf305dfc7c34977128b677"
+    },
+    {
+     "matchid": 911,
+     "address": "0x0000000000664ceffed39244a8312bd895470803",
+     "key": "0xeaf5e0b197bb9d24a1e8f7693e6abf504feb2752411f9a8cc22294121bd91cbd"
+    },
+    {
+     "matchid": 990,
+     "address": "0x00000000009726632680fb29d3f7a9734e3010e2",
+     "key": "0x631f7d45c940f3322c7e700a2247d7e70f299caa427fff3317ff08cebe3d5057"
+    }
+   ],
+   "next": 990,
+   "width": 65536,
+   "queries": 1,
+   "view": "pinned",
+   "blocks": [
+    74830,
+    74830
+   ]
+  },
+  {
+   "rows": [
+    {
+     "matchid": 21561,
+     "address": "0x09ec5377ece8115a97827507e880ba21d6cd38fe",
+     "key": "0x3075ca16d644cd47e56d33bc266ed30d23d97ff552a3cf6b60c0d0f862e01e26"
+    },
+    {
+     "matchid": 60000001,
+     "address": "0x36f3fd68e7325a35eb768f1aedaae9ea0689d723",
+     "key": "0x84598996786e1b71a1306e396677c12f5e1e7ace433213d02d271badbdd86086"
+    }
+   ],
+   "next": null,
+   "width": 17592186044416,
+   "queries": 8,
+   "view": "pinned",
+   "blocks": [
+    74830,
+    74830
+   ]
+  }
+ ]
+}

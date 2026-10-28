@@ -123,6 +123,9 @@ enum Command {
     /// Prototype: check the UDC layout against v3 hydration on a bundle sample
     #[command(long_about = udc_cli::CHECK_ABOUT)]
     UdcCheck(udc_cli::CheckArgs),
+    /// Prototype: list a v4 dataset's contracts in matchid order by the paging rule
+    #[command(long_about = udc_cli::PAGE_ABOUT)]
+    UdcPage(udc_cli::PageArgs),
 }
 
 #[derive(Args, Debug)]
@@ -183,12 +186,27 @@ struct ProcessArgs {
     /// at most 8*N records are in flight.
     #[arg(short, long, value_name = "N", default_value_t = 1)]
     workers: usize,
-    /// Gzip worker threads after deduplication, 1-256
+    /// Gzip worker threads after deduplication, 1-256 (v3 bundles)
     ///
     /// With N > 1 at most 8*N accepted entities are in flight; entity lines are still written
     /// in acceptance order.
     #[arg(long, value_name = "N", default_value_t = 1)]
     compression_workers: usize,
+    /// Bundle format: `v3` (payload entities, seed.json version 1) or `udc` (UDC entities,
+    /// seed.json version 2, docs/udc-proposal.md)
+    #[arg(long, value_enum, value_name = "FORMAT", default_value = "v3")]
+    format: Format,
+    /// arkiv.schema prefix of a `udc` bundle: entities are tagged `<prefix>.<kind>`
+    #[arg(long, value_name = "PREFIX", default_value = "sourcify.v4")]
+    schema_prefix: String,
+}
+/// Bundle format written by `process`.
+#[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+enum Format {
+    /// Payload entities with gzip payloads and spill blobs (seed.json version 1)
+    V3,
+    /// UDC entities: typed attributes only, codec-tagged bytes values (seed.json version 2)
+    Udc,
 }
 
 #[derive(Args, Debug)]
@@ -624,23 +642,67 @@ impl Drop for Workers {
         }
     }
 }
-fn commit(
-    writer: &mut Writer,
+/// Where committed records go, in input order: the v3 writer or the UDC bundle writer.
+trait Sink {
+    fn record(&mut self, entities: Vec<Entity>) -> Result<()>;
+    fn source_skipped(&mut self, skipped: Vec<Value>);
+    fn commit_seconds(&mut self) -> &mut f64;
+    /// Counters for the progress line.
+    fn progress(&self) -> Value;
+}
+impl Sink for Writer {
+    fn record(&mut self, entities: Vec<Entity>) -> Result<()> {
+        for entity in entities {
+            self.write(entity)?;
+        }
+        Ok(())
+    }
+    fn source_skipped(&mut self, skipped: Vec<Value>) {
+        self.source_skipped = Some(skipped);
+    }
+    fn commit_seconds(&mut self) -> &mut f64 {
+        &mut self.commit_seconds
+    }
+    fn progress(&self) -> Value {
+        json!({"entities":self.count,"payloadHashes":self.payloads.len(),"payloadBytes":self.pack_bytes})
+    }
+}
+/// The UDC bundle writer behind `process --format udc`.
+struct UdcSink {
+    bundle: arkiv_entity_processor::udc_bundle::BundleWriter,
+    commit_seconds: f64,
+    source_skipped: Option<Vec<Value>>,
+}
+impl Sink for UdcSink {
+    fn record(&mut self, entities: Vec<Entity>) -> Result<()> {
+        self.bundle.record(&entities)
+    }
+    fn source_skipped(&mut self, skipped: Vec<Value>) {
+        self.source_skipped = Some(skipped);
+    }
+    fn commit_seconds(&mut self) -> &mut f64 {
+        &mut self.commit_seconds
+    }
+    fn progress(&self) -> Value {
+        json!({"entities":self.bundle.entities})
+    }
+}
+fn commit<S: Sink>(
+    writer: &mut S,
     entities: Vec<Entity>,
     records: &mut u64,
     start: Instant,
 ) -> Result<()> {
     let commit_start = Instant::now();
-    for entity in entities {
-        writer.write(entity)?;
-    }
-    writer.commit_seconds += commit_start.elapsed().as_secs_f64();
+    writer.record(entities)?;
+    *writer.commit_seconds() += commit_start.elapsed().as_secs_f64();
     *records += 1;
     if (*records).is_multiple_of(1000) {
-        eprintln!(
-            "{}",
-            json!({"contracts":records,"entities":writer.count,"payloadHashes":writer.payloads.len(),"payloadBytes":writer.pack_bytes,"elapsedSeconds":start.elapsed().as_secs_f64()})
-        );
+        let mut line = json!({"contracts":records,"elapsedSeconds":start.elapsed().as_secs_f64()});
+        if let (Some(line), Value::Object(counters)) = (line.as_object_mut(), writer.progress()) {
+            line.extend(counters);
+        }
+        eprintln!("{line}");
     }
     Ok(())
 }
@@ -652,7 +714,7 @@ struct Progress {
 }
 impl Progress {
     /// Returns false once `--limit` records are committed.
-    fn apply(&mut self, line: Line, writer: &mut Writer, start: Instant) -> Result<bool> {
+    fn apply<S: Sink>(&mut self, line: Line, writer: &mut S, start: Instant) -> Result<bool> {
         ensure!(!self.complete, "data after source completion marker");
         match line {
             Line::Complete { records, skipped } => {
@@ -661,7 +723,7 @@ impl Progress {
                     "source completion count differs"
                 );
                 if let Some(skipped) = skipped {
-                    writer.source_skipped = Some(skipped_records(skipped)?);
+                    writer.source_skipped(skipped_records(skipped)?);
                 }
                 self.complete = true;
             }
@@ -733,11 +795,11 @@ fn spawn_reader(
 /// Parallel mode: a reader thread, `workers` parse/transform threads and this ordered writer.
 /// At most `capacity` lines are submitted but not yet applied (queued, active or reordered),
 /// plus the reader's bounded read-ahead and the line it is reading.
-fn run_parallel(
+fn run_parallel<S: Sink>(
     a: &ProcessArgs,
     input: Input,
     progress: &mut Progress,
-    writer: &mut Writer,
+    writer: &mut S,
     start: Instant,
 ) -> Result<()> {
     let capacity = a.workers * RECORDS_PER_WORKER;
@@ -805,6 +867,7 @@ fn main() -> Result<()> {
         Command::UdcExample(a) => udc_cli::example(&a),
         Command::UdcHydrate(a) => udc_cli::hydrate(&a),
         Command::UdcCheck(a) => udc_cli::check(&a),
+        Command::UdcPage(a) => udc_cli::page(&a),
     }
 }
 /// `process`: the offline importer. Writes the bundle and publishes seed.json last.
@@ -822,7 +885,7 @@ fn process(a: &ProcessArgs) -> Result<()> {
         a.compression_workers > 0 && a.compression_workers <= 256,
         "compression-workers must be between 1 and 256"
     );
-    let mut input: Input = if a.input == "-" {
+    let input: Input = if a.input == "-" {
         Box::new(BufReader::with_capacity(INPUT_BUFFER, io::stdin()))
     } else {
         Box::new(BufReader::with_capacity(
@@ -830,20 +893,89 @@ fn process(a: &ProcessArgs) -> Result<()> {
             File::open(&a.input)?,
         ))
     };
-    let mut writer = Writer::new(a)?;
     let start = Instant::now();
+    match a.format {
+        Format::V3 => {
+            let mut writer = Writer::new(a)?;
+            let records = read_records(a, input, &mut writer, start)?;
+            let drain_start = Instant::now();
+            writer.drain_compression()?;
+            writer.commit_seconds += drain_start.elapsed().as_secs_f64();
+            writer.finish(a, records, start.elapsed().as_secs_f64())
+        }
+        Format::Udc => {
+            ensure!(
+                a.compression_workers == 1,
+                "--compression-workers applies to v3 bundles only"
+            );
+            let owner = a.owner.to_lowercase();
+            ensure!(
+                owner != "0x0000000000000000000000000000000000000000"
+                    && owner.starts_with("0x")
+                    && owner.len() == 42,
+                "invalid owner"
+            );
+            ensure!(a.chain_id > 0, "destination-chain-id must be positive");
+            let profile = arkiv_entity_processor::udc::Profile {
+                prefix: a.schema_prefix.clone(),
+                chain_id: a.chain_id,
+                owner: hex::decode(&owner[2..])?
+                    .try_into()
+                    .map_err(|_| anyhow::anyhow!("invalid owner"))?,
+            };
+            let mut sink = UdcSink {
+                bundle: arkiv_entity_processor::udc_bundle::BundleWriter::new(
+                    &a.output,
+                    profile,
+                    a.part_entities,
+                )?,
+                commit_seconds: 0.,
+                source_skipped: None,
+            };
+            let records = read_records(a, input, &mut sink, start)?;
+            let elapsed = start.elapsed().as_secs_f64();
+            let mut extra = serde_json::Map::new();
+            extra.insert("seconds".into(), json!(elapsed));
+            extra.insert("contractsPerSecond".into(), json!(records as f64 / elapsed));
+            extra.insert("commitSeconds".into(), json!(sink.commit_seconds));
+            extra.insert("workers".into(), json!(a.workers));
+            extra.insert(
+                "sourceCompleteRequired".into(),
+                json!(a.require_source_complete),
+            );
+            extra.insert(
+                "proxyResolution".into(),
+                json!("offline; unknown remains unknown"),
+            );
+            if let Some(skipped) = sink.source_skipped.take() {
+                extra.insert("sourceSkippedCount".into(), json!(skipped.len()));
+                extra.insert("sourceSkipped".into(), Value::Array(skipped));
+            }
+            let report = sink.bundle.finish(records, extra)?;
+            eprintln!("{}", report);
+            Ok(())
+        }
+    }
+}
+/// Reads, transforms and commits every record in input order; returns the record count.
+fn read_records<S: Sink>(
+    a: &ProcessArgs,
+    mut input: Input,
+    writer: &mut S,
+    start: Instant,
+) -> Result<u64> {
     let mut progress = Progress {
         records: 0,
         complete: false,
         limit: a.limit,
     };
     if a.workers > 1 {
-        run_parallel(a, input, &mut progress, &mut writer, start)?;
+        run_parallel(a, input, &mut progress, writer, start)?;
     } else {
         while let Some(line) = read_line(&mut *input)? {
             let line = transform_line(line)
                 .with_context(|| format!("contract record {}", progress.records + 1))?;
-            if !progress.apply(line, &mut writer, start)? {
+            if !progress.apply(line, writer, start)? {
                 break;
             }
         }
@@ -854,10 +986,7 @@ fn process(a: &ProcessArgs) -> Result<()> {
         !a.require_source_complete || progress.complete,
         "source ended without completion marker; incomplete output has no seed.json"
     );
-    let drain_start = Instant::now();
-    writer.drain_compression()?;
-    writer.commit_seconds += drain_start.elapsed().as_secs_f64();
-    writer.finish(a, records, start.elapsed().as_secs_f64())
+    Ok(records)
 }
 
 #[cfg(test)]
@@ -875,6 +1004,8 @@ mod tests {
             limit: None,
             workers: 1,
             compression_workers: 1,
+            format: Format::V3,
+            schema_prefix: "sourcify.v4".into(),
         }
     }
     #[test]

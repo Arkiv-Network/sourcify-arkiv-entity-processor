@@ -3,6 +3,7 @@
  *
  *   bun limits.ts sizes OWNER                 # eth_estimateGas only: no transaction is sent
  *   bun limits.ts paging PREFIX               # writes small expiring probe entities, then pages them
+ *   bun limits.ts patchorder PREFIX           # patches expiring probes, then checks result order and updatedAt
  *
  * `sizes` encodes creates with growing bytes values and attribute counts and asks the node to estimate
  * them (estimation runs the create's checks and discards the result); it also reports the calldata
@@ -112,7 +113,78 @@ async function paging(prefix: string) {
   console.log(JSON.stringify({ label: "count", count }))
 }
 
+/**
+ * Where a patched entity sorts. Creates six probes in two transactions (matchid ascending with creation),
+ * then patches the first and the fourth to the highest matchids, as a re-verification patches a contract
+ * in place. Reports, before and after the patch: result order, createdAt and updatedAt, the order of a
+ * `matchid` range query, the pre-patch view through `atBlock`, and a matchid-window walk with limit 2.
+ */
+async function patchorder(prefix: string) {
+  const account = privateKeyToAccount(readFileSync(env.ARKIV_KEY_FILE!, "utf8").trim() as Hex)
+  const wallet = createWalletClient({ chain, transport, account, pollingInterval: 1000 })
+  const Probe = defineSchema(`${prefix}.patchprobe`, { seq: u64().indexed(), matchid: u64().indexed() })
+  const base = BigInt(Date.now()) * 1000n
+  const keys: Hex[] = []
+  for (const group of [[0, 1, 2], [3, 4, 5]]) {
+    const r = await wallet.executeBatch({
+      creates: group.map((i) => ({ schema: Probe, values: { seq: u64(BigInt(i)), matchid: u64(base + BigInt(i) * 10n) }, expiration: ExpirationTime.fromBlocks(43_200), salt: NO_SALT })) as any,
+    })
+    const receipt: any = await rpc("eth_getTransactionReceipt", [r.txHash])
+    keys.push(...r.createdEntities)
+    console.log(JSON.stringify({ step: "create", tx: r.txHash, block: Number(BigInt(receipt.blockNumber)), keys: r.createdEntities }))
+  }
+  const before = BigInt(await rpc("eth_blockNumber", []))
+  const p = await wallet.executeBatch({
+    patches: [
+      { schema: Probe, entityKey: keys[0]!, set: { matchid: u64(base + 900n) } },
+      { schema: Probe, entityKey: keys[3]!, set: { matchid: u64(base + 950n) } },
+    ] as any,
+  })
+  const pr: any = await rpc("eth_getTransactionReceipt", [p.txHash])
+  const patchBlock = BigInt(pr.blockNumber)
+  console.log(JSON.stringify({ step: "patch", tx: p.txHash, block: Number(patchBlock), patched: p.patchedEntities, status: pr.status }))
+  const scope = `$owner = addr(${account.address.toLowerCase()}) AND arkiv.schema = str('${prefix}.patchprobe')`
+  const rows = async (label: string, q: string, opts: any) => {
+    const r = await rpc("arkiv_query", [q, { select: { key: true, createdAt: true, updatedAt: true, attributes: { seq: true, matchid: true } }, ...opts }])
+    const out = r.data.map((e: any) => {
+      const a = Object.fromEntries(e.attributes.map((x: any) => [x.name, BigInt(x.value)]))
+      return { seq: Number(a.seq), matchid: Number(a.matchid - base), createdAt: Number(BigInt(e.createdAt)), updatedAt: Number(BigInt(e.updatedAt)) }
+    })
+    console.log(JSON.stringify({ step: label, block: Number(BigInt(r.blockNumber)), rows: out, cursor: r.cursor ? "yes" : null }))
+    return out
+  }
+  const at = `0x${patchBlock.toString(16)}`
+  await rpc("arkiv_query", [scope, { limit: 1, atBlock: at }])
+  await rows("order after patch (atBlock = patch block)", `${scope} AND matchid >= u64(${base})`, { limit: 100, atBlock: at })
+  await rows("order before patch (atBlock = before)", `${scope} AND matchid >= u64(${base})`, { limit: 100, atBlock: `0x${before.toString(16)}` })
+  await rows("range matchid > base+15 after patch", `${scope} AND matchid > u64(${base + 15n})`, { limit: 100, atBlock: at })
+  // The matchid-window walk (docs/udc-proposal.md, paging) with limit 2: a page with fewer than `limit`
+  // rows is complete for its window, whatever order the node returns.
+  const limit = 2
+  const walk: number[] = []
+  let after = base - 1n
+  for (let guard = 0; guard < 50; guard++) {
+    let high: bigint | undefined
+    let got: any[] = []
+    for (;;) {
+      const bound = high === undefined ? "" : ` AND matchid <= u64(${high})`
+      got = await rows(`window (${after - base}, ${high === undefined ? "inf" : high - base}]`, `${scope} AND matchid > u64(${after})${bound}`, { limit, atBlock: at })
+      if (got.length < limit) break
+      const sorted = got.map((g) => BigInt(g.matchid) + base).sort((a, b) => (a < b ? -1 : 1))
+      high = sorted[0]! // the smallest of a full page bounds a window holding fewer rows
+    }
+    got.sort((a, b) => a.matchid - b.matchid)
+    walk.push(...got.map((g) => g.matchid))
+    if (high === undefined) break
+    after = high
+  }
+  console.log(JSON.stringify({ step: "window walk (matchid - base, ascending)", walk }))
+  const count = await rpc("arkiv_getEntityCount", [{ query: scope, block: Number(patchBlock) }])
+  console.log(JSON.stringify({ step: "count", count, expiresAfterBlocks: 43_200 }))
+}
+
 const [mode, arg] = process.argv.slice(2)
 if (mode === "sizes") await sizes(arg as Hex)
 else if (mode === "paging") await paging(arg!)
-else throw new Error("usage: bun limits.ts sizes OWNER | paging PREFIX")
+else if (mode === "patchorder") await patchorder(arg!)
+else throw new Error("usage: bun limits.ts sizes OWNER | paging PREFIX | patchorder PREFIX")

@@ -1,0 +1,93 @@
+{
+ "note": "100,000-record check of process --format udc against v3 (docs/udc-proposal.md, step 3), 2026-10-28. Records: the first 100,000 contracts of the 2026-10-23 seed (v3 hydrate of its first 50 parts), 21,860,234,903 bytes of NDJSON. Both formats processed the same records with --workers 12 (v3 also --compression-workers 12) on 24 cores; verify, hydrate and pack as run by the commands in the proposal's Reproduce section.",
+ "recordsSha256": "bdd75de4857331ee5cb0222c1a76296f6fa105e927570ce4f4c105696e1a0361",
+ "hydratedSha256": {
+  "udc": "bdd75de4857331ee5cb0222c1a76296f6fa105e927570ce4f4c105696e1a0361",
+  "v3": "bdd75de4857331ee5cb0222c1a76296f6fa105e927570ce4f4c105696e1a0361",
+  "udcFromArchive": "bdd75de4857331ee5cb0222c1a76296f6fa105e927570ce4f4c105696e1a0361"
+ },
+ "steps": [
+  {
+   "step": "process-udc",
+   "seconds": 274.17,
+   "maxRssKb": 353804
+  },
+  {
+   "step": "process-v3",
+   "seconds": 47.98,
+   "maxRssKb": 374344
+  },
+  {
+   "step": "verify-udc",
+   "seconds": 6.72,
+   "maxRssKb": 58324
+  },
+  {
+   "step": "verify-v3",
+   "seconds": 4.27,
+   "maxRssKb": 4876
+  },
+  {
+   "step": "hydrate-udc",
+   "seconds": 124.76,
+   "maxRssKb": 81684
+  },
+  {
+   "step": "hydrate-v3",
+   "seconds": 291.39,
+   "maxRssKb": 231768
+  },
+  {
+   "step": "pack-udc",
+   "seconds": 8.79,
+   "maxRssKb": 204844
+  },
+  {
+   "step": "verify-extracted",
+   "seconds": 8.76,
+   "maxRssKb": 58228
+  },
+  {
+   "step": "hydrate-extracted",
+   "seconds": 124.33,
+   "maxRssKb": 81000
+  }
+ ],
+ "udc": {
+  "records": 100000,
+  "entities": 418038,
+  "kinds": {
+   "chunk": 102,
+   "code": 174424,
+   "compilation": 54746,
+   "contract": 100000,
+   "source": 88766
+  },
+  "distinct": {
+   "sources": 88766,
+   "codes": 174424,
+   "compilations": 54746
+  },
+  "bytesValues": 1606483731,
+  "storageUnits": 2638685817,
+  "commitSeconds": 271.7899856230007
+ },
+ "udcEntityPartsBytes": 2521870355,
+ "udcBundleBytes": 2521886362,
+ "v3": {
+  "contracts": 100000,
+  "entities": 426753,
+  "uniquePayloads": 426517,
+  "payloadBytes": 6176157869
+ },
+ "v3BundleBytes": 9090405690,
+ "v3EntityPartsBytes": 2549679553,
+ "udcArchive": {
+  "bytes": 1667912339,
+  "files": 45,
+  "bundleBytes": 2521886362,
+  "zstdLevel": 3,
+  "seedVersion": 2,
+  "bundleFormat": "sourcify-arkiv.udc-bundle.v1"
+ }
+}

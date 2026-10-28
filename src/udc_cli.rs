@@ -290,3 +290,93 @@ pub fn check(a: &CheckArgs) -> Result<()> {
     ensure!(failed == 0, "{failed} contracts differ");
     Ok(())
 }
+
+pub const PAGE_ABOUT: &str = "List a v4 dataset's contracts in matchid order (prototype of the paging rule).\n\n\
+Pages by matchid windows (docs/udc-proposal.md, \"Paging\"): a window query with fewer than --limit rows, or no \
+cursor, is complete, whatever order the node returns; a full one is narrowed to the window its N-th row bounds. \
+Never relies on node order or cursors across queries, so it gives the same pages on our node (pinned to one block) \
+and on Jalebi (head), also after contracts were patched in place. Prints one JSON object: the rows (matchid, \
+address, key), the next cursor, the window width for the next page and the queries made.";
+
+#[derive(Args, Debug)]
+pub struct PageArgs {
+    #[arg(long, default_value = "http://127.0.0.1:8745")]
+    pub rpc_url: String,
+    #[arg(long)]
+    pub owner: String,
+    #[arg(long, default_value_t = 7706815)]
+    pub arkiv_chain_id: u64,
+    #[arg(long, default_value = "sourcify.v4")]
+    pub schema_prefix: String,
+    /// Extra positive clauses, e.g. "language = str('Vyper')"
+    #[arg(long)]
+    pub filter: Option<String>,
+    /// Newest first (descending matchid)
+    #[arg(long)]
+    pub descending: bool,
+    /// The previous page's last matchid
+    #[arg(long)]
+    pub cursor: Option<u64>,
+    /// Contracts per page (below --limit)
+    #[arg(long, default_value_t = 20)]
+    pub size: usize,
+    /// Rows per query (at most 100 on Jalebi)
+    #[arg(long, default_value_t = 100)]
+    pub limit: usize,
+    /// First window width in matchid units (pass the previous page's `width`)
+    #[arg(long, default_value_t = arkiv_entity_processor::udc_page::WIDTH)]
+    pub width: u64,
+    /// Read the head only (Jalebi); default pins the head block on a node that keeps history
+    #[arg(long)]
+    pub head: bool,
+    /// Walk every page and print them all
+    #[arg(long)]
+    pub all: bool,
+}
+
+pub fn page(a: &PageArgs) -> Result<()> {
+    use arkiv_entity_processor::udc_rpc::{page_contracts, PageRequest, UdcReadConfig, View};
+    let config = || -> Result<UdcReadConfig> {
+        Ok(UdcReadConfig {
+            rpc_url: a.rpc_url.clone(),
+            api_key: std::env::var("ARKIV_RPC_API_KEY")
+                .ok()
+                .filter(|k| !k.is_empty()),
+            owner: address(&a.owner)?,
+            arkiv_chain_id: a.arkiv_chain_id,
+            prefix: a.schema_prefix.clone(),
+            view: if a.head { View::Head } else { View::Auto },
+            fields: None,
+            timeout: std::time::Duration::from_secs(30),
+            deadline: std::time::Duration::from_secs(120),
+            max_rpc_requests: 10_000,
+            max_rpc_response_bytes: 8 << 20,
+        })
+    };
+    let (mut cursor, mut width, mut pages) = (a.cursor, a.width, vec![]);
+    loop {
+        let page = page_contracts(
+            config()?,
+            PageRequest {
+                filter: a.filter.clone(),
+                descending: a.descending,
+                cursor,
+                size: a.size,
+                limit: a.limit,
+                width,
+            },
+        )?;
+        let full = page.rows.len() == a.size;
+        pages.push(json!({
+            "rows": page.rows.iter().map(|(m, addr, k)| json!({"matchid": m, "address": addr, "key": hx(k)})).collect::<Vec<_>>(),
+            "next": page.next, "width": page.width, "queries": page.queries, "view": page.view,
+            "blocks": [page.blocks.0, page.blocks.1],
+        }));
+        if !a.all || !full {
+            break;
+        }
+        (cursor, width) = (page.next, page.width);
+    }
+    println!("{}", pretty(&json!(pages))?.trim_end());
+    Ok(())
+}

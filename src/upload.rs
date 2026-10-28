@@ -29,7 +29,9 @@ Upload a packed archive to S3-compatible object storage (Cloudflare R2) as one o
 Never overwrites. The key is checked first (HEAD): an existing object is accepted only if its size
 and its sha256 user metadata (x-amz-meta-sha256) equal the archive's, and then nothing is
 uploaded; any other existing object is refused. Otherwise the archive is sent as a multipart
-upload with content type application/zstd and metadata sha256=<archive SHA-256>. Parts go in
+upload with content type application/zstd and metadata sha256=<archive SHA-256> (and
+bundle-format=<format> when the pack record names the bundle format, sourcify-arkiv.upload.v1 for
+v3 or sourcify-arkiv.udc-bundle.v1 for v4; --expect-format refuses any other). Parts go in
 parallel, each signed with its real SHA-256 (x-amz-content-sha256) so the server rejects
 corrupted parts, and the upload is completed with If-None-Match: * so an object created meanwhile
 is never replaced. Any failure, or SIGINT/SIGTERM, aborts the multipart upload. Finally the
@@ -51,7 +53,8 @@ needed. Memory use is about --concurrency x part size. Each request is tried up 
 exponential backoff on network errors, HTTP 5xx, 429 and RequestTimeout.
 
 Progress goes to stderr as JSON lines; the result is one JSON line on stdout:
-  {\"uri\":\"s3://B/K\",\"bytes\":N,\"sha256\":\"...\",\"uploaded\":true|false,\"verifiedRemote\":true|false}
+  {\"uri\":\"s3://B/K\",\"bytes\":N,\"sha256\":\"...\",\"bundleFormat\":\"...\"|null,\"uploaded\":true|false,
+   \"verifiedRemote\":true|false}
 uploaded is false when an identical object was already present.";
 
 pub const EXAMPLES: &str = "\
@@ -106,6 +109,26 @@ pub struct UploadArgs {
     /// Skip reading the object back after uploading
     #[arg(long)]
     pub no_verify_remote: bool,
+    /// Refuse the upload unless the archive's `pack` record names this bundle format
+    ///
+    /// `v3` is sourcify-arkiv.upload.v1 (seed.json version 1), `udc` is
+    /// sourcify-arkiv.udc-bundle.v1 (seed.json version 2).
+    #[arg(long, value_enum, value_name = "FORMAT")]
+    pub expect_format: Option<ExpectFormat>,
+}
+/// A bundle format `upload --expect-format` can require.
+#[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ExpectFormat {
+    V3,
+    Udc,
+}
+impl ExpectFormat {
+    fn name(self) -> &'static str {
+        match self {
+            ExpectFormat::V3 => "sourcify-arkiv.upload.v1",
+            ExpectFormat::Udc => arkiv_entity_processor::udc_bundle::FORMAT,
+        }
+    }
 }
 
 /// Part size in bytes: `part_size_mib` MiB, raised to whole MiB so that `size` needs at most
@@ -152,7 +175,18 @@ pub fn upload(a: &UploadArgs) -> Result<()> {
         signal_hook::flag::register_conditional_shutdown(signal, 128 + signal, Arc::clone(&stop))?;
         signal_hook::flag::register(signal, Arc::clone(&stop))?;
     }
-    let (sha256, recheck) = archive_digest(a, size, &stop)?;
+    let (sha256, recheck, bundle_format) = archive_digest(a, size, &stop)?;
+    if let Some(expected) = a.expect_format {
+        ensure!(
+            bundle_format.as_deref() == Some(expected.name()),
+            "{} holds bundle format {}, not {}",
+            a.file.display(),
+            bundle_format
+                .as_deref()
+                .unwrap_or("unknown (no matching pack record)"),
+            expected.name()
+        );
+    }
     let job = Job {
         client: s3::Client::new(credentials, a.concurrency),
         bucket: &a.bucket,
@@ -162,6 +196,7 @@ pub fn upload(a: &UploadArgs) -> Result<()> {
         file,
         size,
         sha256,
+        bundle_format,
         stop: &stop,
     };
     let uploaded = match job.head()? {
@@ -181,18 +216,25 @@ pub fn upload(a: &UploadArgs) -> Result<()> {
     }
     println!(
         "{}",
-        json!({"uri": job.uri, "bytes": size, "sha256": job.sha256, "uploaded": uploaded, "verifiedRemote": verified})
+        json!({"uri": job.uri, "bytes": size, "sha256": job.sha256, "bundleFormat": job.bundle_format, "uploaded": uploaded, "verifiedRemote": verified})
     );
     Ok(())
 }
 
-/// The archive SHA-256 and whether it still has to be confirmed against the file: from a
-/// matching `pack` record (confirmed while uploading), else hashed now.
-fn archive_digest(a: &UploadArgs, size: u64, stop: &AtomicBool) -> Result<(String, bool)> {
+/// The archive SHA-256, whether it still has to be confirmed against the file, and the bundle
+/// format: from a matching `pack` record (the digest confirmed while uploading), else hashed now
+/// (format unknown).
+fn archive_digest(
+    a: &UploadArgs,
+    size: u64,
+    stop: &AtomicBool,
+) -> Result<(String, bool, Option<String>)> {
     let name = a.file.file_name().and_then(|n| n.to_str());
     let record_path = pack::record_path(&a.file);
+    let mut format = None;
     let recorded = match pack::read_record(&record_path) {
         Ok(r) if name.is_some_and(|n| r["archive"] == n) && r["bytes"].as_u64() == Some(size) => {
+            format = r["bundleFormat"].as_str().map(String::from);
             r["sha256"].as_str().map(str::to_ascii_lowercase)
         }
         Ok(_) => {
@@ -212,7 +254,7 @@ fn archive_digest(a: &UploadArgs, size: u64, stop: &AtomicBool) -> Result<(Strin
         Err(_) => None,
     };
     match recorded {
-        Some(sha256) if !a.verify_local => Ok((sha256, true)),
+        Some(sha256) if !a.verify_local => Ok((sha256, true, format)),
         recorded => {
             let (sha256, bytes) = pack::hash_file(&a.file, "hash-local", Some(stop))?;
             ensure!(bytes == size, "{} changed while hashing", a.file.display());
@@ -224,7 +266,7 @@ fn archive_digest(a: &UploadArgs, size: u64, stop: &AtomicBool) -> Result<(Strin
                     record_path.display()
                 );
             }
-            Ok((sha256, false))
+            Ok((sha256, false, format))
         }
     }
 }
@@ -239,6 +281,7 @@ struct Job<'a> {
     file: File,
     size: u64,
     sha256: String,
+    bundle_format: Option<String>,
     stop: &'a AtomicBool,
 }
 
@@ -261,14 +304,27 @@ impl Job<'_> {
             self.size,
             self.sha256
         );
+        // Same bytes, same bundle; an object stored without the metadata stays acceptable.
+        if let (Some(theirs), Some(ours)) = (&existing.bundle_format, &self.bundle_format) {
+            ensure!(
+                theirs == ours,
+                "{} is this archive but its bundle-format metadata says {theirs}, not {ours}",
+                self.uri
+            );
+        }
         Ok(())
     }
 
     /// Multipart upload, aborted on any failure. Returns whether this run created the object.
     fn multipart(&self, part_size: u64, concurrency: usize, recheck: bool) -> Result<bool> {
         let upload_id = s3::retry("CreateMultipartUpload", Some(self.stop), || {
-            self.client
-                .create_multipart(self.bucket, self.key, CONTENT_TYPE, &self.sha256)
+            self.client.create_multipart(
+                self.bucket,
+                self.key,
+                CONTENT_TYPE,
+                &self.sha256,
+                self.bundle_format.as_deref(),
+            )
         })
         .map_err(|e| anyhow!("starting the multipart upload of {}: {e}", self.uri))?;
         let result = self
