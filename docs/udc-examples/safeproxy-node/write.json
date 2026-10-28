@@ -1,0 +1,24 @@
+{
+  "rpc": "alt-node-fast.arkiv-global.net",
+  "chainId": 7706815,
+  "owner": "0x3ffcb8c66ba2a35df36d73b213399220fd59f42f",
+  "firstNonce": "63",
+  "txHash": "0x2f4d368eda78c10a713b5e7eee9f8bce185218bc7354b441d679882717412454",
+  "block": 67712,
+  "status": "0x1",
+  "calldataBytes": 16132,
+  "gasUsed": 305126,
+  "effectiveGasPriceWei": "1000000000",
+  "rentFeeWei": "141284200000000000",
+  "balanceSpentWei": "141589326000000000",
+  "created": [
+    "0x7452c8a62df34f980f6ff8aafaa42a8d75704b786b5a33f54437b775ef4ceb24",
+    "0x29d09765c78c926440c23162039e99930924eb08fba8e598b9bb61c7ba6ff1f3",
+    "0xc48784b9ef1d0f520c61d2dc26a77130ba56c01884090c05cdcf262542f6366d",
+    "0x257697de0ae84d65c1642d937d94b083c9434e1f8074ef0b12d56c2034c6ddb5",
+    "0xb5c75b5f789e1109994161a01097cf8a7024c364fa94300cb8dbbf2be060c500",
+    "0x69c660a2063f48e7b0751efd7054bbb248a876751973c3f09869be2a69432150"
+  ],
+  "keysAsPredicted": true,
+  "ms": 10511
+}

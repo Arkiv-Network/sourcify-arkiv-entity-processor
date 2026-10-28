@@ -1,0 +1,46 @@
+{
+  "address": "0x000000000034065b3a94C2118CFe5B4C0067B615",
+  "chainId": "1",
+  "creationMatch": "exact_match",
+  "match": "exact_match",
+  "matchId": "607",
+  "runtimeMatch": "exact_match",
+  "verifiedAt": "2024-08-08T10:04:59Z",
+  "compilation": {
+    "compiler": "solc",
+    "compilerSettings": {
+      "evmVersion": "istanbul",
+      "libraries": {},
+      "metadata": {
+        "bytecodeHash": "ipfs",
+        "useLiteralContent": true
+      },
+      "optimizer": {
+        "enabled": false,
+        "runs": 200
+      },
+      "remappings": []
+    },
+    "compilerVersion": "0.7.6+commit.7338295f",
+    "fullyQualifiedName": "contracts/proxies/SafeProxy.sol:SafeProxy",
+    "language": "Solidity",
+    "name": "SafeProxy"
+  },
+  "abi": [
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "_singleton",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "constructor"
+    },
+    {
+      "stateMutability": "payable",
+      "type": "fallback"
+    }
+  ]
+}

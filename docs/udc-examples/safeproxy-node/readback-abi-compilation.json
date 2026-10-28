@@ -1,0 +1,332 @@
+[
+  {
+    "attributeSchema": [
+      {
+        "indexed": true,
+        "name": "abihash",
+        "type": "bytes32"
+      },
+      {
+        "indexed": true,
+        "name": "address",
+        "type": "addr"
+      },
+      {
+        "indexed": true,
+        "name": "arkiv.schema",
+        "type": "str"
+      },
+      {
+        "indexed": true,
+        "name": "blocknumber",
+        "type": "u64"
+      },
+      {
+        "indexed": true,
+        "name": "chainid",
+        "type": "u64"
+      },
+      {
+        "indexed": true,
+        "name": "compilationref",
+        "type": "key"
+      },
+      {
+        "indexed": true,
+        "name": "compilerversion",
+        "type": "str"
+      },
+      {
+        "indexed": true,
+        "name": "creationcodehash",
+        "type": "bytes32"
+      },
+      {
+        "indexed": false,
+        "name": "creationcoderef",
+        "type": "key"
+      },
+      {
+        "indexed": false,
+        "name": "data",
+        "type": "bytes"
+      },
+      {
+        "indexed": true,
+        "name": "deployer",
+        "type": "addr"
+      },
+      {
+        "indexed": true,
+        "name": "evmversion",
+        "type": "str"
+      },
+      {
+        "indexed": true,
+        "name": "isproxy",
+        "type": "bool"
+      },
+      {
+        "indexed": true,
+        "name": "language",
+        "type": "str"
+      },
+      {
+        "indexed": true,
+        "name": "match",
+        "type": "str"
+      },
+      {
+        "indexed": true,
+        "name": "matchid",
+        "type": "u64"
+      },
+      {
+        "indexed": true,
+        "name": "name",
+        "type": "str"
+      },
+      {
+        "indexed": true,
+        "name": "optimizer",
+        "type": "bool"
+      },
+      {
+        "indexed": true,
+        "name": "optimizerruns",
+        "type": "i32"
+      },
+      {
+        "indexed": true,
+        "name": "proxytype",
+        "type": "str"
+      },
+      {
+        "indexed": true,
+        "name": "runtimecodehash",
+        "type": "bytes32"
+      },
+      {
+        "indexed": false,
+        "name": "runtimecoderef",
+        "type": "key"
+      },
+      {
+        "indexed": true,
+        "name": "verifiedat",
+        "type": "u64"
+      },
+      {
+        "indexed": true,
+        "name": "viair",
+        "type": "bool"
+      }
+    ],
+    "attributes": [
+      {
+        "name": "abihash",
+        "type": "bytes32",
+        "value": "0x3b187c2aa68deb34b1cef3b0442dec2ea12cd6e5d549d58e55ab3bd1c4a8d89f"
+      },
+      {
+        "name": "address",
+        "type": "addr",
+        "value": "0x000000000034065b3a94c2118cfe5b4c0067b615"
+      },
+      {
+        "name": "arkiv.schema",
+        "type": "str",
+        "value": "sourcify-udc-proposal.v4.contract"
+      },
+      {
+        "name": "blocknumber",
+        "type": "u64",
+        "value": "0x10ad641"
+      },
+      {
+        "name": "chainid",
+        "type": "u64",
+        "value": "0x1"
+      },
+      {
+        "name": "compilationref",
+        "type": "key",
+        "value": "0x257697de0ae84d65c1642d937d94b083c9434e1f8074ef0b12d56c2034c6ddb5"
+      },
+      {
+        "name": "compilerversion",
+        "type": "str",
+        "value": "0.7.6+commit.7338295f"
+      },
+      {
+        "name": "creationcodehash",
+        "type": "bytes32",
+        "value": "0x76733d705f71b79841c0ee960a0ca880f779cde7ef446c989e6d23efc0a4adfb"
+      },
+      {
+        "name": "creationcoderef",
+        "type": "key",
+        "value": "0xb5c75b5f789e1109994161a01097cf8a7024c364fa94300cb8dbbf2be060c500"
+      },
+      {
+        "name": "data",
+        "type": "bytes",
+        "value": "0x018d92db8adb301086df45d72e48d6c9f65dec6ddabd6829edd28b96a5c8d2a8318dad20c92521e4dd2bd94bf6402e2a0c4687997ffef9e68c94311e42400dc2477c5d9461c17baa6ad6958454dd1678cb3a8c856c05e1a8407aa786e9dea43092771e541cdcd49e22686700356714bd9a82757e5c6ebeabfd0c219f6b3785e8671d9ddff8dff308537cabfe7a312224d7b8ae2d2d2923bdad586f35a755a92ca7cc58ae251344a14bf14634e5fd7946ceda001135ac12054a85063725bd9b65a404a743aa1e0d53001fd1e5f1f26cee938a7a97eee0a874fc352ebb021938ecdd29876773fddee93f9fe7b1079f5b23592559c9afcf96537ca42c79e052d23b4605ab93b3d2f69ddc6c4ab169efe07d8d4bddf64ca02743492fe97f5461b7841ba57905a6175ca716505b098b29af040068a995920025e346182c84ac554d2870631411824891225fa7bd9f0c1c73b1243770bc6972f92fb40596697ff0ee78fa0ac1ede79c223b1fc6c31e721b5e74fee56c2d14bb44717ba5d86e578adb9562b7522cd0a4c6cce09bb290081468085fb21e6a122f78127f58397d985c18427eb93e490efc3cc56184ff18c59bf3f2f89ce236f0bfe0073b80d924e0a8c4257b87abf43d10dc60d6f0fa07bafc03"
+      },
+      {
+        "name": "deployer",
+        "type": "addr",
+        "value": "0x34f845773d4364999f2fbc7aa26abdee902cbb46"
+      },
+      {
+        "name": "evmversion",
+        "type": "str",
+        "value": "istanbul"
+      },
+      {
+        "name": "isproxy",
+        "type": "bool",
+        "value": true
+      },
+      {
+        "name": "language",
+        "type": "str",
+        "value": "Solidity"
+      },
+      {
+        "name": "match",
+        "type": "str",
+        "value": "exact_match"
+      },
+      {
+        "name": "matchid",
+        "type": "u64",
+        "value": "0x25f"
+      },
+      {
+        "name": "name",
+        "type": "str",
+        "value": "SafeProxy"
+      },
+      {
+        "name": "optimizer",
+        "type": "bool",
+        "value": false
+      },
+      {
+        "name": "optimizerruns",
+        "type": "i32",
+        "value": 200
+      },
+      {
+        "name": "proxytype",
+        "type": "str",
+        "value": "GnosisSafeProxy"
+      },
+      {
+        "name": "runtimecodehash",
+        "type": "bytes32",
+        "value": "0xd7d408ebcd99b2b70be43e20253d6d92a8ea8fab29bd3be7f55b10032331fb4c"
+      },
+      {
+        "name": "runtimecoderef",
+        "type": "key",
+        "value": "0xc48784b9ef1d0f520c61d2dc26a77130ba56c01884090c05cdcf262542f6366d"
+      },
+      {
+        "name": "verifiedat",
+        "type": "u64",
+        "value": "0x66b4984b"
+      },
+      {
+        "name": "viair",
+        "type": "bool",
+        "value": false
+      }
+    ],
+    "creator": "0x3ffcb8c66ba2a35df36d73b213399220fd59f42f",
+    "expiresAt": "0xffffffffffffffff",
+    "key": "0x69c660a2063f48e7b0751efd7054bbb248a876751973c3f09869be2a69432150",
+    "owner": "0x3ffcb8c66ba2a35df36d73b213399220fd59f42f"
+  },
+  {
+    "attributeSchema": [
+      {
+        "indexed": false,
+        "name": "abi",
+        "type": "bytes"
+      },
+      {
+        "indexed": true,
+        "name": "arkiv.schema",
+        "type": "str"
+      },
+      {
+        "indexed": false,
+        "name": "artifacts",
+        "type": "bytes"
+      },
+      {
+        "indexed": false,
+        "name": "compilation",
+        "type": "bytes"
+      },
+      {
+        "indexed": false,
+        "name": "creationcoderef",
+        "type": "key"
+      },
+      {
+        "indexed": true,
+        "name": "hash",
+        "type": "bytes32"
+      },
+      {
+        "indexed": false,
+        "name": "manifest",
+        "type": "bytes"
+      },
+      {
+        "indexed": false,
+        "name": "runtimecoderef",
+        "type": "key"
+      },
+      {
+        "indexed": false,
+        "name": "sourcerefs",
+        "type": "bytes"
+      }
+    ],
+    "attributes": [
+      {
+        "name": "abi",
+        "type": "bytes",
+        "value": "0x016d8d310ec2301004ff72755e903fd0d145089d9d03591c67cbb72eac287fc7a91022dd6a7647bb6c94ac3438cdcb1121d558afbd08cdc4eb5ac59d26327e1fe0eec99e2ac836187e47fb6d2207432e0d1c9226f4d15ab6c29d83cad788d91cb545e44afbb49d587fca835503c7d778f900"
+      },
+      {
+        "name": "arkiv.schema",
+        "type": "str",
+        "value": "sourcify-udc-proposal.v4.compilation"
+      },
+      {
+        "name": "compilation",
+        "type": "bytes",
+        "value": "0x0145904f4fc3300cc5bf4bae4c5db50906bd72e18010a81217c4c16d9d62c9f9a3c44194a9df7d8e26adb7e4e9f7fc9e7d366370911893e94c0e3c9add4de95184fc9c4d7736f8eb3e31650a5e39ca027e28ac2cd39020115668dd198702130854cbb0088e61c217c83fd5146d5643c9f84a8209f83978412fa6935450bd210a39faaf4d34cfc3c03899ce0267dc9954bc461cda56c1840e62bc36fbfa5eb7c25bc3b639350f77aa3b92e6743c3e1e9eeeada6dbc2bc7c1460b284d31b385478d4220946c9fb98c29feeb2efc1e2bbbe97464fd2dd7e755ff07381b9dafac0349154d55f076de07a01"
+      },
+      {
+        "name": "hash",
+        "type": "bytes32",
+        "value": "0x768801ecf4b52b7c616ad0791c9d4e9386fd95599ce28d8a85b9b36726fea028"
+      },
+      {
+        "name": "manifest",
+        "type": "bytes",
+        "value": "0x01cd55cb6edb3010fc179d8d9a4f91ccb1b7162d5a20c72087e5ee3255eb488244070982f4db4bd9b293d845e3a248d01b1fcb99e17077795f61473c5667f7150e0cb9e9daeaac12b7d2db9a05b3f03a0472a68c4144a181109414c0405c27677ca803a0501a09a321aa55094836558b6a58b7b9b9e60d1c3932c273440a21aae84464a359096535d5141478069f20aa10494776c9da2885d04a6b99a2c1ea61515173c563de4885d86c607594dea102a83d71d4264ae4a4a3304611a362900aa9664bd604b29ead85a8234934e0c98749250cb94980136e013441384610be2ed02413d7859c8576d1184a1459414a40c6272d08bdaf8312429151a92e46845800b1bbee9bd5a393215a5713d61ad0a02430b678973cb81ac0a6005a6b8be59e141dc749a824e33894ab47f2c8345d7de054f45ddc573f9a960aeaaa435815ae1ef2b7325d8e993e8e5dfba1edd7793972ce4d7b354efb5dd3661ea69027b2e6310fe7bbc887c589d0dd7a403e40de2dbe0cf2659d2714ecda3c4c963f8e7eca7ee86e1b2e837348fcb54ceede8ddd6ab99f2da7377fc63b2dbc3227f10d75f89cf69a33106458765be439e69595f0cdf532de659eaa7576fc33f4074f3c17f0fbe3b8375047dcafba3ba6f72fa89cdbc2db8b1c7337c0157f82bbf2720729fc6ceb898eadb8a742b6c97e02f114c1ed4434839c893f01efd3ea9f1926570be2be9d2f2a6ecb5a29f4a975f6a59734b7d55982d5c88b6addf73c208ce5c4c565e934b3bc0dc62b667017bf336e9d9ee5ee7e8bff48ed51461fab7ec1e43cac4f567d54bd03cf7d7a2fe074bffe86f8b0207fc77bb9cbb1e91b2a9f1a68c52a462321288f281da057e09411d64976403e7aa585b5363929516a6db4f5863c182fcac1eaf2e117"
+      }
+    ],
+    "creator": "0x3ffcb8c66ba2a35df36d73b213399220fd59f42f",
+    "expiresAt": "0xffffffffffffffff",
+    "key": "0x257697de0ae84d65c1642d937d94b083c9434e1f8074ef0b12d56c2034c6ddb5",
+    "owner": "0x3ffcb8c66ba2a35df36d73b213399220fd59f42f"
+  }
+]

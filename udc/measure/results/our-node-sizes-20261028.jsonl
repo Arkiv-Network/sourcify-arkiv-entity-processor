@@ -1,0 +1,12 @@
+{"case":"bytes 120000","calldataBytes":120580,"signedTxBytes":120696,"outcome":"ok gas 851282"}
+{"case":"bytes 131072 (128 KiB)","calldataBytes":131652,"signedTxBytes":131768,"outcome":"ok gas 924357"}
+{"case":"bytes 131073","calldataBytes":131684,"signedTxBytes":131800,"outcome":"refused: InvalidArkivAttribute"}
+{"case":"2 bytes x 65536 (128 KiB total)","calldataBytes":131812,"signedTxBytes":131928,"outcome":"ok gas 924619"}
+{"case":"2 bytes 65536 + 65537","calldataBytes":131844,"signedTxBytes":131960,"outcome":"refused: InvalidArkivOperation"}
+{"case":"32 attributes","calldataBytes":6564,"signedTxBytes":6678,"outcome":"ok gas 117905"}
+{"case":"33 attributes","calldataBytes":6756,"signedTxBytes":6870,"outcome":"refused: InvalidArkivAttribute"}
+{"case":"str 128 bytes","calldataBytes":708,"signedTxBytes":822,"outcome":"ok gas 61647"}
+{"case":"str 129 bytes","calldataBytes":740,"signedTxBytes":854,"outcome":"refused: InvalidArkivAttribute"}
+{"case":"indexed bytes","calldataBytes":612,"signedTxBytes":726,"outcome":"refused: InvalidArkivAttribute"}
+{"case":"name 32 bytes","calldataBytes":612,"signedTxBytes":726,"outcome":"ok gas 61013"}
+{"case":"24 indexed + 120000 bytes","calldataBytes":124996,"signedTxBytes":125112,"outcome":"ok gas 895456"}

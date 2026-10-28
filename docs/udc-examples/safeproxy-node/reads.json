@@ -1,0 +1,59 @@
+{
+  "rpc": "alt-node-fast.arkiv-global.net",
+  "pinned": true,
+  "head": 67732,
+  "fields": "all",
+  "queries": [
+    {
+      "what": "contract",
+      "query": "$owner = addr(0x3ffcb8c66ba2a35df36d73b213399220fd59f42f) AND arkiv.schema = str('sourcify-udc-proposal.v4.contract') AND address = addr(0x000000000034065b3a94c2118cfe5b4c0067b615)",
+      "select": {
+        "key": true,
+        "owner": true,
+        "creator": true,
+        "expiresAt": true,
+        "attributeSchema": true,
+        "attributes": true
+      },
+      "limit": 2,
+      "block": 67732,
+      "rows": 1,
+      "cursor": null,
+      "ms": 1
+    },
+    {
+      "what": "compilation+code",
+      "query": "$key = key(0x257697de0ae84d65c1642d937d94b083c9434e1f8074ef0b12d56c2034c6ddb5) OR $key = key(0xb5c75b5f789e1109994161a01097cf8a7024c364fa94300cb8dbbf2be060c500) OR $key = key(0xc48784b9ef1d0f520c61d2dc26a77130ba56c01884090c05cdcf262542f6366d)",
+      "select": {
+        "key": true,
+        "owner": true,
+        "creator": true,
+        "expiresAt": true,
+        "attributeSchema": true,
+        "attributes": true
+      },
+      "limit": 3,
+      "block": 67732,
+      "rows": 3,
+      "cursor": null,
+      "ms": 1
+    },
+    {
+      "what": "source+code+chunk",
+      "query": "$key = key(0x29d09765c78c926440c23162039e99930924eb08fba8e598b9bb61c7ba6ff1f3) OR $key = key(0x7452c8a62df34f980f6ff8aafaa42a8d75704b786b5a33f54437b775ef4ceb24)",
+      "select": {
+        "key": true,
+        "owner": true,
+        "creator": true,
+        "expiresAt": true,
+        "attributeSchema": true,
+        "attributes": true
+      },
+      "limit": 2,
+      "block": 67732,
+      "rows": 2,
+      "cursor": null,
+      "ms": 1
+    }
+  ]
+}

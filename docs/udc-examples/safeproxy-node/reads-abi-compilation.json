@@ -1,0 +1,48 @@
+{
+  "rpc": "alt-node-fast.arkiv-global.net",
+  "pinned": true,
+  "head": 67732,
+  "fields": "abi,compilation",
+  "queries": [
+    {
+      "what": "contract",
+      "query": "$owner = addr(0x3ffcb8c66ba2a35df36d73b213399220fd59f42f) AND arkiv.schema = str('sourcify-udc-proposal.v4.contract') AND address = addr(0x000000000034065b3a94c2118cfe5b4c0067b615)",
+      "select": {
+        "key": true,
+        "owner": true,
+        "creator": true,
+        "expiresAt": true,
+        "attributeSchema": true,
+        "attributes": true
+      },
+      "limit": 2,
+      "block": 67732,
+      "rows": 1,
+      "cursor": null,
+      "ms": 1
+    },
+    {
+      "what": "compilation",
+      "query": "$key = key(0x257697de0ae84d65c1642d937d94b083c9434e1f8074ef0b12d56c2034c6ddb5)",
+      "select": {
+        "key": true,
+        "owner": true,
+        "creator": true,
+        "expiresAt": true,
+        "attributeSchema": true,
+        "attributes": {
+          "arkiv.schema": true,
+          "hash": true,
+          "manifest": true,
+          "abi": true,
+          "compilation": true
+        }
+      },
+      "limit": 1,
+      "block": 67732,
+      "rows": 1,
+      "cursor": null,
+      "ms": 1
+    }
+  ]
+}

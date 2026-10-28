@@ -1,0 +1,10 @@
+{
+  "name": "sourcify-udc-prototype",
+  "private": true,
+  "type": "module",
+  "description": "Writes the UDC prototype's example entities to a node and reads them back (docs/udc-proposal.md)",
+  "dependencies": {
+    "@arkiv-network/sdk": "0.9.0-next.2",
+    "viem": "2.56.3"
+  }
+}
