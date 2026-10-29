@@ -1,13 +1,15 @@
 #!/usr/bin/env bun
 /**
- * Sync dashboard: keeps DASHBOARD_OUT_DIR/status.json (schema 1, like dashboard/sample-status.json) for the static page
+ * Sync dashboard: keeps DASHBOARD_OUT_DIR/status.json (schema 2, like dashboard/sample-status.json) for the static page
  * in this directory (index.html, app.js, style.css, copied next to it on start), which nginx serves read-only at /sync/.
  *
  *   bun dashboard/status.ts [--once]
  *
  * Every 15 s, from what pipeline/sync-targets.sh keeps: each target (targets/NAME.env, winning over .env) and its
- * data/sync/NAME/{status.json, state.json, sync.lock, sync.jsonl (read incrementally)}; the daily seed's runs
- * (data/runs/status.jsonl); each target's chain (read-only RPC calls: head, gas price, the writer's balance and nonces).
+ * data/sync/NAME/{status.json, state.json, sync.lock, sync.jsonl (read incrementally)}; the daily seeds' runs, v3
+ * (data/runs) and v4 (data/runs-udc): status.jsonl and, of the newest published run, where its seed is and which format
+ * and build it is (latest.json, logs/upload-result.json, bundle/seed.json, timings.json); each target's chain (read-only
+ * RPC calls: head, gas price, the writer's balance and nonces).
  * The mirror database (SELECT only, scans bounded by ID) at most every 60 s, attached only for its queries. A source that
  * fails (an RPC, the database, a malformed file) sets its own part's `error` and the rest is written as usual; a slow one
  * only delays its own part. status.json is replaced atomically. --once writes it once and exits.
@@ -18,7 +20,8 @@
  * pgpass; values read from files only in their expected form.
  *
  * Settings (environment; defaults are the container's mounts, see dashboard.compose.yaml): DASHBOARD_TARGETS_DIR
- * (/targets), DASHBOARD_ENV_FILE (/config/.env), DASHBOARD_SYNC_DIR (/sync), DASHBOARD_RUNS_DIR (/runs),
+ * (/targets), DASHBOARD_ENV_FILE (/config/.env), DASHBOARD_SYNC_DIR (/sync), DASHBOARD_RUNS_DIR (/runs, v3),
+ * DASHBOARD_UDC_RUNS_DIR (/runs-udc, v4), DASHBOARD_SEED_SCHEDULE (the daily seed timers of this host, see seedSchedule),
  * DASHBOARD_OUT_DIR (/out), MIRROR_PUBLIC_URL (https://sourcify-mirror.arkiv-global.net), APP_REVISION; PGHOST, PGPORT,
  * PGDATABASE, PGUSER, PGPASSWORD or PGPASSFILE (the mirror).
  */
@@ -37,7 +40,11 @@ const env = process.env;
 const paths = {
   targets: resolve(env.DASHBOARD_TARGETS_DIR || '/targets'), envFile: resolve(env.DASHBOARD_ENV_FILE || '/config/.env'),
   sync: resolve(env.DASHBOARD_SYNC_DIR || '/sync'), runs: resolve(env.DASHBOARD_RUNS_DIR || '/runs'), out: resolve(env.DASHBOARD_OUT_DIR || '/out'),
+  udcRuns: resolve(env.DASHBOARD_UDC_RUNS_DIR || '/runs-udc'),
 };
+/** The daily seed jobs (pipeline/daily.sh, SEED_FORMAT), each with its own RUNS_DIR. */
+const SEEDS = [{ format: 'udc', label: 'v4 (UDC)', dir: paths.udcRuns }, { format: 'v3', label: 'v3', dir: paths.runs }] as const;
+const SEED_SCHEDULE = seedSchedule(env.DASHBOARD_SEED_SCHEDULE);
 const PUBLIC_URL = (env.MIRROR_PUBLIC_URL || 'https://sourcify-mirror.arkiv-global.net').replace(/\/+$/, '');
 const STATIC_FILES = ['index.html', 'app.js', 'style.css'];
 const REFRESH_SECONDS = 15, DATABASE_SECONDS = 60, RPC_TIMEOUT_MS = 10_000;
@@ -319,14 +326,52 @@ export function runwayDays(balance: bigint, spentPerDay: bigint) {
   return days >= 10 ? Math.round(days) : +days.toFixed(1);
 }
 
-/** The daily seed's runs (data/runs/status.jsonl lines): the last, and the last 5 newest first without their key. Only
- * values of the expected form are published (else null); a run's error text never is. */
+const SEED_KEY = /^[A-Za-z0-9._/-]{1,200}$/;
+/** A daily seed's runs (RUNS_DIR/status.jsonl lines): the last, the last 5 newest first without their key, and the
+ * newest completed one (`published`: its day and key). Only values of the expected form are published (else null); a
+ * run's error text never is. */
 export function seedRuns(content: string) {
   const runs = content.split('\n').flatMap(line => { try { const run = JSON.parse(line); return run && typeof run === 'object' ? [run] : []; } catch { return []; } });
   const pick = (run: any) => ({ day: matching(/^\d{8}$/, run.day), result: matching(/^[a-z-]{1,20}$/, run.result), startedAt: isoText(run.startedAt),
     seconds: typeof run.seconds === 'number' && Number.isFinite(run.seconds) ? run.seconds : null });
-  const last = runs.at(-1);
-  return { latest: last ? { ...pick(last), key: matching(/^[A-Za-z0-9._/-]{1,200}$/, last.key) } : null, recent: runs.slice(-5).reverse().map(pick) };
+  const last = runs.at(-1), done = runs.findLast(run => run.result === 'completed' && pick(run).day && matching(SEED_KEY, run.key));
+  return { latest: last ? { ...pick(last), key: matching(SEED_KEY, last.key) } : null, recent: runs.slice(-5).reverse().map(pick),
+    published: done ? { day: done.day as string, key: done.key as string } : null };
+}
+
+/** DASHBOARD_SEED_SCHEDULE: the daily seed timers of this host, `FORMAT=HH:MM` (UTC) pairs separated by commas; a format
+ * not listed has no timer here (its last seed stays as published). Unset: the units in deploy/, v3 at 02:00 and v4 at
+ * 04:00. Malformed pairs are left out. */
+export function seedSchedule(value: string | undefined): Record<string, string> {
+  const schedule: Record<string, string> = {};
+  for (const pair of (value ?? 'v3=02:00,udc=04:00').split(',')) {
+    const match = /^\s*(v3|udc)=([01]\d|2[0-3]):([0-5]\d)\s*$/.exec(pair);
+    if (match) schedule[match[1]!] = `${match[2]}:${match[3]}`;
+  }
+  return schedule;
+}
+
+/** Where a published seed is and which format and build it is, from its run's directory as pipeline/daily.sh and run.sh
+ * leave it: latest.json (the pointer's content), logs/upload-result.json (the bucket), bundle/seed.json (format and
+ * version) and timings.json (the processor's revision and, for v3 seeds, the owner). Only values of the expected form
+ * are published, else null. */
+export function seedDetails(key: string, files: { latest?: Record<string, any>; upload?: Record<string, any>; seed?: Record<string, any>; timings?: Record<string, any> }) {
+  const { latest = {}, upload = {}, seed = {}, timings = {} } = files;
+  const integer = (value: unknown) => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null;
+  const name = (value: unknown) => matching(/^[a-z0-9][a-z0-9._-]{0,63}$/, value);
+  const uri = matching(/^s3:\/\/[a-z0-9][a-z0-9.-]{1,62}\/[A-Za-z0-9._/-]{1,200}$/, upload.uri);
+  const owner = [seed.owner, timings.config?.entityOwner].find(isAddress);
+  const version = integer(seed.version);
+  return {
+    key, bucket: uri?.endsWith(`/${key}`) ? uri.slice('s3://'.length, -key.length - 1) : null,
+    pointer: /^(.+)-\d{8}\.tar\.zst$/.exec(key)?.[1]?.concat('-latest.json') ?? null,
+    publishedAt: isoText(latest.publishedAt), lastMatchId: isId(latest.lastMatchId) ? latest.lastMatchId : null,
+    contracts: integer(latest.contracts), entities: integer(latest.entities), bytes: integer(latest.bytes), sha256: matching(/^[0-9a-f]{64}$/, latest.sha256),
+    // seed.json version 1 is the v3 bundle, which names no format of its own (pack and upload call it this).
+    seedVersion: version, bundleFormat: name(seed.format) ?? (version === 1 ? 'sourcify-arkiv.upload.v1' : null),
+    schemaPrefix: name(seed.schemaPrefix), chainId: integer(seed.chainId), owner: owner ? owner.toLowerCase() : null,
+    revision: matching(/^[0-9a-f]{7,40}$/, timings.build?.revision),
+  };
 }
 
 /** A periodic source: started when due (every `everyMs` at most), never twice at once; its last result stays. */
@@ -456,6 +501,38 @@ async function readJson(path: string): Promise<Record<string, any> | undefined> 
   return value;
 }
 
+/** Details of published seeds by run directory: a published run's files never change, and once its directory is deleted
+ * (a later run published) they stay known. Only each job's newest published run is kept. */
+const publishedSeeds = new Map<string, ReturnType<typeof seedDetails>>();
+
+/** One daily seed job's part of status.json: its runs and its newest published seed; null for a job with neither runs
+ * nor a timer on this host. */
+async function readSeed(seed: (typeof SEEDS)[number]) {
+  const base = { format: seed.format, label: seed.label, schedule: SEED_SCHEDULE[seed.format] ?? null };
+  let runs: ReturnType<typeof seedRuns>;
+  try { runs = seedRuns(await readTail(join(seed.dir, 'status.jsonl'), 64 * 1024)); }
+  catch (error: any) {
+    if (error.code === 'ENOENT' && !base.schedule) return null;
+    return { ...base, latest: null, recent: [], published: null, error: error.code === 'ENOENT' ? null : clean(fileError('status.jsonl', error)) };
+  }
+  const { published: done, ...rest } = runs;
+  if (!done) return { ...base, ...rest, published: null, error: null };
+  const cacheKey = join(seed.dir, done.day);
+  let details = publishedSeeds.get(cacheKey), error: string | null = null;
+  if (!details) {
+    const files: Record<string, Record<string, any> | undefined> = {};
+    for (const [name, file] of [['latest', 'latest.json'], ['upload', 'logs/upload-result.json'], ['seed', 'bundle/seed.json'], ['timings', 'timings.json']]) {
+      try { files[name!] = await readJson(join(cacheKey, file!)); } catch (problem) { error ??= clean(fileError(file!, problem)); }
+    }
+    details = seedDetails(done.key, files);
+    if (!error && files.latest && files.seed) {
+      for (const key of publishedSeeds.keys()) if (key.startsWith(`${seed.dir}/`)) publishedSeeds.delete(key);
+      publishedSeeds.set(cacheKey, details);
+    }
+  }
+  return { ...base, ...rest, published: { day: done.day, ...details }, error };
+}
+
 /** The last `bytes` of a file, from its first complete line on. */
 async function readTail(path: string, bytes: number) {
   const file = await open(path, 'r');
@@ -520,8 +597,9 @@ async function refresh(mirror: Mirror, mirrorJob: Job<MirrorReading>, started: n
   const cursors = Object.fromEntries(targets.flatMap(t => t.cursor ? [[t.name, t.cursor]] : []));
   const runs = [mirrorJob.run(() => mirror.query(cursors), started),
     ...targets.flatMap(t => t.kept.client ? [t.kept.chain.run(() => readChain(t.kept.client!.client, t.writer), started)] : [])];
-  const seed = readTail(join(paths.runs, 'status.jsonl'), 64 * 1024).then(content => ({ ...seedRuns(content), error: null as string | null }),
-    (error: any) => ({ latest: null, recent: [], error: error.code === 'ENOENT' ? null : clean(fileError('status.jsonl', error)) }));
+  // The jobs with a timer here first, by time; then the others (their last seed stays as published).
+  const seeds = Promise.all(SEEDS.map(readSeed)).then(list => list.filter(seed => seed !== null)
+    .sort((a, b) => Number(a.schedule === null) - Number(b.schedule === null) || (a.schedule ?? '').localeCompare(b.schedule ?? '')));
   await Promise.race([Promise.all(runs), new Promise(done => setTimeout(done, waitMs).unref())]);
 
   const reading = mirrorJob.value;
@@ -530,11 +608,11 @@ async function refresh(mirror: Mirror, mirrorJob: Job<MirrorReading>, started: n
   if (mirrorError) problems.mirror = `${mirrorError}: ${describeError(mirrorJob.error).replaceAll(` at "${CONNINFO}"`, '')}`;
   const now = Date.now();
   const output = {
-    schema: 1, generatedAt: iso(now), revision: env.APP_REVISION ?? '', refreshSeconds: REFRESH_SECONDS,
+    schema: 2, generatedAt: iso(now), revision: env.APP_REVISION ?? '', refreshSeconds: REFRESH_SECONDS,
     mirror: { publicUrl: PUBLIC_URL, newestMatchId: reading?.newestMatchId ?? null, newestMatchAt: reading?.newestMatchAt ?? null,
       matchesLastHour: reading?.matchesLastHour ?? null, matchesLast24h: reading?.matchesLast24h ?? null, hourly: reading?.hourly ?? null,
       queriedAt: reading?.queriedAt ?? null, error: mirrorError },
-    seed: await seed,
+    seeds: await seeds,
     targets: targets.map(t => {
       const statusAge = t.statusAt ? started - Date.parse(t.statusAt) : undefined;
       const { state, live } = syncState(typeof t.status?.status === 'string' ? t.status.status : undefined, t.lockAge, statusAge, HUNG_MS + (t.settings.batchDelaySeconds ?? 0) * 1000);

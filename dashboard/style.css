@@ -162,8 +162,16 @@ h2 { font-size: 17px; font-weight: 650; overflow-wrap: anywhere; }
   100% { box-shadow: 0 0 0 7px transparent; }
 }
 
-/* daily seed */
-.g { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; font-size: 11px; color: #fff; vertical-align: 2px; background: var(--vc); }
+/* daily seed: one block per job, where its seed is and which format and build it is */
+.seed { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.seed.alarm { box-shadow: inset 3px 0 0 var(--bad); padding-left: 12px; }
+.shead { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+h3 { margin: 0; font-size: 15px; font-weight: 650; }
+.seed .pill { --c: var(--vc); }
+.seedkv { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 3px 14px; margin: 10px 0 2px; font-size: 13px; }
+.seedkv dt { color: var(--muted); }
+.seedkv dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+@media (max-width: 520px) { .seedkv { grid-template-columns: minmax(0, 1fr); } .seedkv dd { margin-bottom: 6px; } }
 .runs { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 7px; }
 .run {
   --c: var(--vc); padding: 1px 8px; border-radius: 99px; font-size: 11.5px; color: var(--ink2); white-space: nowrap; cursor: default;

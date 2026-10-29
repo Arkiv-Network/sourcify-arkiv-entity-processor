@@ -4,7 +4,8 @@
 #
 # Every 15 s it writes status.json (and on start the page: index.html, app.js, style.css) to DASHBOARD_OUT (default
 # /var/www/arkiv-sync; it must exist and be writable by PIPELINE_UID). It reads targets/*.env (with .env), data/sync,
-# data/runs/status.jsonl, the mirror database (SELECT only, at most once a minute) on SOURCE_NETWORK and each target's RPC
+# the daily seeds' runs (data/runs: v3, data/runs-udc: v4; status.jsonl and the newest published run's small files, for
+# its R2 object, pointer, format and build), the mirror database (SELECT only, at most once a minute) on SOURCE_NETWORK and each target's RPC
 # (read-only calls). Of an RPC URL only the hostname is published; error texts are sanitized. No ports: nginx serves the
 # directory, in the server block of sourcify-mirror.arkiv-global.net (add_header here replaces the server's own):
 #
@@ -59,6 +60,8 @@ services:
       PGUSER: "${PGUSER:-sourcify_export}"
       PGPASSFILE: /run/secrets/pgpass
       MIRROR_PUBLIC_URL: "${MIRROR_PUBLIC_URL:-https://sourcify-mirror.arkiv-global.net}"
+      # The daily seed timers installed on this host, FORMAT=HH:MM (UTC) by commas; unset: both units of deploy/.
+      DASHBOARD_SEED_SCHEDULE: "${DASHBOARD_SEED_SCHEDULE-v3=02:00,udc=04:00}"
     volumes:
       # The defaults of dashboard/status.ts's DASHBOARD_* paths. Read-only, except the published directory.
       - type: bind
@@ -73,11 +76,18 @@ services:
         source: ./data/sync
         target: /sync
         read_only: true
-      # Only status.jsonl is read (the runs' work directories are large).
+      # The daily seeds' runs, v3 and v4: status.jsonl, and of the newest published run only latest.json,
+      # logs/upload-result.json, bundle/seed.json and timings.json (the work directories are large).
       - type: bind
         source: ./data/runs
         target: /runs
         read_only: true
+        bind: { create_host_path: true }
+      - type: bind
+        source: ./data/runs-udc
+        target: /runs-udc
+        read_only: true
+        bind: { create_host_path: true }
       - type: bind
         source: "${DASHBOARD_OUT:-/var/www/arkiv-sync}"
         target: /out
