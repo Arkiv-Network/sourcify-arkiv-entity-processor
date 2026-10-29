@@ -1,4 +1,4 @@
-// Sourcify → Arkiv sync dashboard (ES module). Polls status.json (schema 1) and renders it with DOM APIs
+// Sourcify → Arkiv sync dashboard (ES module). Polls status.json (schema 2) and renders it with DOM APIs
 // only (createElement / textContent, never innerHTML): error strings come from remote chains.
 const D = '–', NB = ' '; // NB keeps a number and its unit on one line
 const STALE_DATA = 120;    // s: generatedAt older than this → generator down?
@@ -70,9 +70,9 @@ function when(t) {
   const diff = Math.floor(t / 864e5) - Math.floor(now() / 864e5);
   return (diff === 0 ? 'today' : diff === 1 ? 'tomorrow' : WDAY[new Date(t).getUTCDay()] + ' ' + day(t)) + ' ' + hm(t) + ' UTC';
 }
-function nextSeed() { // the seed export runs daily at 02:00 UTC
-  const n = now(), t = Math.floor(n / 864e5) * 864e5 + 72e5;
-  return 'next run in ' + dur(((t > n ? t : t + 864e5) - n) / 1000) + ' (02:00 UTC)';
+function nextRun(at) { // a seed job's daily timer, "HH:MM" UTC
+  const [hh, mm] = at.split(':').map(Number), n = now(), t = Math.floor(n / 864e5) * 864e5 + (hh * 60 + mm) * 6e4;
+  return 'next run in ' + dur(((t > n ? t : t + 864e5) - n) / 1000) + ' (' + at + ' UTC)';
 }
 
 // ---- DOM helpers ----
@@ -182,6 +182,9 @@ function assess(t) { // → [level, short note]
   return ['ok', 'in sync'];
 }
 const targets = () => arr(data && data.targets).filter(t => t && typeof t === 'object');
+const seeds = () => arr(data && data.seeds).filter(x => x && typeof x === 'object');
+const seedName = x => str(x.label) || str(x.format) || D;
+const runLevel = r => (r === 'completed' ? 'ok' : r === 'failed' ? 'bad' : 'info');
 function verdict() {
   if (!data) return fail ? ['bad', 'Status unavailable'] : ['info', 'Loading status…'];
   const a = age(data.generatedAt);
@@ -194,7 +197,7 @@ function verdict() {
   const m = obj(data.mirror), q = age(m.newestMatchAt);
   if (m.error) issues.push({ lv: 'warn', name: 'mirror', note: 'database error' });
   else if (q > QUIET_MIRROR) issues.push({ lv: 'warn', name: 'mirror', note: 'no new matches for ' + dur(q) });
-  if (obj(obj(data.seed).latest).result === 'failed') issues.push({ lv: 'warn', name: 'daily seed', note: 'failed' });
+  for (const x of seeds()) if (x.schedule && obj(x.latest).result === 'failed') issues.push({ lv: 'warn', name: 'daily seed ' + seedName(x), note: 'failed' });
   if (issues.length) {
     issues.sort((x, y) => (y.lv === 'bad') - (x.lv === 'bad'));
     const list = issues.slice(0, 3).map(i => i.name + ': ' + i.note).join(' · ');
@@ -208,15 +211,13 @@ function verdict() {
 }
 
 // ---- sections ----
-function mirrorCard(m, seed, after) {
+function mirrorCard(m, after) {
   const rows = arr(m.hourly).map(b => (b = obj(b), { t: ms(b.hour), v: num(b.matches) }));
   const spark = h('div', 'spark'), quiet = age(m.newestMatchAt) > QUIET_MIRROR;
   if (rows.length) after.push(() => spark.append(bars(spark.clientWidth, rows, {
     h: 40, cls: 'b-in', label: 'New Ethereum matches per hour, last 24 hours',
     tip: (r, last) => hourLabel(r.t, last) + '\n' + int(r.v) + ' new Ethereum matches',
   })));
-  const L = obj(seed.latest), lvOf = r => (r === 'completed' ? 'ok' : r === 'failed' ? 'bad' : 'info');
-  const runs = arr(seed.recent).slice(0, 7).map(obj);
   return h('section', { class: 'card', 'aria-labelledby': 'mh' },
     h('div', 'thead', h('div', null, h('h2', { id: 'mh' }, 'Sourcify mirror'),
       h('p', 'meta', 'Ethereum (chain 1) matches in the local Postgres mirror'))),
@@ -226,16 +227,40 @@ function mirrorCard(m, seed, after) {
         live(() => (m.newestMatchAt ? 'added ' + ago(m.newestMatchAt) : D)),
         live(() => 'database checked ' + ago(m.queriedAt))], quiet && 'warn'),
       tile('Inflow · last hour', unit(int(m.matchesLastHour), '/h'), [
-        int(m.matchesLast24h) + ' in 24\u00a0h · peak ' + int(rows.length ? Math.max(...rows.map(r => r.v || 0)) : null) + '/h', spark]),
-      tile('Daily seed', L.day || L.result ? [h('span', 'g lv-' + lvOf(L.result), GLYPH[lvOf(L.result)]), ' ',
-        seedDay(L.day) + ' · ' + (str(L.result) || D)] : D, [
-        L.startedAt ? 'took ' + dur(L.seconds) + ' · started ' + stamp(L.startedAt, false) : null,
-        live(nextSeed),
-        runs.length ? h('div', { class: 'runs', 'aria-label': 'Recent seed runs, newest first' }, runs.map(x => h('span', {
-          class: 'run lv-' + lvOf(x.result),
-          title: seedDay(x.day) + ' · ' + (str(x.result) || D) + ' · started ' + stamp(x.startedAt) + ' · took ' + dur(x.seconds),
-        }, GLYPH[lvOf(x.result)] + ' ' + seedDay(x.day)))) : null,
-      ], L.result === 'failed' && 'alarm')));
+        int(m.matchesLast24h) + ' in 24\u00a0h · peak ' + int(rows.length ? Math.max(...rows.map(r => r.v || 0)) : null) + '/h', spark])));
+}
+
+// the daily seed jobs: where each one's newest seed is (R2 object and pointer) and which format and build it is
+function seedCard(list, after) {
+  return h('section', { class: 'card', 'aria-labelledby': 'sh' },
+    h('div', 'thead', h('div', null, h('h2', { id: 'sh' }, 'Daily seed'),
+      h('p', 'meta', 'Prefill seed bundles exported from the mirror and published to R2'))),
+    list.length ? list.map(x => seedBlock(x, after)) : h('p', 'small', 'No seed runs yet.'));
+}
+function seedBlock(x, after) {
+  const L = obj(x.latest), P = obj(x.published), at = /^\d\d:\d\d$/.test(str(x.schedule)) ? str(x.schedule) : null;
+  const lv = runLevel(L.result), runs = arr(x.recent).slice(0, 7).map(obj), name = seedName(x);
+  const code = (v, full) => (str(v) ? h('code', full ? { title: full } : null, str(v)) : D);
+  const ver = num(P.seedVersion), rev = str(P.revision), sha = str(P.sha256), owner = str(P.owner);
+  const rows = [
+    ['Object', code(P.key && (P.bucket ? 's3://' + P.bucket + '/' : '') + P.key)],
+    ['Pointer', code(P.pointer)],
+    ['Format', [code(P.bundleFormat), ver == null ? '' : ' · seed.json v' + ver, P.schemaPrefix ? [' · entities ', code(P.schemaPrefix + '.*')] : '']],
+    ['Arkiv chain', [num(P.chainId) == null ? D : str(P.chainId), owner ? [' · owner ', code(short(owner), owner)] : '']],
+    ['Dataset', num(P.contracts) == null ? D : 'up to match ' + hash(P.lastMatchId) + ' · ' + int(P.contracts) + ' contracts · ' + int(P.entities) + ' entities'],
+    ['Archive', [compact(P.bytes, 'B'), sha ? [' · SHA-256 ', code(sha.slice(0, 12) + '…', sha)] : '']],
+    ['Built', ['processor ', code(rev.slice(0, 7), rev), ' · published ', stamp(P.publishedAt)]],
+  ];
+  return h('div', { class: 'seed' + (at && L.result === 'failed' ? ' alarm' : ''), 'aria-label': 'Daily seed ' + name },
+    h('div', 'shead', h('h3', null, name), L.day || L.result ? h('span', 'pill lv-' + lv, seedDay(L.day) + ' · ' + (str(L.result) || D)) : null),
+    h('p', 'small', L.startedAt ? 'last run took ' + dur(L.seconds) + ' · started ' + stamp(L.startedAt) : 'no runs yet',
+      at ? [' · ', live(() => nextRun(at))] : ' · no timer on this host' + (P.day ? ': the seed below stays as published' : '')),
+    errBox('seed:' + str(x.format), 'Seed files unreadable', x.error, after),
+    P.day ? h('dl', 'seedkv', rows.map(([k, v]) => [h('dt', null, k), h('dd', null, v)])) : h('p', 'small', 'Nothing published yet.'),
+    runs.length ? h('div', { class: 'runs', 'aria-label': 'Recent ' + name + ' seed runs, newest first' }, runs.map(r => h('span', {
+      class: 'run lv-' + runLevel(r.result),
+      title: seedDay(r.day) + ' · ' + (str(r.result) || D) + ' · started ' + stamp(r.startedAt) + ' · took ' + dur(r.seconds),
+    }, GLYPH[runLevel(r.result)] + ' ' + seedDay(r.day)))) : null);
 }
 
 // how far behind, ETA, backlog meter and net catch-up rate
@@ -334,7 +359,7 @@ const refresh = () => Math.min(300, Math.max(5, num(data && data.refreshSeconds)
 function render() {
   hooks = [];
   const app = $('app'), after = [], m = obj(data.mirror), ts = targets();
-  app.replaceChildren(mirrorCard(m, obj(data.seed), after), ts.length
+  app.replaceChildren(mirrorCard(m, after), seedCard(seeds(), after), ts.length
     ? h('section', { class: 'targets', 'aria-label': 'Sync targets' }, ts.map(t => targetCard(t, m, after)))
     : empty('No sync targets', 'No Arkiv chain is configured for syncing yet.'));
   width = app.clientWidth;
@@ -353,7 +378,7 @@ function tick() {
   if ($('vtext').textContent !== txt) $('vtext').textContent = txt;
   const b = !data ? '' : fail ? 'Connection lost (' + clip(fail, 60) + ') · showing data from ' + mins(a) + ' ago · retrying every ' + refresh() + ' s'
     : !fresh ? 'Status not refreshed for ' + mins(a) + ': the status generator may be down. Showing the last data.'
-    : num(data.schema) !== 1 ? 'Unexpected status schema “' + clip(data.schema, 12) + '” (this page expects 1): some values may be missing.' : '';
+    : num(data.schema) !== 2 ? 'Unexpected status schema “' + clip(data.schema, 12) + '” (this page expects 2): some values may be missing.' : '';
   const el = $('banner');
   if (el.textContent !== b) el.textContent = b;
   el.hidden = !b;

@@ -7,7 +7,7 @@ import { afterAll, describe, expect, test } from 'bun:test';
 import { appendFileSync, mkdtempSync, renameSync, rmSync, truncateSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { cursorView, databaseError, etaSeconds, formatEth, hourStarts, parseBatch, parseEnv, runwayDays, sanitize, seedRuns, settingOf, SyncFile, SyncLog, syncState, targetSettings } from '../dashboard/status';
+import { cursorView, databaseError, etaSeconds, formatEth, hourStarts, parseBatch, parseEnv, runwayDays, sanitize, seedDetails, seedRuns, seedSchedule, settingOf, SyncFile, SyncLog, syncState, targetSettings } from '../dashboard/status';
 
 const scratch = mkdtempSync(join(tmpdir(), 'entity-processor-dashboard-test-'));
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
@@ -207,10 +207,45 @@ describe('daily seed', () => {
     expect(seed.recent.map(run => run.seconds)).toEqual([7005, 7004, 7003, 7002, 7001]);
     expect(seed.recent[0]).toEqual({ day: '20261016', result: 'failed', startedAt: '2026-10-17T02:00:00Z', seconds: 7005 });
     expect(JSON.stringify(seed)).not.toContain('disk full');
-    expect(seedRuns('')).toEqual({ latest: null, recent: [] });
+    // The newest completed run is the published seed, though a later run failed.
+    expect(seed.published).toEqual({ day: '20261015', key: 'seed-inputs/sourcify-ethereum-20261015.tar.zst' });
+    expect(seedRuns('')).toEqual({ latest: null, recent: [], published: null });
     // Only values of the expected form.
     const odd = seedRuns(JSON.stringify({ day: '2026-10-16', result: 'Completed <b>', startedAt: 'yesterday', seconds: 'many', key: '../../etc/passwd x' }));
     expect(odd.latest).toEqual({ day: null, result: null, startedAt: null, seconds: null, key: null });
+    expect(seedRuns(JSON.stringify({ day: '20261016', result: 'completed', key: '../../etc/passwd x' })).published).toBeNull();
+  });
+
+  test('the timers of the host: FORMAT=HH:MM pairs; unset, both units of deploy/; malformed pairs left out', () => {
+    expect(seedSchedule(undefined)).toEqual({ v3: '02:00', udc: '04:00' });
+    expect(seedSchedule('udc=04:00')).toEqual({ udc: '04:00' });
+    expect(seedSchedule('')).toEqual({});
+    expect(seedSchedule(' udc=04:30 , v3=24:00, v5=01:00, udc') ).toEqual({ udc: '04:30' });
+  });
+
+  test('a published seed: its R2 object and pointer, format and version, dataset and build; v3 without a format of its own', () => {
+    const key = 'seed-inputs/udc/sourcify-ethereum-20261029.tar.zst', owner = '0x73D44f158a6990b50b9951532ea2032983a9fc72';
+    const latest = { key, publishedAt: '2026-10-29T07:36:12Z', lastMatchId: '57480368', contracts: 8287602, entities: 15695623, bytes: 36640821228, sha256: 'ab'.repeat(32) };
+    const udc = seedDetails(key, {
+      latest, upload: { uri: `s3://arkiv-sourcify-preload/${key}` },
+      seed: { version: 2, format: 'sourcify-arkiv.udc-bundle.v1', chainId: 7706815, owner, schemaPrefix: 'sourcify.v4', entities: [{ path: 'entities/000001.jsonl' }] },
+      timings: { build: { revision: 'dec4261dffabf1525e1219b019200ba461d53294', hostname: 'f39cc23de21a' } },
+    });
+    expect(udc).toEqual({
+      key, bucket: 'arkiv-sourcify-preload', pointer: 'seed-inputs/udc/sourcify-ethereum-latest.json', publishedAt: '2026-10-29T07:36:12Z',
+      lastMatchId: '57480368', contracts: 8287602, entities: 15695623, bytes: 36640821228, sha256: 'ab'.repeat(32), seedVersion: 2,
+      bundleFormat: 'sourcify-arkiv.udc-bundle.v1', schemaPrefix: 'sourcify.v4', chainId: 7706815, owner: owner.toLowerCase(),
+      revision: 'dec4261dffabf1525e1219b019200ba461d53294',
+    });
+    const v3 = seedDetails('seed-inputs/sourcify-ethereum-20261028.tar.zst', { seed: { version: 1, chainId: 7706815 }, timings: { config: { entityOwner: owner } } });
+    expect(v3).toMatchObject({ pointer: 'seed-inputs/sourcify-ethereum-latest.json', bucket: null, seedVersion: 1, bundleFormat: 'sourcify-arkiv.upload.v1',
+      schemaPrefix: null, owner: owner.toLowerCase(), contracts: null, revision: null });
+    // Only values of the expected form; an upload of another key names no bucket.
+    const odd = seedDetails(key, { latest: { publishedAt: 'today', lastMatchId: '1e9', contracts: -1, bytes: 1.5, sha256: 'xyz' },
+      upload: { uri: 's3://arkiv-sourcify-preload/other.tar.zst' }, seed: { version: '2', format: 'Bad Format!', schemaPrefix: '../x', owner: '0x1' },
+      timings: { build: { revision: '/home/sourcify' } } });
+    expect(odd).toMatchObject({ bucket: null, publishedAt: null, lastMatchId: null, contracts: null, bytes: null, sha256: null, seedVersion: null,
+      bundleFormat: null, schemaPrefix: null, owner: null, revision: null });
   });
 });
 

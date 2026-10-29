@@ -412,9 +412,14 @@ settings; writes are dry runs without `--execute`.
 refreshing `sync.lock` though its status says it runs), cursor and that contract, the Ethereum matches it is behind the
 mirror and an ETA at the last hour's net rate, contracts, transactions, gas and calldata by hour and in total, and its
 chain (head, block time, gas price, the writer's balance and nonces, 24 h spend and runway); also the mirror's newest
-match and hourly inflow, and the last daily seed runs. [`dashboard/status.ts`](dashboard/status.ts) writes it as
+match and hourly inflow, and each daily seed job (v3, v4): its last runs, its timer (`DASHBOARD_SEED_SCHEDULE`, the
+timers installed on the host, e.g. `udc=04:00`; unset, both units of `deploy/`) and its newest published seed: the R2
+object and `latest.json` pointer, the bundle format, `seed.json` version and schema prefix, the Arkiv chain and owner,
+the dataset (last match ID, contracts, entities), size, SHA-256 and the processor revision that built it.
+[`dashboard/status.ts`](dashboard/status.ts) writes it as
 `status.json` (shape: [`dashboard/sample-status.json`](dashboard/sample-status.json)) every 15 s from `targets/*.env`,
-`data/sync/NAME`, `data/runs/status.jsonl`, each target's RPC (read-only calls) and the mirror (SELECT only, at most
+`data/sync/NAME`, `data/runs` and `data/runs-udc` (`status.jsonl` and the newest published run's `latest.json`,
+`logs/upload-result.json`, `bundle/seed.json` and `timings.json`), each target's RPC (read-only calls) and the mirror (SELECT only, at most
 once a minute, scans bounded by match ID), next to the static page it copies on start; the page polls it. It runs as
 the Compose project `arkiv-sync-dashboard` ([`dashboard.compose.yaml`](dashboard.compose.yaml); 0.25 CPU, 256 MB, no
 swap, read-only, no ports), publishing into `DASHBOARD_OUT` (`/var/www/arkiv-sync`), which nginx serves:
