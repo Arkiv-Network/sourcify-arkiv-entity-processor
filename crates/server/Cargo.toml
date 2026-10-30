@@ -1,6 +1,6 @@
 [package]
 name = "arkiv-sourcify-server"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 rust-version = "1.90"
 description = "Arkiv-backed Sourcify Mainnet contract read service"

@@ -1,6 +1,6 @@
 [package]
 name = "arkiv-entity-processor"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 rust-version = "1.90"
 description = "Offline processor turning Sourcify Ethereum contract records (NDJSON) into a deduplicated Arkiv prefill seed bundle"

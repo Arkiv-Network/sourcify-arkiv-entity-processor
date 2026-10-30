@@ -15,6 +15,19 @@ comparison contract; serialization order is not original Sourcify byte identity.
 
 ## Run
 
+Each tag also publishes a multi-architecture (amd64, arm64) image built from `Dockerfile.server`,
+`ghcr.io/arkiv-network/arkiv-sourcify-server:<tag>` (and `:latest` for a release tag). It runs as an
+unprivileged user, already has the locale, and needs no writable filesystem:
+
+```sh
+docker run -d --name arkiv-sourcify-server --restart unless-stopped \
+  --read-only --cap-drop ALL --security-opt no-new-privileges \
+  -p 127.0.0.1:3000:3000 \
+  ghcr.io/arkiv-network/arkiv-sourcify-server:latest \
+  --rpc-url http://ARKIV_RPC --owner 0xOWNER --arkiv-chain-id 7706815 \
+  --genesis-state-root 0xROOT --listen 0.0.0.0:3000
+```
+
 Tagged [GitHub releases](https://github.com/Arkiv-Network/sourcify-arkiv-entity-processor/releases) include
 `arkiv-sourcify-server-<version>-<target>.tar.gz` for `x86_64-unknown-linux-gnu` and
 `aarch64-unknown-linux-gnu`, each with a `.sha256` file. The binary needs the glibc `en_US.UTF-8` locale for
