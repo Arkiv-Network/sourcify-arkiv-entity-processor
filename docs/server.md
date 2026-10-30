@@ -15,6 +15,12 @@ comparison contract; serialization order is not original Sourcify byte identity.
 
 ## Run
 
+Tagged [GitHub releases](https://github.com/Arkiv-Network/sourcify-arkiv-entity-processor/releases) include
+`arkiv-sourcify-server-<version>-<target>.tar.gz` for `x86_64-unknown-linux-gnu` and
+`aarch64-unknown-linux-gnu`, each with a `.sha256` file. The binary needs the glibc `en_US.UTF-8` locale for
+signature collation (Debian/Ubuntu: `apt-get install locales && localedef -i en_US -f UTF-8 en_US.UTF-8`).
+`Dockerfile.server` builds the same binary into an image that already has it. To build from source:
+
 ```sh
 cargo build -p arkiv-sourcify-server --release --locked
 RUST_LOG=info target/release/arkiv-sourcify-server \
