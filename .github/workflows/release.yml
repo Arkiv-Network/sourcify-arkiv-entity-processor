@@ -1,8 +1,9 @@
 name: Release
 
-# Tag push `v*` (e.g. v0.1.0): build all targets and publish a GitHub Release.
-# Manual run (workflow_dispatch): build all targets and upload them as workflow
-# artifacts only (dry run, no release).
+# Tag push `v*` (e.g. v0.1.0): build all targets, publish a GitHub Release and push the
+# server image to ghcr.io/arkiv-network/arkiv-sourcify-server.
+# Manual run (workflow_dispatch): build all targets and the image, and upload the archives as
+# workflow artifacts only (dry run, no release, nothing pushed).
 on:
   push:
     tags: ["v*"]
@@ -15,6 +16,7 @@ env:
   CARGO_TERM_COLOR: always
   BIN: arkiv-entity-processor
   SERVER_BIN: arkiv-sourcify-server
+  IMAGE: ghcr.io/arkiv-network/arkiv-sourcify-server
 
 jobs:
   build:
@@ -149,3 +151,79 @@ jobs:
           gh release create "$GITHUB_REF_NAME" dist/* \
             --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" \
             --generate-notes --verify-tag "${flags[@]}"
+
+  # Dockerfile.server on native runners per architecture, pushed by digest, then joined into
+  # one multi-architecture tag.
+  image:
+    name: server image ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build
+        run: |
+          docker buildx build -f Dockerfile.server --platform linux/${{ matrix.arch }} \
+            --label org.opencontainers.image.source="https://github.com/$GITHUB_REPOSITORY" \
+            --label org.opencontainers.image.revision="$GITHUB_SHA" \
+            --load -t server:ci .
+
+      - name: Smoke test
+        run: |
+          docker run --rm --read-only --cap-drop ALL server:ci --version
+          docker run --rm --read-only --cap-drop ALL server:ci --help >/dev/null
+
+      - name: Push by digest
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker tag server:ci "$IMAGE:build-${{ matrix.arch }}"
+          docker push "$IMAGE:build-${{ matrix.arch }}" | tee push.log
+          digest=$(sed -n 's/.*digest: \(sha256:[0-9a-f]*\).*/\1/p' push.log)
+          [[ -n "$digest" ]]
+          mkdir -p digests && echo "$IMAGE@$digest" >"digests/${{ matrix.arch }}"
+
+      - if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@v7
+        with:
+          name: image-digest-${{ matrix.arch }}
+          path: digests/*
+          if-no-files-found: error
+
+  image-publish:
+    name: server image tags
+    needs: [image, release]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      packages: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: digests
+          pattern: image-digest-*
+          merge-multiple: true
+
+      - name: Tag the multi-architecture image
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          tags=(-t "$IMAGE:$GITHUB_REF_NAME")
+          if [[ "$GITHUB_REF_NAME" != *-* ]]; then tags+=(-t "$IMAGE:latest"); fi
+          docker buildx imagetools create "${tags[@]}" $(cat digests/*)
+          docker buildx imagetools inspect "$IMAGE:$GITHUB_REF_NAME" | tee -a "$GITHUB_STEP_SUMMARY"
