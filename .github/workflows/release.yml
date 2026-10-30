@@ -14,6 +14,7 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   BIN: arkiv-entity-processor
+  SERVER_BIN: arkiv-sourcify-server
 
 jobs:
   build:
@@ -24,7 +25,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # The server needs the glibc en_US.UTF-8 locale for signature collation, so it ships for glibc targets only.
           - target: x86_64-unknown-linux-gnu
+            server: true
           # Fully static; zstd-sys and ring compile C, which needs musl-gcc (musl-tools).
           - target: x86_64-unknown-linux-musl
             apt: musl-tools
@@ -32,6 +35,7 @@ jobs:
           - target: aarch64-unknown-linux-gnu
             apt: gcc-aarch64-linux-gnu libc6-dev-arm64-cross qemu-user
             linker: aarch64-linux-gnu-gcc
+            server: true
             emulator: qemu-aarch64 -L /usr/aarch64-linux-gnu
     steps:
       - uses: actions/checkout@v7
@@ -69,8 +73,10 @@ jobs:
           rustup show active-toolchain
 
       - name: Build
-        # The processor release remains unchanged; the fixture server has no production release yet.
-        run: cargo build -p arkiv-entity-processor --release --locked --target ${{ matrix.target }}
+        run: |
+          packages=(-p arkiv-entity-processor)
+          if [[ "${{ matrix.server }}" == true ]]; then packages+=(-p "$SERVER_BIN"); fi
+          cargo build "${packages[@]}" --release --locked --target ${{ matrix.target }}
 
       - name: Smoke test
         run: |
@@ -85,6 +91,13 @@ jobs:
           bin verify "$RUNNER_TEMP/bundle"
           bin pack "$RUNNER_TEMP/bundle" --output "$RUNNER_TEMP/bundle.tar.zst"
 
+      - name: Smoke test server
+        if: matrix.server
+        run: |
+          file "target/${{ matrix.target }}/release/$SERVER_BIN"
+          ${{ matrix.emulator }} "target/${{ matrix.target }}/release/$SERVER_BIN" --version
+          ${{ matrix.emulator }} "target/${{ matrix.target }}/release/$SERVER_BIN" --help >/dev/null
+
       - name: Package
         id: package
         run: |
@@ -94,6 +107,16 @@ jobs:
           tar -C staging -czf "dist/$name.tar.gz" "$name"
           (cd dist && sha256sum "$name.tar.gz" >"$name.tar.gz.sha256")
           cat "dist/$name.tar.gz.sha256" | tee -a "$GITHUB_STEP_SUMMARY"
+          if [[ "${{ matrix.server }}" == true ]]; then
+            server="$SERVER_BIN-${{ steps.version.outputs.version }}-${{ matrix.target }}"
+            mkdir -p "staging/$server/licenses"
+            cp "target/${{ matrix.target }}/release/$SERVER_BIN" docs/server.md "staging/$server/"
+            cp crates/server/src/proxy-whatsabi-LICENSE.txt "staging/$server/licenses/whatsabi-LICENSE.txt"
+            cp crates/server/tests/fixtures/proxy/SOURCIFY-LICENSE "staging/$server/licenses/SOURCIFY-LICENSE"
+            tar -C staging -czf "dist/$server.tar.gz" "$server"
+            (cd dist && sha256sum "$server.tar.gz" >"$server.tar.gz.sha256")
+            cat "dist/$server.tar.gz.sha256" | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
           echo "name=$name" >>"$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@v7
