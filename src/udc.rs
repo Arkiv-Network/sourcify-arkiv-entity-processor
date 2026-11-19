@@ -46,7 +46,7 @@ pub const PERMANENT: u64 = u64::MAX;
 pub const ARKIV_ADDRESS: [u8; 20] = [
     0x44, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x44,
 ];
-const IDENTITY: u8 = 0;
+pub(crate) const IDENTITY: u8 = 0;
 const DEFLATE: u8 = 1;
 const CHUNKED: u8 = 2;
 /// Compiler-owned top-level fields, in hydration order.
@@ -636,9 +636,9 @@ pub fn decode(value: &[u8]) -> Result<Vec<u8>> {
     }
 }
 /// Digest and length of the joined value, and the chunk keys in order.
-type ChunkList = ([u8; 32], usize, Vec<[u8; 32]>);
+pub(crate) type ChunkList = ([u8; 32], usize, Vec<[u8; 32]>);
 /// A chunk list: `02 ‖ sha256(joined) ‖ u32 length ‖ keys`, bounded before anything is fetched.
-fn chunk_manifest(value: &[u8]) -> Result<Option<ChunkList>> {
+pub(crate) fn chunk_manifest(value: &[u8]) -> Result<Option<ChunkList>> {
     if value.first() != Some(&CHUNKED) {
         return Ok(None);
     }

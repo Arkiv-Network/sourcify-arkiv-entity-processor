@@ -11,6 +11,7 @@ mod split;
 pub mod udc;
 pub mod udc_bundle;
 pub mod udc_page;
+pub mod udc_rekey;
 pub mod udc_rpc;
 mod wire;
 pub const BUDGET: usize = 122880;

@@ -183,39 +183,61 @@ impl BundleWriter {
             "parts": self.part_audit,
         });
         report.as_object_mut().unwrap().extend(extra);
-        write_json(&self.dir.join("report.json"), &report)?;
-        let seed = json!({
-            "version": SEED_VERSION,
-            "format": FORMAT,
-            "chainId": self.profile.chain_id,
-            "owner": hx(self.profile.owner),
-            "schemaPrefix": self.profile.prefix,
-            "firstNonce": 0,
-            "entities": self.part_paths.iter().map(|p| json!({"path": p})).collect::<Vec<_>>(),
-        });
-        write_json(&self.dir.join("seed.json.tmp"), &seed)?;
-        let mut sums = String::new();
-        for path in self
-            .part_paths
-            .iter()
-            .map(String::as_str)
-            .chain(["report.json", "seed.json"])
-        {
-            let file = if path == "seed.json" {
-                "seed.json.tmp"
-            } else {
-                path
-            };
-            let (digest, _) = sha256_file(&self.dir.join(file))?;
-            sums.push_str(&format!("{digest}  {path}\n"));
-        }
-        let mut checksums = File::create(self.dir.join("SHA256SUMS"))?;
-        checksums.write_all(sums.as_bytes())?;
-        checksums.sync_all()?;
-        fs::rename(self.dir.join("seed.json.tmp"), self.dir.join("seed.json"))?;
-        File::open(&self.dir)?.sync_all()?;
+        publish(
+            &self.dir,
+            &report,
+            self.profile.chain_id,
+            &self.profile.owner,
+            &self.profile.prefix,
+        )?;
         Ok(report)
     }
+}
+/// Completes a bundle whose parts are written and synced: report.json, seed.json (as a temporary
+/// file), SHA256SUMS and last the rename that publishes seed.json. The parts' digests are the
+/// ones report.json records (computed while they were written); report.json and seed.json are
+/// hashed here.
+pub(crate) fn publish(
+    dir: &Path,
+    report: &Value,
+    chain_id: u64,
+    owner: &[u8; 20],
+    prefix: &str,
+) -> Result<()> {
+    let mut parts = vec![];
+    for p in report["parts"].as_array().context("report parts")? {
+        let path = p["path"].as_str().context("part path")?;
+        let digest = p["sha256"].as_str().context("part sha256")?;
+        parts.push((path.to_owned(), digest.to_owned()));
+    }
+    write_json(&dir.join("report.json"), report)?;
+    let seed = json!({
+        "version": SEED_VERSION,
+        "format": FORMAT,
+        "chainId": chain_id,
+        "owner": hx(owner),
+        "schemaPrefix": prefix,
+        "firstNonce": 0,
+        "entities": parts.iter().map(|(p, _)| json!({"path": p})).collect::<Vec<_>>(),
+    });
+    write_json(&dir.join("seed.json.tmp"), &seed)?;
+    let mut sums = String::new();
+    for (path, digest) in &parts {
+        sums.push_str(&format!("{digest}  {path}\n"));
+    }
+    for (path, file) in [
+        ("report.json", "report.json"),
+        ("seed.json", "seed.json.tmp"),
+    ] {
+        let (digest, _) = sha256_file(&dir.join(file))?;
+        sums.push_str(&format!("{digest}  {path}\n"));
+    }
+    let mut checksums = File::create(dir.join("SHA256SUMS"))?;
+    checksums.write_all(sums.as_bytes())?;
+    checksums.sync_all()?;
+    fs::rename(dir.join("seed.json.tmp"), dir.join("seed.json"))?;
+    File::open(dir)?.sync_all()?;
+    Ok(())
 }
 fn write_json(path: &Path, v: &Value) -> Result<()> {
     let mut f = File::create(path)?;
