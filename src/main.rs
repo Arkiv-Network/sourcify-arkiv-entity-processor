@@ -136,6 +136,9 @@ enum Command {
     /// Prototype: list a v4 dataset's contracts in matchid order by the paging rule
     #[command(long_about = udc_cli::PAGE_ABOUT)]
     UdcPage(udc_cli::PageArgs),
+    /// Re-key a v4 bundle for another Arkiv chain or owner
+    #[command(long_about = arkiv_entity_processor::udc_rekey::LONG_ABOUT)]
+    UdcRekey(arkiv_entity_processor::udc_rekey::RekeyArgs),
 }
 
 #[derive(Args, Debug)]
@@ -878,6 +881,7 @@ fn main() -> Result<()> {
         Command::UdcHydrate(a) => udc_cli::hydrate(&a),
         Command::UdcCheck(a) => udc_cli::check(&a),
         Command::UdcPage(a) => udc_cli::page(&a),
+        Command::UdcRekey(a) => arkiv_entity_processor::udc_rekey::run(&a),
     }
 }
 /// `process`: the offline importer. Writes the bundle and publishes seed.json last.

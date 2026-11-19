@@ -77,6 +77,7 @@ record byte for byte. On this branch every stage has a v4 mode next to the v3 on
 ```sh
 arkiv-entity-processor process -i records.ndjson -o bundle --format udc --owner 0x… [--schema-prefix sourcify.v4]
 arkiv-entity-processor verify bundle            # also line by line: nonces, keys, schema, every reference
+arkiv-entity-processor udc-rekey bundle -o rekeyed --owner 0x… [--chain-id N]   # the same bundle for another owner or chain
 arkiv-entity-processor hydrate bundle           # the v3-identical records
 arkiv-entity-processor pack bundle -o seed.tar.zst && arkiv-entity-processor upload seed.tar.zst … --expect-format udc
 arkiv-entity-processor read-arkiv 0x… --format udc --rpc-url … --owner 0x… [--read-view auto|pinned|head]
@@ -90,7 +91,11 @@ SEED_FORMAT=udc pipeline/daily.sh                                               
 A v4 bundle is `seed.json` version 2 (`sourcify-arkiv.udc-bundle.v1`), `report.json` (`sourcify-udc-import.v1`),
 `SHA256SUMS` and `entities/NNNNNN.jsonl`, one entity per line in creation order: `{"nonce","key","expiresAt",
 "attributes":[{"name","type","indexed","value"}]}` with `bytes` values in base64, keys the salt-0 keys of the bundle's
-chain, owner and nonce. It has no `payloads.bin` or `metadata.jsonl`. Test entities on our node (chain 7706815) are
+chain, owner and nonce. It has no `payloads.bin` or `metadata.jsonl`. Because keys depend only on (chain, owner, nonce), `udc-rekey`
+moves a bundle to another owner or chain without reprocessing: it rewrites each line's key, its `key` attributes, its
+`sourcerefs` and its chunk lists' keys, on every core, and the result is byte-identical to `process` with that owner
+and chain (the new `report.json` records the source in `rekey`). An owner needs its private key to patch or delete
+the dataset's entities, so a node whose dataset someone else owns can only read it. Test entities on our node (chain 7706815) are
 listed in [docs/udc-examples/sync-node/](docs/udc-examples/sync-node/); `udc/e2e/run.sh` reproduces them.
 
 ## Entity parity documentation
